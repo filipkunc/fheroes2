@@ -1129,6 +1129,15 @@ namespace ICN
 
         EVIL_DIALOG_PLAIN_CORNERS,
 
+        // Azure Dragon sprite (generated from Green Dragon with blue palette)
+        DRAGAZUR,
+
+        // Azure Dragon portrait (generated from Green Dragon portrait with blue palette)
+        MONH_AZURE_DRAGON,
+
+        // Azure Tower building sprite (generated from Black Tower with blue palette)
+        TWNWUP5A,
+
         // IMPORTANT! Put any new entry just above this one.
         LASTICN
     };

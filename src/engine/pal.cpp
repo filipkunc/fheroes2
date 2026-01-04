@@ -160,6 +160,62 @@ namespace
             137, 139, 140, 141, 143, 144, 145, 147, 148, 149, 151, 142, 142, 142, 142, 140, 140, 140, 140, 131, 133, 135, 137, 141, 143, 147, 149, 151, 136,
             136, 136, 136, 136, 136, 136, 136, 136, 136, 136, 141, 144, 148, 151, 151, 151, 151, 151, 151, 151, 151, 151, 151, 151 };
 
+    // Azure Dragon palette: transforms Green Dragon colors to blue/azure colors.
+    // Based on ICN analysis, Green Dragon uses these palette ranges:
+    // - 10-36: Grays (shadows/outlines) - KEEP
+    // - 37-62: Yellows - KEEP for golden highlights
+    // - 85-101: Darkest greens (highest usage ~100k pixels) - TRANSFORM TO BLUE
+    // - 102-130: Mid-to-light greens (may include yellow-green belly) - KEEP some for belly
+    // - 131-151: More body colors - TRANSFORM TO BLUE
+    // - 175-197: Reds (fire) - KEEP
+    // Only transform the core green indices, keep potential yellow-gold areas
+    const std::vector<uint8_t> azureDragonTable
+        = { 0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,
+            29,  30,  31,  32,  33,  34,  35,  36,  37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,  57,
+            58,  59,  60,  61,  62,  63,  64,  65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  77,  78,  79,  80,  81,  82,  83,  84,
+            // Transform main greens (85-101) to blues - these are the core body greens
+            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168,
+            // Keep 102-107 - these may have yellow-green tones for belly
+            102, 103, 104, 105, 106, 107,
+            // Transform greens (108-120) to blues
+            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
+            // Keep 121-130 - lighter colors possibly for belly highlights
+            121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
+            // Transform purple-ish (131-151) to blues
+            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172,
+            // Keep blue range as-is (152-174)
+            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174,
+            // Keep reds (175-197) for fire
+            175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197,
+            // Keep remaining colors
+            198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220,
+            221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243,
+            244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 };
+
+    // Azure Tower palette: Subtle transformation of Black Tower to give it a blue-ish tint.
+    // Only modify the gold/yellow accents and darkest blacks to create a subtle azure effect.
+    // Keep most colors the same for a more conservative look.
+    const std::vector<uint8_t> azureTowerTable
+        = { 0,   1,   2,   3,   4,   5,   6,   7,   8,   9,
+            // Keep grays mostly the same (10-36), just tint the darkest ones slightly blue
+            10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,  36,
+            // Transform gold/yellow accents (37-62) to cooler silver-blue tones
+            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 152, 153, 154,
+            // Keep browns/tans (63-84) as-is
+            63,  64,  65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  77,  78,  79,  80,  81,  82,  83,  84,
+            // Keep greens as-is (85-130)
+            85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
+            111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
+            // Keep purples as-is (131-151)
+            131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151,
+            // Keep blues as-is (152-174)
+            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174,
+            // Keep remaining colors
+            175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197,
+            198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220,
+            221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243,
+            244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 };
+
     struct CyclingColorSet
     {
         uint8_t start;
@@ -251,6 +307,14 @@ const std::vector<uint8_t> & PAL::GetPalette( const PaletteType type )
     case PaletteType::PURPLE: {
         assert( purpleTable.size() == paletteSize );
         return purpleTable;
+    }
+    case PaletteType::AZURE_DRAGON: {
+        assert( azureDragonTable.size() == paletteSize );
+        return azureDragonTable;
+    }
+    case PaletteType::AZURE_TOWER: {
+        assert( azureTowerTable.size() == paletteSize );
+        return azureTowerTable;
     }
     case PaletteType::CUSTOM:
         assert( 0 );

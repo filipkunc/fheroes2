@@ -29,7 +29,7 @@
 
 namespace PaymentConditions
 {
-    Funds BuyBuilding( int race, uint32_t build );
+    Funds BuyBuilding( int race, uint64_t build );
     Funds BuyBoat();
     Funds BuySpellBook();
     Funds RecruitHero();

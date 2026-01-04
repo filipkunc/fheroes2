@@ -30,7 +30,7 @@
 #include "race.h"
 #include "resource.h"
 
-Funds ProfitConditions::FromBuilding( uint32_t building, int race )
+Funds ProfitConditions::FromBuilding( uint64_t building, int race )
 {
     switch ( building ) {
     case BUILD_CASTLE:

@@ -1146,7 +1146,7 @@ bool AIWorldPathfinder::isHeroPossiblyBlockingWay( const Heroes & hero )
 
         if ( tile.getMainObjectType() == MP2::OBJ_HERO ) {
             const int direction = Maps::GetDirection( idx, heroIndex );
-            assert( CountBits( direction ) == 1 && direction != Direction::CENTER );
+            assert( CountBits( static_cast<uint32_t>( direction ) ) == 1 && direction != Direction::CENTER );
 
             if ( tile.isPassableTo( direction ) && heroTile.isPassableFrom( Direction::Reflect( direction ) ) ) {
                 return true;

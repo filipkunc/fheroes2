@@ -85,6 +85,7 @@ namespace
         case DWELLING_MONSTER6:
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
+        case DWELLING_UPGRADE8:
             return { { 445, 50, 195, 157 } };
         case BUILD_LEFTTURRET:
             return { { 7, 33, 0, 0 } };
@@ -153,6 +154,7 @@ namespace
         case DWELLING_MONSTER6:
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
+        case DWELLING_UPGRADE8:
             return { { 407, 0, 113, 106 } };
         case BUILD_LEFTTURRET:
             return { { 5, 50, 0, 0 } };
@@ -218,6 +220,7 @@ namespace
         case DWELLING_MONSTER6:
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
+        case DWELLING_UPGRADE8:
             return { { 179, 0, 84, 119 } };
         case BUILD_LEFTTURRET:
             return { { 98, 99, 0, 0 } };
@@ -286,6 +289,7 @@ namespace
         case DWELLING_MONSTER6:
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
+        case DWELLING_UPGRADE8:
             return { { 92, 0, 64, 255 } };
         case BUILD_LEFTTURRET:
             return { { 311, 84, 0, 0 } };
@@ -354,6 +358,7 @@ namespace
         case DWELLING_MONSTER6:
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
+        case DWELLING_UPGRADE8:
             return { { 160, 0, 178, 67 } };
         case BUILD_LEFTTURRET:
             return { { 30, 17, 0, 0 } };
@@ -422,6 +427,7 @@ namespace
         case DWELLING_MONSTER6:
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
+        case DWELLING_UPGRADE8:
             return { { 464, 72, 105, 124 } };
         case BUILD_LEFTTURRET:
             return { { 330, 47, 0, 0 } };
@@ -567,6 +573,8 @@ namespace
             return _( "warlock|Red Tower" );
         case DWELLING_UPGRADE7:
             return _( "Black Tower" );
+        case DWELLING_UPGRADE8:
+            return _( "Azure Tower" );
         default:
             break;
         }
@@ -679,6 +687,8 @@ namespace
             return _( "Upg. Dwelling 6" );
         case DWELLING_UPGRADE7:
             return _( "2x Upg. Dwelling 6" );
+        case DWELLING_UPGRADE8:
+            return _( "3x Upg. Dwelling 6" );
         default:
             break;
         }
@@ -1056,6 +1066,8 @@ namespace fheroes2
                 return DWELLING_UPGRADE6;
             case DWELLING_UPGRADE6:
                 return DWELLING_UPGRADE7;
+            case DWELLING_UPGRADE7:
+                return DWELLING_UPGRADE8;
             default:
                 break;
             }
@@ -1096,7 +1108,7 @@ namespace fheroes2
 
     BuildingType getBuildingRequirement( const int race, const BuildingType building )
     {
-        uint32_t requirement = 0;
+        uint64_t requirement = 0;
 
         switch ( building ) {
         case BUILD_SPEC:
@@ -1341,6 +1353,10 @@ namespace fheroes2
             if ( race == Race::WRLK )
                 requirement |= DWELLING_UPGRADE6;
             break;
+        case DWELLING_UPGRADE8:
+            if ( race == Race::WRLK )
+                requirement |= DWELLING_UPGRADE7;
+            break;
 
         default:
             break;
@@ -1353,10 +1369,10 @@ namespace fheroes2
     {
         // prepare requirement build string
         std::string requirement;
-        const uint32_t requirementBuildingIds = fheroes2::getBuildingRequirement( race, building );
+        const uint64_t requirementBuildingIds = fheroes2::getBuildingRequirement( race, building );
         const char sep = '\n';
 
-        for ( uint32_t itr = 0x00000001; itr; itr <<= 1 )
+        for ( uint64_t itr = 0x0000000000000001ULL; itr; itr <<= 1 )
             if ( requirementBuildingIds & itr ) {
                 requirement.append( Castle::GetStringBuilding( itr, race ) );
                 requirement += sep;
@@ -1397,6 +1413,8 @@ namespace fheroes2
             return 29;
         case DWELLING_UPGRADE7:
             return 30;
+        case DWELLING_UPGRADE8:
+            return 31; // Azure Tower uses a palette-transformed version of Black Tower sprite
         case BUILD_MAGEGUILD1:
         case BUILD_MAGEGUILD2:
         case BUILD_MAGEGUILD3:
@@ -1563,6 +1581,7 @@ namespace fheroes2
             priorities.emplace_back( DWELLING_MONSTER6 );
             priorities.emplace_back( DWELLING_UPGRADE6 );
             priorities.emplace_back( DWELLING_UPGRADE7 );
+            priorities.emplace_back( DWELLING_UPGRADE8 );
             priorities.emplace_back( BUILD_WELL );
             break;
         case Race::WZRD:

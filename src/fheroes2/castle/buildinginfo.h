@@ -40,7 +40,7 @@ namespace fheroes2
 class Castle;
 class StatusBar;
 
-enum BuildingType : uint32_t;
+enum BuildingType : uint64_t;
 enum class BuildingStatus : int32_t;
 
 class BuildingInfo
@@ -48,7 +48,7 @@ class BuildingInfo
 public:
     BuildingInfo( const Castle & c, const BuildingType b );
 
-    uint32_t getBuilding() const
+    uint64_t getBuilding() const
     {
         return _buildingType;
     }
@@ -62,20 +62,20 @@ public:
 
     const char * GetName() const;
     void SetStatusMessage( StatusBar & ) const;
-    static bool isDwelling( const uint32_t building );
-    static std::string getBuildingDescription( const int race, const uint32_t buildingId );
+    static bool isDwelling( const uint64_t building );
+    static std::string getBuildingDescription( const int race, const uint64_t buildingId );
     void Redraw() const;
     bool QueueEventProcessing( fheroes2::ButtonBase & exitButton ) const;
     bool DialogBuyBuilding( bool buttons ) const;
 
-    static Funds GetCost( const uint32_t buildingType, const int race );
+    static Funds GetCost( const uint64_t buildingType, const int race );
 
 private:
     void RedrawCaptain() const;
     std::string GetConditionDescription() const;
 
     const Castle & castle;
-    uint32_t _buildingType{ 0 };
+    uint64_t _buildingType{ 0 };
     std::string description;
     fheroes2::Rect area;
     BuildingStatus _status;

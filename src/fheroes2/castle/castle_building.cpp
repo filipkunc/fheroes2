@@ -71,7 +71,7 @@ namespace
         return { top.x, top.y, townbkg.width(), townbkg.height() };
     }
 
-    bool isBuildingConnectionNeeded( const Castle & castle, const uint32_t building )
+    bool isBuildingConnectionNeeded( const Castle & castle, const uint64_t building )
     {
         const int race = castle.GetRace();
 
@@ -94,12 +94,12 @@ namespace
         return false;
     }
 
-    bool isBuildingFullyBuilt( const Castle & castle, const uint32_t building, const uint32_t buildingCurrentlyUnderConstruction )
+    bool isBuildingFullyBuilt( const Castle & castle, const uint64_t building, const uint64_t buildingCurrentlyUnderConstruction )
     {
         return castle.isBuild( building ) && building != buildingCurrentlyUnderConstruction;
     }
 
-    void redrawBuildingConnection( const Castle & castle, const fheroes2::Point & position, const uint32_t building, const uint32_t buildingCurrentlyUnderConstruction,
+    void redrawBuildingConnection( const Castle & castle, const fheroes2::Point & position, const uint64_t building, const uint64_t buildingCurrentlyUnderConstruction,
                                    const uint8_t alpha = 255 )
     {
         const fheroes2::Rect & roi = CastleGetMaxArea( castle, position );
@@ -147,8 +147,8 @@ namespace
         }
     }
 
-    void redrawCastleBuilding( const Castle & castle, const fheroes2::Point & offset, const uint32_t building, const uint32_t frame,
-                               const uint32_t buildingCurrentlyUnderConstruction, const uint8_t alpha = 255 )
+    void redrawCastleBuilding( const Castle & castle, const fheroes2::Point & offset, const uint64_t building, const uint32_t frame,
+                               const uint64_t buildingCurrentlyUnderConstruction, const uint8_t alpha = 255 )
     {
         if ( building == BUILD_TENT ) {
             // We don't need to draw a tent because it's on the background image.
@@ -247,8 +247,8 @@ namespace
         }
     }
 
-    void redrawCastleBuildingExtended( const Castle & castle, const fheroes2::Point & offset, const uint32_t building, const uint32_t frame,
-                                       const uint32_t buildingCurrentlyUnderConstruction, const uint8_t alpha = 255 )
+    void redrawCastleBuildingExtended( const Castle & castle, const fheroes2::Point & offset, const uint64_t building, const uint32_t frame,
+                                       const uint64_t buildingCurrentlyUnderConstruction, const uint8_t alpha = 255 )
     {
         if ( building == BUILD_TENT ) {
             // We don't need to draw a tent because it's on the background image.
@@ -355,7 +355,7 @@ namespace
             fheroes2::drawCastleDialogBuilding( riverIcnId, riverExtraIndex, castle, offset, max );
         }
 
-        const uint32_t fadingInBuildingId = fadeBuilding.getBuilding();
+        const uint64_t fadingInBuildingId = fadeBuilding.getBuilding();
 
         // Bay animation. We have a special case for the Barbarian's castle:
         // the bay should always be drawn when the castle has sea access even if the Shipyard is built.

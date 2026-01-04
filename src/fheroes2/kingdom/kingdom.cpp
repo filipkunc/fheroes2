@@ -366,7 +366,7 @@ uint32_t Kingdom::GetCountNecromancyShrineBuild() const
     return static_cast<uint32_t>( std::count_if( castles.begin(), castles.end(), []( const Castle * castle ) { return castle->isNecromancyShrineBuild(); } ) );
 }
 
-uint32_t Kingdom::GetCountBuilding( uint32_t build ) const
+uint32_t Kingdom::GetCountBuilding( uint64_t build ) const
 {
     return static_cast<uint32_t>( std::count_if( castles.begin(), castles.end(), [build]( const Castle * castle ) { return castle->isBuild( build ); } ) );
 }

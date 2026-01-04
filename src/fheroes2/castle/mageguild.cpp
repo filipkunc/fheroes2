@@ -101,7 +101,7 @@ namespace
 
 void MageGuild::initialize( const int race, const bool hasLibrary )
 {
-    assert( CountBits( race ) == 1 && ( race & Race::ALL ) );
+    assert( CountBits( static_cast<uint32_t>( race ) ) == 1 && ( race & Race::ALL ) );
 
     _general.clear();
     _library.clear();
@@ -184,7 +184,7 @@ void MageGuild::initialize( const int race, const bool hasLibrary, const std::ma
         return;
     }
 
-    assert( CountBits( race ) == 1 && ( race & Race::ALL ) );
+    assert( CountBits( static_cast<uint32_t>( race ) ) == 1 && ( race & Race::ALL ) );
 
     _general.clear();
     _library.clear();

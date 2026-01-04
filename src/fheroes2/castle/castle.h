@@ -65,47 +65,49 @@ namespace Maps::Map_Format
     struct CastleMetadata;
 }
 
-enum BuildingType : uint32_t
+enum BuildingType : uint64_t
 {
-    BUILD_NOTHING = 0x00000000,
-    BUILD_THIEVESGUILD = 0x00000001,
-    BUILD_TAVERN = 0x00000002,
-    BUILD_SHIPYARD = 0x00000004,
-    BUILD_WELL = 0x00000008,
-    BUILD_STATUE = 0x00000010,
-    BUILD_LEFTTURRET = 0x00000020,
-    BUILD_RIGHTTURRET = 0x00000040,
-    BUILD_MARKETPLACE = 0x00000080,
+    BUILD_NOTHING = 0x0000000000000000ULL,
+    BUILD_THIEVESGUILD = 0x0000000000000001ULL,
+    BUILD_TAVERN = 0x0000000000000002ULL,
+    BUILD_SHIPYARD = 0x0000000000000004ULL,
+    BUILD_WELL = 0x0000000000000008ULL,
+    BUILD_STATUE = 0x0000000000000010ULL,
+    BUILD_LEFTTURRET = 0x0000000000000020ULL,
+    BUILD_RIGHTTURRET = 0x0000000000000040ULL,
+    BUILD_MARKETPLACE = 0x0000000000000080ULL,
     // Farm, Garbage Heap, Crystal Garden, Waterfall, Orchard, Skull Pile
-    BUILD_WEL2 = 0x00000100,
-    BUILD_MOAT = 0x00000200,
+    BUILD_WEL2 = 0x0000000000000100ULL,
+    BUILD_MOAT = 0x0000000000000200ULL,
     // Fortifications, Coliseum, Rainbow, Dungeon, Library, Storm
-    BUILD_SPEC = 0x00000400,
-    BUILD_CASTLE = 0x00000800,
-    BUILD_CAPTAIN = 0x00001000,
-    BUILD_SHRINE = 0x00002000,
-    BUILD_MAGEGUILD1 = 0x00004000,
-    BUILD_MAGEGUILD2 = 0x00008000,
-    BUILD_MAGEGUILD3 = 0x00010000,
-    BUILD_MAGEGUILD4 = 0x00020000,
-    BUILD_MAGEGUILD5 = 0x00040000,
+    BUILD_SPEC = 0x0000000000000400ULL,
+    BUILD_CASTLE = 0x0000000000000800ULL,
+    BUILD_CAPTAIN = 0x0000000000001000ULL,
+    BUILD_SHRINE = 0x0000000000002000ULL,
+    BUILD_MAGEGUILD1 = 0x0000000000004000ULL,
+    BUILD_MAGEGUILD2 = 0x0000000000008000ULL,
+    BUILD_MAGEGUILD3 = 0x0000000000010000ULL,
+    BUILD_MAGEGUILD4 = 0x0000000000020000ULL,
+    BUILD_MAGEGUILD5 = 0x0000000000040000ULL,
     BUILD_MAGEGUILD = BUILD_MAGEGUILD1 | BUILD_MAGEGUILD2 | BUILD_MAGEGUILD3 | BUILD_MAGEGUILD4 | BUILD_MAGEGUILD5,
-    BUILD_TENT = 0x00080000,
-    DWELLING_MONSTER1 = 0x00100000,
-    DWELLING_MONSTER2 = 0x00200000,
-    DWELLING_MONSTER3 = 0x00400000,
-    DWELLING_MONSTER4 = 0x00800000,
-    DWELLING_MONSTER5 = 0x01000000,
-    DWELLING_MONSTER6 = 0x02000000,
+    BUILD_TENT = 0x0000000000080000ULL,
+    DWELLING_MONSTER1 = 0x0000000000100000ULL,
+    DWELLING_MONSTER2 = 0x0000000000200000ULL,
+    DWELLING_MONSTER3 = 0x0000000000400000ULL,
+    DWELLING_MONSTER4 = 0x0000000000800000ULL,
+    DWELLING_MONSTER5 = 0x0000000001000000ULL,
+    DWELLING_MONSTER6 = 0x0000000002000000ULL,
     DWELLING_MONSTERS = DWELLING_MONSTER1 | DWELLING_MONSTER2 | DWELLING_MONSTER3 | DWELLING_MONSTER4 | DWELLING_MONSTER5 | DWELLING_MONSTER6,
-    DWELLING_UPGRADE2 = 0x04000000,
-    DWELLING_UPGRADE3 = 0x08000000,
-    DWELLING_UPGRADE4 = 0x10000000,
-    DWELLING_UPGRADE5 = 0x20000000,
-    DWELLING_UPGRADE6 = 0x40000000,
+    DWELLING_UPGRADE2 = 0x0000000004000000ULL,
+    DWELLING_UPGRADE3 = 0x0000000008000000ULL,
+    DWELLING_UPGRADE4 = 0x0000000010000000ULL,
+    DWELLING_UPGRADE5 = 0x0000000020000000ULL,
+    DWELLING_UPGRADE6 = 0x0000000040000000ULL,
     // Black Dragons
-    DWELLING_UPGRADE7 = 0x80000000,
-    DWELLING_UPGRADES = DWELLING_UPGRADE2 | DWELLING_UPGRADE3 | DWELLING_UPGRADE4 | DWELLING_UPGRADE5 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7
+    DWELLING_UPGRADE7 = 0x0000000080000000ULL,
+    // Azure Dragons
+    DWELLING_UPGRADE8 = 0x0000000100000000ULL,
+    DWELLING_UPGRADES = DWELLING_UPGRADE2 | DWELLING_UPGRADE3 | DWELLING_UPGRADE4 | DWELLING_UPGRADE5 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8
 };
 
 enum class BuildingStatus : int32_t
@@ -254,7 +256,7 @@ public:
     Army & GetActualArmy();
 
     // Returns current monsters count in dwelling.
-    uint32_t getMonstersInDwelling( const uint32_t buildingType ) const;
+    uint32_t getMonstersInDwelling( const uint64_t buildingType ) const;
 
     // Returns the garrison strength estimation calculated as if this castle had really been attacked, including
     // an estimate of the strength of the combined army consisting of the garrison and the guest hero's troops
@@ -267,7 +269,7 @@ public:
     }
 
     // Returns the correct dwelling type available in the castle. BUILD_NOTHING is returned if this is not a dwelling.
-    uint32_t GetActualDwelling( const uint32_t buildId ) const;
+    uint64_t GetActualDwelling( const uint64_t buildId ) const;
 
     // Returns true in case of successful recruitment.
     bool RecruitMonster( const Troop & troop, bool showDialog = true );
@@ -312,19 +314,19 @@ public:
     int GetMoraleModificator( std::string * strs ) const;
     int GetLuckModificator( std::string * strs ) const;
 
-    bool AllowBuyBuilding( const uint32_t buildingType ) const
+    bool AllowBuyBuilding( const uint64_t buildingType ) const
     {
         return BuildingStatus::ALLOW_BUILD == CheckBuyBuilding( buildingType );
     }
 
-    bool isBuild( const uint32_t buildingType ) const
+    bool isBuild( const uint64_t buildingType ) const
     {
         return ( _constructedBuildings & buildingType ) != 0;
     }
 
-    bool BuyBuilding( const uint32_t buildingType );
+    bool BuyBuilding( const uint64_t buildingType );
 
-    BuildingStatus CheckBuyBuilding( const uint32_t build ) const;
+    BuildingStatus CheckBuyBuilding( const uint64_t build ) const;
     static BuildingStatus GetAllBuildingStatus( const Castle & castle );
 
     bool AllowBuyBoat( const bool checkPayment ) const;
@@ -332,19 +334,19 @@ public:
 
     void Scout() const;
 
-    std::string GetStringBuilding( const uint32_t buildingType ) const
+    std::string GetStringBuilding( const uint64_t buildingType ) const
     {
         return GetStringBuilding( buildingType, _race );
     }
 
-    std::string GetDescriptionBuilding( const uint32_t buildingType ) const;
+    std::string GetDescriptionBuilding( const uint64_t buildingType ) const;
 
-    static const char * GetStringBuilding( const uint32_t buildingType, const int race );
+    static const char * GetStringBuilding( const uint64_t buildingType, const int race );
 
     // Get building ICN ID for given race and building type.
-    static int GetICNBuilding( const uint32_t buildingType, const int race );
+    static int GetICNBuilding( const uint64_t buildingType, const int race );
     static int GetICNBoat( const int race );
-    uint32_t GetUpgradeBuilding( const uint32_t buildingId ) const;
+    uint64_t GetUpgradeBuilding( const uint64_t buildingId ) const;
 
     static bool PredicateIsCastle( const Castle * castle )
     {
@@ -356,7 +358,7 @@ public:
         return castle && !castle->isCastle();
     }
 
-    static bool PredicateIsBuildBuilding( const Castle * castle, const uint32_t buildingType )
+    static bool PredicateIsBuildBuilding( const Castle * castle, const uint64_t buildingType )
     {
         return castle && castle->isBuild( buildingType );
     }
@@ -373,7 +375,7 @@ public:
 
     Troops getAvailableArmy( Funds potentialBudget ) const;
 
-    bool isBuildingDisabled( const uint32_t buildingType ) const
+    bool isBuildingDisabled( const uint64_t buildingType ) const
     {
         return ( _disabledBuildings & buildingType ) != 0;
     }
@@ -401,12 +403,12 @@ private:
 
     // Checks whether this particular building is currently built in the castle (unlike
     // the isBuild(), upgraded versions of the same building are not taken into account)
-    bool _isExactBuildingBuilt( const uint32_t buildingToCheck ) const;
+    bool _isExactBuildingBuilt( const uint64_t buildingToCheck ) const;
 
-    uint32_t * _getDwelling( const uint32_t buildingType );
+    uint32_t * _getDwelling( const uint64_t buildingType );
     void _trainGuestHeroAndCaptainInMageGuild();
 
-    ConstructionDialogResult _openConstructionDialog( uint32_t & dwellingTobuild );
+    ConstructionDialogResult _openConstructionDialog( uint64_t & dwellingTobuild );
 
     void _openTavern() const;
     void _openWell();
@@ -414,7 +416,7 @@ private:
     void _joinRNDArmy();
     void _postLoad();
 
-    void _wellRedrawAvailableMonsters( const uint32_t dwellingType, const bool restoreBackground, fheroes2::Image & background ) const;
+    void _wellRedrawAvailableMonsters( const uint64_t dwellingType, const bool restoreBackground, fheroes2::Image & background ) const;
     void _wellRedrawBackground( fheroes2::Image & background ) const;
     void _wellRedrawMonsterAnimation( const fheroes2::Rect & roi, std::array<fheroes2::RandomMonsterAnimation, maxNumOfDwellings> & monsterAnimInfo ) const;
 
@@ -427,8 +429,8 @@ private:
     friend IStreamBase & operator>>( IStreamBase & stream, Castle & castle );
 
     int32_t _race{ Race::NONE };
-    uint32_t _constructedBuildings{ 0 };
-    uint32_t _disabledBuildings{ 0 };
+    uint64_t _constructedBuildings{ 0 };
+    uint64_t _disabledBuildings{ 0 };
 
     Captain _captain{ *this };
 
@@ -447,7 +449,7 @@ namespace CastleDialog
     public:
         FadeBuilding() = default;
 
-        void startFadeBuilding( const uint32_t building )
+        void startFadeBuilding( const uint64_t building )
         {
             _alpha = 0;
             _building = building;
@@ -480,7 +482,7 @@ namespace CastleDialog
             return _alpha;
         }
 
-        uint32_t getBuilding() const
+        uint64_t getBuilding() const
         {
             return _building;
         }
@@ -491,7 +493,7 @@ namespace CastleDialog
         }
 
     private:
-        uint32_t _building{ BUILD_NOTHING };
+        uint64_t _building{ BUILD_NOTHING };
         uint8_t _alpha{ 255 };
         bool _isOnlyBoat{ false };
     };
@@ -505,9 +507,9 @@ namespace CastleDialog
             // Do nothing.
         }
 
-        bool operator==( const uint32_t buildingType ) const
+        bool operator==( const uint64_t buildingType ) const
         {
-            return buildingType == static_cast<uint32_t>( id );
+            return buildingType == static_cast<uint64_t>( id );
         }
 
         BuildingType id{ BUILD_NOTHING };

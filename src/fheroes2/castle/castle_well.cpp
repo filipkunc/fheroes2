@@ -304,7 +304,7 @@ void Castle::_openWell()
     }
 }
 
-void Castle::_wellRedrawAvailableMonsters( const uint32_t dwellingType, const bool restoreBackground, fheroes2::Image & background ) const
+void Castle::_wellRedrawAvailableMonsters( const uint64_t dwellingType, const bool restoreBackground, fheroes2::Image & background ) const
 {
     if ( !( _constructedBuildings & dwellingType ) ) {
         // This building has not been built.
@@ -427,7 +427,7 @@ void Castle::_wellRedrawBackground( fheroes2::Image & background ) const
             break;
         }
 
-        const uint32_t actualDwellindType = GetActualDwelling( dwellingType );
+        const uint64_t actualDwellindType = GetActualDwelling( dwellingType );
         const Monster monster( _race, actualDwellindType );
 
         // Dwelling building image.

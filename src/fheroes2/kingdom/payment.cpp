@@ -24,7 +24,7 @@
 #include "payment.h"
 #include "buildinginfo.h"
 
-Funds PaymentConditions::BuyBuilding( int race, uint32_t build )
+Funds PaymentConditions::BuyBuilding( int race, uint64_t build )
 {
     return BuildingInfo::GetCost( build, race );
 }

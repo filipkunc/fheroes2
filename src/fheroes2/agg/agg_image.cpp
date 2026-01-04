@@ -2451,6 +2451,19 @@ namespace
         assert( id < ICN::LAST_VALID_FILE_ICN || _icnVsSprite[id].empty() );
 
         switch ( id ) {
+        case ICN::DRAGAZUR:
+            // Azure Dragon sprites generated from Green Dragon with blue palette transformation.
+            CopyICNWithPalette( id, ICN::DRAGGREE, PAL::PaletteType::AZURE_DRAGON );
+            break;
+        case ICN::MONH_AZURE_DRAGON:
+            // Azure Dragon portrait generated from Green Dragon portrait (MONH0035) with blue palette.
+            // Green Dragon ID is 36, PEASANT is 1, so portrait index = 36 - 1 = 35.
+            CopyICNWithPalette( id, ICN::MONH0035, PAL::PaletteType::AZURE_DRAGON );
+            break;
+        case ICN::TWNWUP5A:
+            // Azure Tower building sprite generated from Black Tower (TWNWUP5B) with blue palette.
+            CopyICNWithPalette( id, ICN::TWNWUP5B, PAL::PaletteType::AZURE_TOWER );
+            break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
             break;
@@ -2979,6 +2992,18 @@ namespace
                 fheroes2::Sprite & modified = _icnVsSprite[id][63];
                 modified.image()[19 * 9 + 9] = modified.image()[19 * 5 + 11];
                 modified.transform()[19 * 9 + 9] = modified.transform()[19 * 5 + 11];
+            }
+
+            // Add Azure Dragon sprite (based on Green Dragon with blue palette).
+            // Green Dragon is at monster ID 36, so sprite index 35. Azure Dragon is at monster ID 67, so sprite index 66.
+            if ( _icnVsSprite[id].size() > 35 ) {
+                const size_t greenDragonSpriteIndex = 35;
+                const size_t azureDragonSpriteIndex = 66;
+                if ( _icnVsSprite[id].size() <= azureDragonSpriteIndex ) {
+                    _icnVsSprite[id].resize( azureDragonSpriteIndex + 1 );
+                }
+                _icnVsSprite[id][azureDragonSpriteIndex] = _icnVsSprite[id][greenDragonSpriteIndex];
+                ApplyPalette( _icnVsSprite[id][azureDragonSpriteIndex], PAL::GetPalette( PAL::PaletteType::AZURE_DRAGON ) );
             }
 
             break;
@@ -3621,6 +3646,14 @@ namespace
                     imageData[2606] = 21;
                     imageData[2608] = 21;
                 }
+            }
+            break;
+        case ICN::CSTLWRLK:
+            // Add Azure Tower small sprite (palette-transformed from Black Tower sprite at index 30).
+            if ( _icnVsSprite[id].size() > 30 ) {
+                // Append Azure Tower sprite at index 31.
+                _icnVsSprite[id].push_back( _icnVsSprite[id][30] );
+                ApplyPalette( _icnVsSprite[id].back(), PAL::GetPalette( PAL::PaletteType::AZURE_TOWER ) );
             }
             break;
         case ICN::CSTLSORC:
@@ -4763,6 +4796,22 @@ namespace
                     for ( const uint32_t pixelNumber : { 777, 778, 822, 823, 867 } ) {
                         _icnVsSprite[ICN::MINIMON][303].image()[pixelNumber] -= 42;
                     }
+                }
+            }
+
+            // Add Azure Dragon mini sprites (based on Green Dragon with blue palette).
+            // Green Dragon monster index is 35, so its mini sprites are at indices 315-323 (35*9 to 35*9+8).
+            // Azure Dragon monster index is 66, so its mini sprites should be at indices 594-602 (66*9 to 66*9+8).
+            constexpr uint32_t greenDragonMiniBaseIndex = 35 * 9; // = 315
+            constexpr uint32_t azureDragonMiniBaseIndex = 66 * 9; // = 594
+            if ( _icnVsSprite[ICN::MINIMON].size() > greenDragonMiniBaseIndex + 8 ) {
+                if ( _icnVsSprite[ICN::MINIMON].size() <= azureDragonMiniBaseIndex + 8 ) {
+                    _icnVsSprite[ICN::MINIMON].resize( azureDragonMiniBaseIndex + 9 );
+                }
+                const std::vector<uint8_t> & azureDragonPalette = PAL::GetPalette( PAL::PaletteType::AZURE_DRAGON );
+                for ( uint32_t i = 0; i < 9; ++i ) {
+                    _icnVsSprite[ICN::MINIMON][azureDragonMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][greenDragonMiniBaseIndex + i];
+                    ApplyPalette( _icnVsSprite[ICN::MINIMON][azureDragonMiniBaseIndex + i], azureDragonPalette );
                 }
             }
 

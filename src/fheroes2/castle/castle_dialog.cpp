@@ -116,7 +116,7 @@ namespace
         return BUILD_NOTHING;
     }
 
-    std::string buildingStatusMessage( const int race, const uint32_t buildingId )
+    std::string buildingStatusMessage( const int race, const uint64_t buildingId )
     {
         // Check if building is a monster dwelling or its upgraded version
         if ( ( buildingId & DWELLING_MONSTERS ) == 0 && ( buildingId & DWELLING_UPGRADES ) == 0 ) {
@@ -260,7 +260,7 @@ Castle::CastleDialogReturnValue Castle::OpenDialog( const bool openConstructionW
     fheroes2::Image surfaceHero;
 
     auto constructionDialogHandler = [this, &display, &dialogRoi, &fadeBuilding, &hero, &surfaceHero, &alphaHero]() {
-        uint32_t build = BUILD_NOTHING;
+        uint64_t build = BUILD_NOTHING;
         const Castle::ConstructionDialogResult result = _openConstructionDialog( build );
 
         switch ( result ) {
@@ -619,7 +619,7 @@ Castle::CastleDialogReturnValue Castle::OpenDialog( const bool openConstructionW
                     continue;
                 }
 
-                const uint32_t monsterDwelling = GetActualDwelling( it->id );
+                const uint64_t monsterDwelling = GetActualDwelling( it->id );
                 const bool isMonsterDwelling = ( monsterDwelling != BUILD_NOTHING );
 
                 bool isRightButtonInArea{ false };
@@ -818,7 +818,7 @@ Castle::CastleDialogReturnValue Castle::OpenDialog( const bool openConstructionW
 
         needRedraw = fadeBuilding.updateFadeAlpha();
         if ( fadeBuilding.isFadeDone() ) {
-            const uint32_t build = fadeBuilding.getBuilding();
+            const uint64_t build = fadeBuilding.getBuilding();
 
             if ( build != BUILD_NOTHING ) {
                 if ( BUILD_CAPTAIN == build ) {

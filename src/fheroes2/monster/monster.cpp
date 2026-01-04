@@ -107,7 +107,7 @@ Monster::Monster( const Spell & sp )
     }
 }
 
-Monster::Monster( const int race, const uint32_t dw )
+Monster::Monster( const int race, const uint64_t dw )
     : id( UNKNOWN )
 {
     id = FromDwelling( race, dw ).id;
@@ -268,6 +268,8 @@ Monster Monster::GetDowngrade() const
         return Monster( GREEN_DRAGON );
     case BLACK_DRAGON:
         return Monster( RED_DRAGON );
+    case AZURE_DRAGON:
+        return Monster( BLACK_DRAGON );
     case STEEL_GOLEM:
         return Monster( IRON_GOLEM );
     case ARCHMAGE:
@@ -321,6 +323,8 @@ Monster Monster::GetUpgrade() const
         return Monster( RED_DRAGON );
     case RED_DRAGON:
         return Monster( BLACK_DRAGON );
+    case BLACK_DRAGON:
+        return Monster( AZURE_DRAGON );
     case IRON_GOLEM:
         return Monster( STEEL_GOLEM );
     case MAGE:
@@ -335,7 +339,7 @@ Monster Monster::GetUpgrade() const
     return Monster( id );
 }
 
-Monster Monster::FromDwelling( int race, uint32_t dwelling )
+Monster Monster::FromDwelling( int race, uint64_t dwelling )
 {
     switch ( dwelling ) {
     case DWELLING_MONSTER1:
@@ -566,6 +570,15 @@ Monster Monster::FromDwelling( int race, uint32_t dwelling )
         }
         break;
 
+    case DWELLING_UPGRADE8:
+        switch ( race ) {
+        case Race::WRLK:
+            return Monster( AZURE_DRAGON );
+        default:
+            break;
+        }
+        break;
+
     default:
         break;
     }
@@ -688,7 +701,7 @@ Monster::LevelType Monster::GetRandomUnitLevel() const
     return LevelType::LEVEL_ANY;
 }
 
-uint32_t Monster::GetDwelling() const
+uint64_t Monster::GetDwelling() const
 {
     switch ( id ) {
     case PEASANT:
@@ -772,6 +785,9 @@ uint32_t Monster::GetDwelling() const
     case BLACK_DRAGON:
         return DWELLING_UPGRADE7;
 
+    case AZURE_DRAGON:
+        return DWELLING_UPGRADE8;
+
     default:
         break;
     }
@@ -795,7 +811,7 @@ const char * Monster::GetPluralName( uint32_t count ) const
     return count == 1 ? _( generalStats.untranslatedName ) : _( generalStats.untranslatedPluralName );
 }
 
-const char * Monster::getRandomRaceMonstersName( const uint32_t building )
+const char * Monster::getRandomRaceMonstersName( const uint64_t building )
 {
     switch ( building ) {
     case DWELLING_MONSTER1:
@@ -815,6 +831,7 @@ const char * Monster::getRandomRaceMonstersName( const uint32_t building )
     case DWELLING_MONSTER6:
     case DWELLING_UPGRADE6:
     case DWELLING_UPGRADE7:
+    case DWELLING_UPGRADE8:
         return _( "randomRace|level 6 creatures" );
     default:
         assert( 0 );
@@ -824,6 +841,10 @@ const char * Monster::getRandomRaceMonstersName( const uint32_t building )
 
 int32_t Monster::ICNMonh() const
 {
+    // Azure Dragon uses a generated portrait with blue palette transformation
+    if ( id == AZURE_DRAGON ) {
+        return ICN::MONH_AZURE_DRAGON;
+    }
     return id >= PEASANT && id <= WATER_ELEMENT ? ICN::MONH0000 + id - PEASANT : ICN::UNKNOWN;
 }
 

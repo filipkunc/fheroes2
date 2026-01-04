@@ -31,7 +31,7 @@ class UltimateArtifact;
 
 struct Funds;
 
-enum BuildingType : uint32_t;
+enum BuildingType : uint64_t;
 
 namespace AI
 {

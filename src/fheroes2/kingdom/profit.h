@@ -29,7 +29,7 @@
 
 namespace ProfitConditions
 {
-    Funds FromBuilding( uint32_t building, int race );
+    Funds FromBuilding( uint64_t building, int race );
     Funds FromArtifact( int );
     Funds FromMine( int );
 }

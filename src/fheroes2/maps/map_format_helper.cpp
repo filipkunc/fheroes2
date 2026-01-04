@@ -1792,10 +1792,10 @@ namespace Maps
         }
     }
 
-    uint32_t getBuildingsFromVector( const std::vector<uint32_t> & buildingsVector )
+    uint64_t getBuildingsFromVector( const std::vector<uint64_t> & buildingsVector )
     {
-        uint32_t buildings{ BUILD_NOTHING };
-        for ( const uint32_t building : buildingsVector ) {
+        uint64_t buildings{ BUILD_NOTHING };
+        for ( const uint64_t building : buildingsVector ) {
             buildings |= building;
         }
 

@@ -186,6 +186,8 @@ public:
     IStreamBase & operator>>( uint16_t & v );
     IStreamBase & operator>>( int32_t & v );
     IStreamBase & operator>>( uint32_t & v );
+    IStreamBase & operator>>( int64_t & v );
+    IStreamBase & operator>>( uint64_t & v );
     IStreamBase & operator>>( std::string & v );
 
     IStreamBase & operator>>( fheroes2::Point & v );
@@ -320,6 +322,8 @@ public:
     OStreamBase & operator<<( const uint16_t v );
     OStreamBase & operator<<( const int32_t v );
     OStreamBase & operator<<( const uint32_t v );
+    OStreamBase & operator<<( const int64_t v );
+    OStreamBase & operator<<( const uint64_t v );
     OStreamBase & operator<<( const std::string_view v );
 
     OStreamBase & operator<<( const fheroes2::Point & v );

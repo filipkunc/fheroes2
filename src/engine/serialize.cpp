@@ -132,6 +132,24 @@ IStreamBase & IStreamBase::operator>>( uint32_t & v )
     return *this;
 }
 
+IStreamBase & IStreamBase::operator>>( int64_t & v )
+{
+    const uint32_t low = get32();
+    const uint32_t high = get32();
+    v = static_cast<int64_t>( ( static_cast<uint64_t>( high ) << 32 ) | low );
+
+    return *this;
+}
+
+IStreamBase & IStreamBase::operator>>( uint64_t & v )
+{
+    const uint32_t low = get32();
+    const uint32_t high = get32();
+    v = ( static_cast<uint64_t>( high ) << 32 ) | low;
+
+    return *this;
+}
+
 IStreamBase & IStreamBase::operator>>( std::string & v )
 {
     v.resize( get32() );
@@ -208,6 +226,22 @@ OStreamBase & OStreamBase::operator<<( const int32_t v )
 OStreamBase & OStreamBase::operator<<( const uint32_t v )
 {
     put32( v );
+
+    return *this;
+}
+
+OStreamBase & OStreamBase::operator<<( const int64_t v )
+{
+    put32( static_cast<uint32_t>( v & 0xFFFFFFFFULL ) );
+    put32( static_cast<uint32_t>( ( static_cast<uint64_t>( v ) >> 32 ) & 0xFFFFFFFFULL ) );
+
+    return *this;
+}
+
+OStreamBase & OStreamBase::operator<<( const uint64_t v )
+{
+    put32( static_cast<uint32_t>( v & 0xFFFFFFFFULL ) );
+    put32( static_cast<uint32_t>( ( v >> 32 ) & 0xFFFFFFFFULL ) );
 
     return *this;
 }

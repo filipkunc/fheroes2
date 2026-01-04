@@ -78,6 +78,19 @@ constexpr int CountBits( uint32_t val )
     return res;
 }
 
+constexpr int CountBits( uint64_t val )
+{
+    int res = 0;
+
+    // Using Brian Kernighan's algorithm: https://yuminlee2.medium.com/brian-kernighans-algorithm-count-set-bits-in-a-number-18ab05edca93
+    while ( val ) {
+        val &= ( val - 1 );
+        ++res;
+    }
+
+    return res;
+}
+
 namespace fheroes2
 {
     uint32_t calculateCRC32( const uint8_t * data, const size_t length );
