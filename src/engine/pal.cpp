@@ -193,19 +193,21 @@ namespace
             221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243,
             244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 };
 
-    // Azure Tower palette: Subtle transformation of Black Tower to give it a blue-ish tint.
-    // Only modify the gold/yellow accents and darkest blacks to create a subtle azure effect.
-    // Keep most colors the same for a more conservative look.
+    // Azure Tower palette: Transforms Green Tower (TWNWDW_5) into Azure Tower.
+    // Maps green colors (85-100) to blue colors (152-167) for the window/accent areas.
+    // Keeps stone structure unchanged.
     const std::vector<uint8_t> azureTowerTable
         = { 0,   1,   2,   3,   4,   5,   6,   7,   8,   9,
-            // Keep grays mostly the same (10-36), just tint the darkest ones slightly blue
+            // Keep grayscale exactly as-is (10-36) - this is the stone structure
             10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,  36,
-            // Transform gold/yellow accents (37-62) to cooler silver-blue tones
-            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 152, 153, 154,
-            // Keep browns/tans (63-84) as-is
+            // Keep brown/tan stone exactly as-is (37-62)
+            37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,  60,  61,  62,
+            // Keep blue accents as-is (63-84)
             63,  64,  65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  77,  78,  79,  80,  81,  82,  83,  84,
-            // Keep greens as-is (85-130)
-            85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99,  100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
+            // Map greens (85-100) to blues (152-167) - this creates the azure window glow
+            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167,
+            // Keep remaining greens as-is (101-130)
+            101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
             111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
             // Keep purples as-is (131-151)
             131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151,
@@ -216,6 +218,41 @@ namespace
             198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220,
             221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243,
             244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 };
+
+    // Azure Tower Small palette: Transforms Red Tower small sprite into Azure Tower small sprite.
+    // Maps red colors to blue colors for the window/accent areas.
+    // Red indices: 177, 181-197 -> Blue indices
+    // Also maps brownish-red indices 50-58, 62 to darker blues
+    const std::vector<uint8_t> azureTowerSmallTable
+        = { 0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,  12,  13,  14,  15,  16,  17,  18,  19,
+            20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,  36,  37,  38,  39,
+            40,  41,  42,  43,  44,  45,  46,  47,  48,  49,
+            // Map brownish-reds (50-58) to darker blues (166-174)
+            166, 167, 168, 169, 170, 171, 172, 173, 174,
+            59,  60,  61,
+            // Map dark brown 62 to dark blue 174
+            174,
+            63,  64,  65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  77,  78,  79,
+            80,  81,  82,  83,  84,  85,  86,  87,  88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99,
+            100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
+            120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139,
+            140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159,
+            160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176,
+            // Map pink/light red 177 to light blue 152
+            152,
+            178, 179, 180,
+            // Map reds 181-197 to blues (17 colors)
+            153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169,
+            // Keep 198-207 as-is
+            198, 199, 200, 201, 202, 203, 204, 205, 206, 207,
+            // Map orange 208 to blue 160
+            160,
+            209, 210,
+            // Map orange-brown 211-212 to blues 168-169
+            168, 169,
+            213, 214, 215, 216, 217,
+            218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237,
+            238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 };
 
     struct CyclingColorSet
     {
@@ -316,6 +353,10 @@ const std::vector<uint8_t> & PAL::GetPalette( const PaletteType type )
     case PaletteType::AZURE_TOWER: {
         assert( azureTowerTable.size() == paletteSize );
         return azureTowerTable;
+    }
+    case PaletteType::AZURE_TOWER_SMALL: {
+        assert( azureTowerSmallTable.size() == paletteSize );
+        return azureTowerSmallTable;
     }
     case PaletteType::CUSTOM:
         assert( 0 );

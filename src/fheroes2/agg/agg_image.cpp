@@ -2484,8 +2484,8 @@ namespace
             CopyICNWithPalette( id, ICN::MONH0035, PAL::PaletteType::AZURE_DRAGON );
             break;
         case ICN::TWNWUP5A:
-            // Azure Tower building sprite generated from Black Tower (TWNWUP5B) with blue palette.
-            CopyICNWithPalette( id, ICN::TWNWUP5B, PAL::PaletteType::AZURE_TOWER );
+            // Azure Tower: generated from Green Tower (TWNWDW_5) with green-to-blue palette transform.
+            CopyICNWithPalette( id, ICN::TWNWDW_5, PAL::PaletteType::AZURE_TOWER );
             break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
@@ -3672,11 +3672,12 @@ namespace
             }
             break;
         case ICN::CSTLWRLK:
-            // Add Azure Tower small sprite (palette-transformed from Black Tower sprite at index 30).
+            // Add Azure Tower small sprite (palette-transformed from Red Tower sprite at index 29).
+            // Note: Green Tower sprite at index 28 is just a placeholder in the original game.
             if ( _icnVsSprite[id].size() > 30 ) {
-                // Append Azure Tower sprite at index 31.
-                _icnVsSprite[id].push_back( _icnVsSprite[id][30] );
-                ApplyPalette( _icnVsSprite[id].back(), PAL::GetPalette( PAL::PaletteType::AZURE_TOWER ) );
+                // Append Azure Tower sprite at index 31, using Red Tower as base with red-to-blue transform.
+                _icnVsSprite[id].push_back( _icnVsSprite[id][29] );
+                ApplyPalette( _icnVsSprite[id].back(), PAL::GetPalette( PAL::PaletteType::AZURE_TOWER_SMALL ) );
             }
             break;
         case ICN::CSTLSORC:

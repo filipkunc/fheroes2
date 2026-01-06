@@ -42,7 +42,8 @@ namespace PAL
         GOOD_TO_EVIL_BUTTON, // for converting Good style buttons into Evil style buttons.
         PURPLE, // For random object images.
         AZURE_DRAGON, // For transforming Green Dragon into Azure (blue) Dragon.
-        AZURE_TOWER, // For transforming Black Tower into Azure Tower.
+        AZURE_TOWER, // For transforming Green Tower into Azure Tower.
+        AZURE_TOWER_SMALL, // For transforming Red Tower small sprite into Azure Tower small sprite.
         CUSTOM
     };
 
