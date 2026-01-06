@@ -25,6 +25,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <initializer_list>
 #include <map>
 #include <numeric>
@@ -2451,10 +2452,32 @@ namespace
         assert( id < ICN::LAST_VALID_FILE_ICN || _icnVsSprite[id].empty() );
 
         switch ( id ) {
-        case ICN::DRAGAZUR:
-            // Azure Dragon sprites generated from Green Dragon with blue palette transformation.
-            CopyICNWithPalette( id, ICN::DRAGGREE, PAL::PaletteType::AZURE_DRAGON );
+        case ICN::DRAGAZUR: {
+            // Try to load Azure Dragon sprites from H2D file first (allows custom/AI-edited sprites).
+            // If not available, fall back to runtime generation from Green Dragon with palette transformation.
+            bool loadedFromH2D = false;
+            const size_t azureDragonSpriteCount = 54; // Same as Green Dragon sprite count
+
+            _icnVsSprite[id].resize( azureDragonSpriteCount );
+
+            // Try loading each sprite from H2D
+            loadedFromH2D = true;
+            for ( size_t i = 0; i < azureDragonSpriteCount; ++i ) {
+                char spriteNameBuffer[64];
+                snprintf( spriteNameBuffer, sizeof( spriteNameBuffer ), "azure_dragon_%03zu.image", i );
+                if ( !fheroes2::h2d::readImage( spriteNameBuffer, _icnVsSprite[id][i] ) ) {
+                    loadedFromH2D = false;
+                    break;
+                }
+            }
+
+            if ( !loadedFromH2D ) {
+                // Fall back to runtime generation from Green Dragon with blue palette transformation.
+                _icnVsSprite[id].clear();
+                CopyICNWithPalette( id, ICN::DRAGGREE, PAL::PaletteType::AZURE_DRAGON );
+            }
             break;
+        }
         case ICN::MONH_AZURE_DRAGON:
             // Azure Dragon portrait generated from Green Dragon portrait (MONH0035) with blue palette.
             // Green Dragon ID is 36, PEASANT is 1, so portrait index = 36 - 1 = 35.

@@ -168,21 +168,22 @@ namespace
     // - 102-130: Mid-to-light greens (may include yellow-green belly) - KEEP some for belly
     // - 131-151: More body colors - TRANSFORM TO BLUE
     // - 175-197: Reds (fire) - KEEP
-    // Only transform the core green indices, keep potential yellow-gold areas
+    // Transform greens to true blues (65-79 range), preserve yellow-gold belly colors
+    // Use lighter blues to maintain contrast with shadow/gray areas
     const std::vector<uint8_t> azureDragonTable
         = { 0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,
             29,  30,  31,  32,  33,  34,  35,  36,  37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,  57,
             58,  59,  60,  61,  62,  63,  64,  65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  77,  78,  79,  80,  81,  82,  83,  84,
-            // Transform main greens (85-101) to blues - these are the core body greens
-            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168,
-            // Keep 102-107 - these may have yellow-green tones for belly
-            102, 103, 104, 105, 106, 107,
-            // Transform greens (108-120) to blues
-            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
-            // Keep 121-130 - lighter colors possibly for belly highlights
+            // Transform main greens (85-101) to blues (65-77) - 17 colors compressed to avoid darkest
+            65,  66,  66,  67,  67,  68,  68,  69,  70,  70,  71,  72,  73,  74,  75,  76,  77,
+            // Transform dark greens (102-107) to mid-dark blues (75-78) - avoid very dark 80-84
+            75,  76,  76,  77,  77,  78,
+            // Keep yellow-gold belly colors (108-120) as-is - 13 colors
+            108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120,
+            // Keep lighter belly highlights (121-130) as-is - 10 colors
             121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
-            // Transform purple-ish (131-151) to blues
-            152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172,
+            // Transform purple-ish (131-141) to blues, keep 142 (background), transform 143-151
+            65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  142, 76,  76,  77,  77,  78,  78,  79,  79,  79,
             // Keep blue range as-is (152-174)
             152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174,
             // Keep reds (175-197) for fire
