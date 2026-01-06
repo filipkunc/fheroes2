@@ -468,8 +468,8 @@ namespace
         monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::FLYING );
         monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::MAGIC_RESISTANCE, 100, 0 );
         monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::TWO_CELL_MELEE_ATTACK );
-        // Freezing attack - slows enemies on hit
-        monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::SPELL_CASTER, 20, Spell::PARALYZE );
+        // Chilling attack - curses enemies on hit
+        monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::SPELL_CASTER, 50, Spell::CURSE );
 
         monsterData[Monster::BOAR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_HEX_SIZE );
 
