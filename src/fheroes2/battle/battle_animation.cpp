@@ -93,8 +93,8 @@ double AnimationSequence::movementProgress() const
 AnimationReference::AnimationReference( const int monsterID )
     : _monsterID( monsterID )
 {
-    // Azure Dragon is a custom monster after WATER_ELEMENT
-    if ( monsterID < Monster::PEASANT || ( monsterID > Monster::WATER_ELEMENT && monsterID != Monster::AZURE_DRAGON ) ) {
+    // Azure Dragon and Blood Dragon are custom monsters after WATER_ELEMENT
+    if ( monsterID < Monster::PEASANT || ( monsterID > Monster::WATER_ELEMENT && monsterID != Monster::AZURE_DRAGON && monsterID != Monster::BLOOD_DRAGON ) ) {
         return;
     }
 

@@ -430,19 +430,19 @@ void Castle::_postLoad()
     // Fix dwelling upgrades dependent from race. (For random race towns.)
     switch ( _race ) {
     case Race::KNGT:
-        _constructedBuildings &= ~( DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 );
         break;
     case Race::BARB:
-        _constructedBuildings &= ~( DWELLING_UPGRADE3 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE3 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 );
         break;
     case Race::SORC:
-        _constructedBuildings &= ~( DWELLING_UPGRADE5 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE5 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 );
         break;
     case Race::WRLK:
-        _constructedBuildings &= ~( DWELLING_UPGRADE2 | DWELLING_UPGRADE3 | DWELLING_UPGRADE5 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE2 | DWELLING_UPGRADE3 | DWELLING_UPGRADE5 | DWELLING_UPGRADE9 );
         break;
     case Race::WZRD:
-        _constructedBuildings &= ~( DWELLING_UPGRADE2 | DWELLING_UPGRADE4 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE2 | DWELLING_UPGRADE4 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 );
         break;
     case Race::NECR:
         _constructedBuildings &= ~( DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
@@ -484,7 +484,10 @@ void Castle::_postLoad()
         _dwelling[4] = Monster( _race, DWELLING_MONSTER5 ).GetGrown();
     }
 
-    if ( _constructedBuildings & DWELLING_UPGRADE8 ) {
+    if ( _constructedBuildings & DWELLING_UPGRADE9 ) {
+        _dwelling[5] = Monster( _race, DWELLING_UPGRADE9 ).GetGrown();
+    }
+    else if ( _constructedBuildings & DWELLING_UPGRADE8 ) {
         _dwelling[5] = Monster( _race, DWELLING_UPGRADE8 ).GetGrown();
     }
     else if ( _constructedBuildings & DWELLING_UPGRADE7 ) {
@@ -630,7 +633,10 @@ int Castle::getBuildingValue() const
     if ( _race == Race::WRLK && isBuild( DWELLING_UPGRADE8 ) )
         value += 3;
 
-    // DWELLING_UPGRADE8 is beyond 32-bit range, iterate explicitly
+    if ( _race == Race::NECR && isBuild( DWELLING_UPGRADE9 ) )
+        value += 2;
+
+    // DWELLING_UPGRADE8/9 is beyond 32-bit range, iterate explicitly
     for ( uint32_t upgrade = DWELLING_UPGRADE2; upgrade <= DWELLING_UPGRADE6; upgrade <<= 1 ) {
         if ( isBuild( upgrade ) )
             ++value;
@@ -782,8 +788,8 @@ bool Castle::_isExactBuildingBuilt( const uint64_t buildingToCheck ) const
         case DWELLING_MONSTER5:
             return checkBuilding( DWELLING_MONSTER5, DWELLING_MONSTER5 | DWELLING_UPGRADE5 );
         case DWELLING_MONSTER6:
-            // Take the Azure Dragon upgrade (DWELLING_UPGRADE8) into account
-            return checkBuilding( DWELLING_MONSTER6, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+            // Take the Azure Dragon upgrade (DWELLING_UPGRADE8) and Blood Dragon upgrade (DWELLING_UPGRADE9) into account
+            return checkBuilding( DWELLING_MONSTER6, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 );
 
         case DWELLING_UPGRADE2:
             return checkBuilding( DWELLING_MONSTER2 | DWELLING_UPGRADE2, DWELLING_MONSTER2 | DWELLING_UPGRADE2 );
@@ -794,14 +800,17 @@ bool Castle::_isExactBuildingBuilt( const uint64_t buildingToCheck ) const
         case DWELLING_UPGRADE5:
             return checkBuilding( DWELLING_MONSTER5 | DWELLING_UPGRADE5, DWELLING_MONSTER5 | DWELLING_UPGRADE5 );
         case DWELLING_UPGRADE6:
-            // Take the Azure Dragon upgrade (DWELLING_UPGRADE8) into account
-            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+            // Take the Azure Dragon upgrade (DWELLING_UPGRADE8) and Blood Dragon upgrade (DWELLING_UPGRADE9) into account
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 );
         case DWELLING_UPGRADE7:
             // Black Dragon upgrade - take Azure Dragon upgrade into account
             return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
         case DWELLING_UPGRADE8:
             // Azure Dragon upgrade
             return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+        case DWELLING_UPGRADE9:
+            // Blood Dragon upgrade for Necropolis
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE9, DWELLING_MONSTER6 | DWELLING_UPGRADE9 );
 
         default:
             assert( 0 );
@@ -852,9 +861,9 @@ void Castle::ActionNewWeek()
         return;
     }
 
-    static const std::array<uint64_t, 13> allDwellings
+    static const std::array<uint64_t, 14> allDwellings
         = { DWELLING_MONSTER1, DWELLING_MONSTER2, DWELLING_MONSTER3, DWELLING_MONSTER4, DWELLING_MONSTER5, DWELLING_MONSTER6,
-            DWELLING_UPGRADE2, DWELLING_UPGRADE3, DWELLING_UPGRADE4, DWELLING_UPGRADE5, DWELLING_UPGRADE6, DWELLING_UPGRADE7, DWELLING_UPGRADE8 };
+            DWELLING_UPGRADE2, DWELLING_UPGRADE3, DWELLING_UPGRADE4, DWELLING_UPGRADE5, DWELLING_UPGRADE6, DWELLING_UPGRADE7, DWELLING_UPGRADE8, DWELLING_UPGRADE9 };
 
     const bool isNeutral = ( GetColor() == PlayerColor::NONE );
     const WeekName weekType = world.GetWeekType().GetType();
@@ -1059,6 +1068,7 @@ bool Castle::RecruitMonster( const Troop & troop, bool showDialog )
     case DWELLING_MONSTER5:
         dwellingIndex = 4;
         break;
+    case DWELLING_UPGRADE9:
     case DWELLING_UPGRADE8:
     case DWELLING_UPGRADE7:
     case DWELLING_UPGRADE6:
@@ -1137,6 +1147,7 @@ uint32_t Castle::getMonstersInDwelling( const uint64_t buildingType ) const
     case DWELLING_UPGRADE6:
     case DWELLING_UPGRADE7:
     case DWELLING_UPGRADE8:
+    case DWELLING_UPGRADE9:
         return _dwelling[5];
 
     default:
@@ -1644,6 +1655,9 @@ int Castle::GetICNBuilding( const uint64_t buildingType, const int race )
             return ICN::TWNNUP_4;
         case DWELLING_MONSTER6:
             return ICN::TWNNDW_5;
+        case DWELLING_UPGRADE9:
+            // Upg. Laboratory uses a red-tinted version of the Laboratory sprite.
+            return ICN::TWNNUP5A;
         default:
             break;
         }
@@ -1958,6 +1972,7 @@ uint64_t Castle::GetActualDwelling( const uint64_t buildId ) const
     case DWELLING_UPGRADE5:
     case DWELLING_UPGRADE7:
     case DWELLING_UPGRADE8:
+    case DWELLING_UPGRADE9:
         return buildId;
     case DWELLING_MONSTER2:
         return _constructedBuildings & DWELLING_UPGRADE2 ? DWELLING_UPGRADE2 : buildId;
@@ -1968,9 +1983,24 @@ uint64_t Castle::GetActualDwelling( const uint64_t buildId ) const
     case DWELLING_MONSTER5:
         return _constructedBuildings & DWELLING_UPGRADE5 ? DWELLING_UPGRADE5 : buildId;
     case DWELLING_MONSTER6:
-        return _constructedBuildings & DWELLING_UPGRADE8 ? DWELLING_UPGRADE8 : ( _constructedBuildings & DWELLING_UPGRADE7 ? DWELLING_UPGRADE7 : ( _constructedBuildings & DWELLING_UPGRADE6 ? DWELLING_UPGRADE6 : buildId ) );
+        // Check for the highest upgrade first (race-specific)
+        if ( _constructedBuildings & DWELLING_UPGRADE9 )
+            return DWELLING_UPGRADE9; // Blood Dragon for Necropolis
+        if ( _constructedBuildings & DWELLING_UPGRADE8 )
+            return DWELLING_UPGRADE8; // Azure Dragon for Warlock
+        if ( _constructedBuildings & DWELLING_UPGRADE7 )
+            return DWELLING_UPGRADE7;
+        if ( _constructedBuildings & DWELLING_UPGRADE6 )
+            return DWELLING_UPGRADE6;
+        return buildId;
     case DWELLING_UPGRADE6:
-        return _constructedBuildings & DWELLING_UPGRADE8 ? DWELLING_UPGRADE8 : ( _constructedBuildings & DWELLING_UPGRADE7 ? DWELLING_UPGRADE7 : buildId );
+        if ( _constructedBuildings & DWELLING_UPGRADE9 )
+            return DWELLING_UPGRADE9;
+        if ( _constructedBuildings & DWELLING_UPGRADE8 )
+            return DWELLING_UPGRADE8;
+        if ( _constructedBuildings & DWELLING_UPGRADE7 )
+            return DWELLING_UPGRADE7;
+        return buildId;
     default:
         break;
     }
@@ -1990,6 +2020,12 @@ uint64_t Castle::GetUpgradeBuilding( const uint64_t buildingId ) const
             // Red Tower is built, return Black Tower as the next upgrade.
             return fheroes2::getUpgradeForBuilding( _race, DWELLING_UPGRADE6 );
         }
+    }
+
+    if ( _race == Race::NECR && buildingId == DWELLING_MONSTER6 ) {
+        // Necropolis dwelling 6 has Blood Dragon upgrade.
+        // Return Upg. Laboratory as upgrade if base Laboratory is built.
+        return fheroes2::getUpgradeForBuilding( _race, DWELLING_MONSTER6 );
     }
 
     return fheroes2::getUpgradeForBuilding( _race, static_cast<BuildingType>( buildingId ) );

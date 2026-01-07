@@ -254,6 +254,59 @@ namespace
             218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237,
             238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 };
 
+    // Blood Dragon palette: transforms Bone Dragon colors to blood red colors.
+    // Bone Dragon uses gray/white bone colors - we transform them to deep reds.
+    // Blue and white parts are recolored to reds while maintaining contrast and highlights.
+    const std::vector<uint8_t> bloodDragonTable
+        = { 0,   1,   2,   3,   4,   5,   6,   7,   8,   9,
+            // Keep dark grays (10-20) for shadows - 11 colors
+            10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,
+            // Transform mid-light grays/whites (21-36) to mid-dark reds with contrast - 16 colors
+            182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197,
+            // Transform browns (37-64) to darker reds - 28 colors
+            186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 197, 197, 197, 192, 193, 194, 195, 196, 197, 197, 197, 197, 197, 197, 197, 197,
+            // Transform blues (65-84) to darker reds maintaining brightness gradient - 20 colors
+            182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 197, 197, 197, 197,
+            // Transform greens (85-107) to mid-dark reds (180-197) - 23 colors
+            180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 197, 197, 197, 197, 197,
+            // Transform yellows (108-130) to darker orange-reds (182-194) - 23 colors
+            182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194,
+            // Transform purple/gray bone colors (131-151) to reds with good contrast (180-197) - 21 colors
+            180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 197, 197, 197,
+            // Transform blues (152-174) to reds maintaining contrast gradient - 23 colors
+            180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 197, 197, 197, 197, 197,
+            // Keep reds (175-197) for fire effects - 23 colors
+            175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197,
+            // Keep remaining colors (198-255) - 58 colors
+            198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220,
+            221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243,
+            244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 };
+
+    // Blood Crypt palette: Transforms Laboratory dwelling into Upg. Laboratory.
+    // Moderate transformation focusing on accent colors, especially the blue roof.
+    const std::vector<uint8_t> bloodCryptTable
+        = { 0,   1,   2,   3,   4,   5,   6,   7,   8,   9,
+            // Keep grays (10-36) for shadows/structure - 27 colors
+            10,  11,  12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,  31,  32,  33,  34,  35,  36,
+            // Keep browns (37-64) for building texture - 28 colors
+            37,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,  60,  61,  62,  63,  64,
+            // Keep dark blues (65-84) as-is - 20 colors
+            65,  66,  67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  77,  78,  79,  80,  81,  82,  83,  84,
+            // Transform greens (85-107) to reds - 23 colors
+            175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197,
+            // Keep yellows (108-130) for glow effects - 23 colors
+            108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
+            // Transform purple/gray bone colors (131-151) to reds (175-195) - 21 colors
+            175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195,
+            // Transform blues (152-174) to reds for the roof - 23 colors
+            175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197,
+            // Keep reds (175-197) - 23 colors
+            175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197,
+            // Keep remaining colors (198-255) - 58 colors
+            198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220,
+            221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243,
+            244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 };
+
     struct CyclingColorSet
     {
         uint8_t start;
@@ -357,6 +410,14 @@ const std::vector<uint8_t> & PAL::GetPalette( const PaletteType type )
     case PaletteType::AZURE_TOWER_SMALL: {
         assert( azureTowerSmallTable.size() == paletteSize );
         return azureTowerSmallTable;
+    }
+    case PaletteType::BLOOD_DRAGON: {
+        assert( bloodDragonTable.size() == paletteSize );
+        return bloodDragonTable;
+    }
+    case PaletteType::BLOOD_CRYPT: {
+        assert( bloodCryptTable.size() == paletteSize );
+        return bloodCryptTable;
     }
     case PaletteType::CUSTOM:
         assert( 0 );

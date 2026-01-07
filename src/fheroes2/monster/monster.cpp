@@ -262,6 +262,8 @@ Monster Monster::GetDowngrade() const
         return Monster( VAMPIRE );
     case POWER_LICH:
         return Monster( LICH );
+    case BLOOD_DRAGON:
+        return Monster( BONE_DRAGON );
     case MINOTAUR_KING:
         return Monster( MINOTAUR );
     case RED_DRAGON:
@@ -317,6 +319,8 @@ Monster Monster::GetUpgrade() const
         return Monster( VAMPIRE_LORD );
     case LICH:
         return Monster( POWER_LICH );
+    case BONE_DRAGON:
+        return Monster( BLOOD_DRAGON );
     case MINOTAUR:
         return Monster( MINOTAUR_KING );
     case GREEN_DRAGON:
@@ -579,6 +583,15 @@ Monster Monster::FromDwelling( int race, uint64_t dwelling )
         }
         break;
 
+    case DWELLING_UPGRADE9:
+        switch ( race ) {
+        case Race::NECR:
+            return Monster( BLOOD_DRAGON );
+        default:
+            break;
+        }
+        break;
+
     default:
         break;
     }
@@ -788,6 +801,9 @@ uint64_t Monster::GetDwelling() const
     case AZURE_DRAGON:
         return DWELLING_UPGRADE8;
 
+    case BLOOD_DRAGON:
+        return DWELLING_UPGRADE9;
+
     default:
         break;
     }
@@ -832,6 +848,7 @@ const char * Monster::getRandomRaceMonstersName( const uint64_t building )
     case DWELLING_UPGRADE6:
     case DWELLING_UPGRADE7:
     case DWELLING_UPGRADE8:
+    case DWELLING_UPGRADE9:
         return _( "randomRace|level 6 creatures" );
     default:
         assert( 0 );
@@ -845,6 +862,10 @@ int32_t Monster::ICNMonh() const
     if ( id == AZURE_DRAGON ) {
         return ICN::MONH_AZURE_DRAGON;
     }
+    // Blood Dragon uses a generated portrait with red palette transformation
+    if ( id == BLOOD_DRAGON ) {
+        return ICN::MONH_BLOOD_DRAGON;
+    }
     return id >= PEASANT && id <= WATER_ELEMENT ? ICN::MONH0000 + id - PEASANT : ICN::UNKNOWN;
 }
 
@@ -853,6 +874,11 @@ Funds Monster::GetUpgradeCost() const
     const Monster upgr = GetUpgrade();
     if ( id == upgr.id ) {
         return {};
+    }
+
+    // Blood Dragon has a special fixed upgrade cost.
+    if ( upgr.id == BLOOD_DRAGON ) {
+        return Funds( Cost{ 2000, 0, 1, 0, 0, 0, 0 } );
     }
 
     return ( upgr.GetCost() - GetCost() ) * 2;

@@ -1138,6 +1138,15 @@ namespace ICN
         // Azure Tower building sprite (generated from Black Tower with blue palette)
         TWNWUP5A,
 
+        // Blood Dragon sprite (generated from Bone Dragon with red palette)
+        DRAGBLOD,
+
+        // Blood Dragon portrait (generated from Bone Dragon portrait with red palette)
+        MONH_BLOOD_DRAGON,
+
+        // Upg. Laboratory building sprite (generated from Laboratory dwelling with red palette)
+        TWNNUP5A,
+
         // IMPORTANT! Put any new entry just above this one.
         LASTICN
     };

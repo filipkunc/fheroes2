@@ -44,6 +44,8 @@ namespace PAL
         AZURE_DRAGON, // For transforming Green Dragon into Azure (blue) Dragon.
         AZURE_TOWER, // For transforming Green Tower into Azure Tower.
         AZURE_TOWER_SMALL, // For transforming Red Tower small sprite into Azure Tower small sprite.
+        BLOOD_DRAGON, // For transforming Bone Dragon into Blood (red) Dragon.
+        BLOOD_CRYPT, // For transforming Laboratory dwelling into Upg. Laboratory.
         CUSTOM
     };
 

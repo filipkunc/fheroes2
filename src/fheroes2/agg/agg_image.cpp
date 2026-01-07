@@ -2487,6 +2487,40 @@ namespace
             // Azure Tower: generated from Green Tower (TWNWDW_5) with green-to-blue palette transform.
             CopyICNWithPalette( id, ICN::TWNWDW_5, PAL::PaletteType::AZURE_TOWER );
             break;
+        case ICN::DRAGBLOD: {
+            // Blood Dragon sprites generated from Bone Dragon with red palette transformation.
+            // Try to load from H2D file first, fall back to runtime generation.
+            bool loadedFromH2D = false;
+            const size_t bloodDragonSpriteCount = 50; // Same as Bone Dragon sprite count
+
+            _icnVsSprite[id].resize( bloodDragonSpriteCount );
+
+            loadedFromH2D = true;
+            for ( size_t i = 0; i < bloodDragonSpriteCount; ++i ) {
+                char spriteNameBuffer[64];
+                snprintf( spriteNameBuffer, sizeof( spriteNameBuffer ), "blood_dragon_%03zu.image", i );
+                if ( !fheroes2::h2d::readImage( spriteNameBuffer, _icnVsSprite[id][i] ) ) {
+                    loadedFromH2D = false;
+                    break;
+                }
+            }
+
+            if ( !loadedFromH2D ) {
+                // Fall back to runtime generation from Bone Dragon with red palette transformation.
+                _icnVsSprite[id].clear();
+                CopyICNWithPalette( id, ICN::DRAGBONE, PAL::PaletteType::BLOOD_DRAGON );
+            }
+            break;
+        }
+        case ICN::MONH_BLOOD_DRAGON:
+            // Blood Dragon portrait generated from Bone Dragon portrait (MONH0056) with red palette.
+            // Bone Dragon ID is 57, PEASANT is 1, so portrait index = 57 - 1 = 56.
+            CopyICNWithPalette( id, ICN::MONH0056, PAL::PaletteType::BLOOD_DRAGON );
+            break;
+        case ICN::TWNNUP5A:
+            // Upg. Laboratory: generated from Laboratory dwelling with red palette transform.
+            CopyICNWithPalette( id, ICN::TWNNDW_5, PAL::PaletteType::BLOOD_CRYPT );
+            break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
             break;
@@ -3027,6 +3061,18 @@ namespace
                 }
                 _icnVsSprite[id][azureDragonSpriteIndex] = _icnVsSprite[id][greenDragonSpriteIndex];
                 ApplyPalette( _icnVsSprite[id][azureDragonSpriteIndex], PAL::GetPalette( PAL::PaletteType::AZURE_DRAGON ) );
+            }
+
+            // Add Blood Dragon sprite (based on Bone Dragon with red palette).
+            // Bone Dragon is at monster ID 57, so sprite index 56. Blood Dragon is at monster ID 68, so sprite index 67.
+            if ( _icnVsSprite[id].size() > 56 ) {
+                const size_t boneDragonSpriteIndex = 56;
+                const size_t bloodDragonSpriteIndex = 67;
+                if ( _icnVsSprite[id].size() <= bloodDragonSpriteIndex ) {
+                    _icnVsSprite[id].resize( bloodDragonSpriteIndex + 1 );
+                }
+                _icnVsSprite[id][bloodDragonSpriteIndex] = _icnVsSprite[id][boneDragonSpriteIndex];
+                ApplyPalette( _icnVsSprite[id][bloodDragonSpriteIndex], PAL::GetPalette( PAL::PaletteType::BLOOD_DRAGON ) );
             }
 
             break;
@@ -3678,6 +3724,18 @@ namespace
                 // Append Azure Tower sprite at index 31, using Red Tower as base with red-to-blue transform.
                 _icnVsSprite[id].push_back( _icnVsSprite[id][29] );
                 ApplyPalette( _icnVsSprite[id].back(), PAL::GetPalette( PAL::PaletteType::AZURE_TOWER_SMALL ) );
+            }
+            break;
+        case ICN::CSTLNECR:
+            // Add Upg. Laboratory small sprite (palette-transformed from Laboratory sprite at index 24).
+            if ( _icnVsSprite[id].size() > 24 ) {
+                // Ensure we have space for index 32.
+                while ( _icnVsSprite[id].size() <= 32 ) {
+                    _icnVsSprite[id].push_back( fheroes2::Sprite() );
+                }
+                // Copy Laboratory sprite and apply Upg. Laboratory palette.
+                _icnVsSprite[id][32] = _icnVsSprite[id][24];
+                ApplyPalette( _icnVsSprite[id][32], PAL::GetPalette( PAL::PaletteType::BLOOD_CRYPT ) );
             }
             break;
         case ICN::CSTLSORC:
