@@ -1,0 +1,498 @@
+/***************************************************************************
+ *   fheroes2: https://github.com/ihhub/fheroes2                           *
+ *   Copyright (C) 2025                                                    *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program; if not, write to the                         *
+ *   Free Software Foundation, Inc.,                                       *
+ *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
+ ***************************************************************************/
+
+#include "map_format_importmp2.h"
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <list>
+#include <map>
+#include <string>
+
+#include "artifact.h"
+#include "castle.h"
+#include "color.h"
+#include "players.h"
+#include "heroes.h"
+#include "map_format_helper.h"
+#include "map_format_info.h"
+#include "map_object_info.h"
+#include "maps_fileinfo.h"
+#include "maps_objects.h"
+#include "maps.h"
+#include "maps_tiles.h"
+#include "mp2.h"
+#include "race.h"
+#include "resource.h"
+#include "world_object_uid.h"
+#include "skill.h"
+#include "tools.h"
+#include "world.h"
+
+namespace
+{
+    // All BuildingType values that can be stored in CastleMetadata.builtBuildings.
+    constexpr uint32_t knownBuildingTypes[]
+        = { BUILD_THIEVESGUILD, BUILD_TAVERN,      BUILD_SHIPYARD,   BUILD_WELL,       BUILD_STATUE,      BUILD_LEFTTURRET,  BUILD_RIGHTTURRET, BUILD_MARKETPLACE,
+            BUILD_WEL2,         BUILD_MOAT,         BUILD_SPEC,       BUILD_CASTLE,     BUILD_CAPTAIN,     BUILD_SHRINE,      BUILD_MAGEGUILD1,  BUILD_MAGEGUILD2,
+            BUILD_MAGEGUILD3,   BUILD_MAGEGUILD4,   BUILD_MAGEGUILD5, BUILD_TENT,       DWELLING_MONSTER1, DWELLING_MONSTER2, DWELLING_MONSTER3, DWELLING_MONSTER4,
+            DWELLING_MONSTER5,  DWELLING_MONSTER6,
+            DWELLING_UPGRADE2,  DWELLING_UPGRADE3,  DWELLING_UPGRADE4, DWELLING_UPGRADE5, DWELLING_UPGRADE6, DWELLING_UPGRADE7 };
+
+    Maps::Map_Format::AdventureMapEventMetadata convertMapEvent( const MapEvent & ev )
+    {
+        Maps::Map_Format::AdventureMapEventMetadata meta;
+
+        meta.message = ev.message;
+        meta.humanPlayerColors = ev.colors;
+        meta.computerPlayerColors = ev.isComputerPlayerAllowed ? Color::allPlayerColors() : 0;
+        meta.isRecurringEvent = !ev.isSingleTimeEvent;
+
+        meta.artifact = ev.artifact.GetID();
+
+        meta.resources.wood = ev.resources.wood;
+        meta.resources.mercury = ev.resources.mercury;
+        meta.resources.ore = ev.resources.ore;
+        meta.resources.sulfur = ev.resources.sulfur;
+        meta.resources.crystal = ev.resources.crystal;
+        meta.resources.gems = ev.resources.gems;
+        meta.resources.gold = ev.resources.gold;
+
+        meta.experience = ev.experience;
+
+        meta.secondarySkill = static_cast<uint8_t>( ev.secondarySkill.Skill() );
+        meta.secondarySkillLevel = static_cast<uint8_t>( ev.secondarySkill.Level() );
+
+        return meta;
+    }
+
+    Maps::Map_Format::SphinxMetadata convertSphinx( const MapSphinx & sp )
+    {
+        Maps::Map_Format::SphinxMetadata meta;
+
+        meta.riddle = sp.riddle;
+        for ( const std::string & answer : sp.answers ) {
+            meta.answers.push_back( answer );
+        }
+
+        meta.artifact = sp.artifact.GetID();
+
+        meta.resources.wood = sp.resources.wood;
+        meta.resources.mercury = sp.resources.mercury;
+        meta.resources.ore = sp.resources.ore;
+        meta.resources.sulfur = sp.resources.sulfur;
+        meta.resources.crystal = sp.resources.crystal;
+        meta.resources.gems = sp.resources.gems;
+        meta.resources.gold = sp.resources.gold;
+
+        return meta;
+    }
+}
+
+namespace Maps::Map_Format
+{
+    bool importMP2Map( const std::string & filePath, MapFormat & mapFormat )
+    {
+        // Step 1: load the MP2/MX2 file into the World.
+        World & world = World::Get();
+
+        const std::string lowerPath = StringLower( filePath );
+        const bool isOriginalMp2 = lowerPath.size() >= 4 && lowerPath.substr( lowerPath.size() - 4 ) == ".mp2";
+
+        if ( !world.LoadMapMP2( filePath, isOriginalMp2 ) ) {
+            return false;
+        }
+
+        // Step 2: fill base map info from the FileInfo reader (reuses the existing parser).
+        Maps::FileInfo fi;
+        if ( !fi.readMP2Map( filePath, true ) ) {
+            return false;
+        }
+
+        mapFormat = MapFormat{};
+
+        mapFormat.name = fi.name;
+        mapFormat.description = fi.description;
+        mapFormat.difficulty = fi.difficulty;
+        mapFormat.mainLanguage = fheroes2::SupportedLanguage::English;
+
+        mapFormat.victoryConditionType = fi.victoryConditionType;
+        mapFormat.isVictoryConditionApplicableForAI = fi.compAlsoWins;
+        mapFormat.allowNormalVictory = fi.allowNormalVictory;
+
+        // Populate victory condition metadata in the format that loadResurrectionMap expects.
+        // The MP2 params[0] is x (or artifact ID / gold/1000), params[1] is y.
+        switch ( fi.victoryConditionType ) {
+        case Maps::FileInfo::VICTORY_DEFEAT_EVERYONE:
+            // No metadata.
+            break;
+        case Maps::FileInfo::VICTORY_CAPTURE_TOWN:
+        case Maps::FileInfo::VICTORY_KILL_HERO: {
+            // metadata[0] = tile index (x + y * width), metadata[1] = color flags (0 = any)
+            const uint32_t tileIndex
+                = static_cast<uint32_t>( fi.victoryConditionParams[0] ) + static_cast<uint32_t>( fi.victoryConditionParams[1] ) * fi.width;
+            mapFormat.victoryConditionMetadata.push_back( tileIndex );
+            mapFormat.victoryConditionMetadata.push_back( 0 ); // no specific owner color required
+            break;
+        }
+        case Maps::FileInfo::VICTORY_OBTAIN_ARTIFACT:
+            // metadata[0] = artifact ID
+            mapFormat.victoryConditionMetadata.push_back( fi.victoryConditionParams[0] );
+            break;
+        case Maps::FileInfo::VICTORY_COLLECT_ENOUGH_GOLD:
+            // metadata[0] = gold amount (params[0] is gold/1000 in MP2 format)
+            mapFormat.victoryConditionMetadata.push_back( static_cast<uint32_t>( fi.victoryConditionParams[0] ) * 1000 );
+            break;
+        case Maps::FileInfo::VICTORY_DEFEAT_OTHER_SIDE:
+            // Alliances are stored in fi.unions — extract the two distinct sides.
+            {
+                PlayerColorsSet side1 = 0;
+                PlayerColorsSet side2 = 0;
+                for ( int i = 0; i < maxNumOfPlayers; ++i ) {
+                    const PlayerColor color = Color::IndexToColor( i );
+                    if ( !( fi.kingdomColors & color ) ) {
+                        continue;
+                    }
+                    if ( fi.unions[i] & fi.colorsAvailableForHumans ) {
+                        side1 |= static_cast<PlayerColorsSet>( color );
+                    }
+                    else {
+                        side2 |= static_cast<PlayerColorsSet>( color );
+                    }
+                }
+                if ( side1 != 0 && side2 != 0 ) {
+                    mapFormat.alliances.push_back( side1 );
+                    mapFormat.alliances.push_back( side2 );
+                }
+                else {
+                    // Fallback: defeat everyone.
+                    mapFormat.victoryConditionType = Maps::FileInfo::VICTORY_DEFEAT_EVERYONE;
+                }
+            }
+            break;
+        default:
+            break;
+        }
+
+        mapFormat.lossConditionType = fi.lossConditionType;
+
+        // Populate loss condition metadata.
+        switch ( fi.lossConditionType ) {
+        case Maps::FileInfo::LOSS_EVERYTHING:
+            // No metadata.
+            break;
+        case Maps::FileInfo::LOSS_TOWN:
+        case Maps::FileInfo::LOSS_HERO: {
+            // metadata[0] = tile index, metadata[1] = color flags (0 = any human)
+            const uint32_t tileIndex
+                = static_cast<uint32_t>( fi.lossConditionParams[0] ) + static_cast<uint32_t>( fi.lossConditionParams[1] ) * fi.width;
+            mapFormat.lossConditionMetadata.push_back( tileIndex );
+            mapFormat.lossConditionMetadata.push_back( 0 );
+            break;
+        }
+        case Maps::FileInfo::LOSS_OUT_OF_TIME:
+            // metadata[0] = number of days
+            mapFormat.lossConditionMetadata.push_back( fi.lossConditionParams[0] );
+            break;
+        default:
+            break;
+        }
+
+        // Copy player colors.
+        mapFormat.availablePlayerColors = fi.kingdomColors;
+        mapFormat.humanPlayerColors = fi.colorsAvailableForHumans;
+        mapFormat.computerPlayerColors = fi.colorsAvailableForComp;
+
+        // Copy player races (one per player slot: Blue, Green, Red, Yellow, Orange, Purple).
+        mapFormat.playerRace = fi.races;
+
+        // Step 3: terrain + object tiles.
+        const int32_t mapWidth = world.w();
+        mapFormat.width = mapWidth;
+
+        const int32_t totalTiles = mapWidth * mapWidth;
+        mapFormat.tiles.resize( static_cast<size_t>( totalTiles ) );
+
+        // Maps hero/castle tile IDs to the newly-generated UIDs assigned in Step 3.
+        // Heroes: LoadMapMP2() strips the MINIHERO sprite so _mainObjectPart is blank.
+        // Castles: basement (LANDSCAPE_TOWN_BASEMENTS) and castle (KINGDOM_TOWNS) must share
+        //          one UID, with the basement placed first, so the castle sprite wins the main
+        //          object part slot after sorting (mirrors _placeCastle() in editor_interface.cpp).
+        std::map<int32_t, uint32_t> heroUidByTileId;
+        std::map<int32_t, uint32_t> castleUidByTileId;
+
+        for ( int32_t tileId = 0; tileId < totalTiles; ++tileId ) {
+            const Maps::Tile & worldTile = world.getTile( tileId );
+            TileInfo & mapTile = mapFormat.tiles[static_cast<size_t>( tileId )];
+
+            mapTile.terrainIndex = worldTile.getTerrainImageIndex();
+            mapTile.terrainFlags = worldTile.getTerrainFlags();
+
+            // tryAddObject: emit a TileObjectInfo only if the part is the *main* part (first
+            // groundLevelPart, at tileOffset {0,0}) of a known object in the registry.
+            // Multi-tile objects store a single TileObjectInfo at their root tile;
+            // readTileObject/setObjectOnTile reconstructs all other parts when the map loads.
+            const auto tryAddObject = [&]( const Maps::ObjectPart & part ) {
+                if ( part.icnType == MP2::OBJ_ICN_TYPE_UNKNOWN ) {
+                    return;
+                }
+
+                ObjectGroup group;
+                uint32_t objIndex;
+                if ( Maps::getObjectGroupAndIndexByMainIcn( part.icnType, part.icnIndex, group, objIndex ) ) {
+                    mapTile.objects.push_back( { part._uid, group, objIndex } );
+                }
+            };
+
+            // --- Hero special case ---
+            // LoadMapMP2() removes the OBJ_ICN_TYPE_MINIHERO sprite via removeObjectPartsByUID(),
+            // leaving _mainObjectPart = {}. Reconstruct the TileObjectInfo from color/race.
+            if ( worldTile.getMainObjectType() == MP2::OBJ_HERO ) {
+                const Heroes * hero = world.GetHeroes( Maps::GetPoint( tileId ) );
+                if ( hero != nullptr ) {
+                    const int colorIdx = Color::GetIndex( hero->GetColor() );
+                    int raceIdx = 6; // default: RAND/unknown
+                    switch ( hero->GetRace() ) {
+                    case Race::KNGT:
+                        raceIdx = 0;
+                        break;
+                    case Race::BARB:
+                        raceIdx = 1;
+                        break;
+                    case Race::SORC:
+                        raceIdx = 2;
+                        break;
+                    case Race::WRLK:
+                        raceIdx = 3;
+                        break;
+                    case Race::WZRD:
+                        raceIdx = 4;
+                        break;
+                    case Race::NECR:
+                        raceIdx = 5;
+                        break;
+                    default:
+                        break;
+                    }
+                    // Color::GetIndex returns 6 for NONE/invalid; only 0-5 have hero objects.
+                    if ( colorIdx < 6 ) {
+                        const uint32_t heroObjectIndex = static_cast<uint32_t>( colorIdx * 7 + raceIdx );
+                        const uint32_t heroUid = Maps::getNewObjectUID();
+                        mapTile.objects.push_back( { heroUid, ObjectGroup::KINGDOM_HEROES, heroObjectIndex } );
+                        heroUidByTileId[tileId] = heroUid;
+                    }
+                }
+                continue;
+            }
+
+            // --- Castle entrance special case ---
+            // The editor (_placeCastle) places the LANDSCAPE_TOWN_BASEMENTS object first,
+            // then resets the UID counter so the KINGDOM_TOWNS castle gets the SAME UID.
+            // Both objects share one UID; the basement must appear first in mapTile.objects
+            // so that during FH2M loading the castle is placed last and wins _mainObjectPart.
+            if ( worldTile.getMainObjectType() == MP2::OBJ_CASTLE ) {
+                ObjectGroup castleGroup;
+                uint32_t castleIndex = 0;
+                const bool hasCastleSprite = Maps::getObjectGroupAndIndexByMainIcn(
+                    worldTile.getMainObjectPart().icnType, worldTile.getMainObjectPart().icnIndex, castleGroup, castleIndex );
+
+                if ( hasCastleSprite && castleGroup == ObjectGroup::KINGDOM_TOWNS ) {
+                    const uint32_t sharedUid = Maps::getNewObjectUID();
+
+                    // Basement first — find the OBJNTWBA sprite (icnOffset+2) in ground parts.
+                    for ( const auto & part : worldTile.getGroundObjectParts() ) {
+                        if ( part.icnType != MP2::OBJ_ICN_TYPE_OBJNTWBA ) {
+                            continue;
+                        }
+                        ObjectGroup basementGroup;
+                        uint32_t basementIndex = 0;
+                        if ( Maps::getObjectGroupAndIndexByMainIcn( part.icnType, part.icnIndex, basementGroup, basementIndex )
+                             && basementGroup == ObjectGroup::LANDSCAPE_TOWN_BASEMENTS ) {
+                            mapTile.objects.push_back( { sharedUid, basementGroup, basementIndex } );
+                            break; // one basement per castle
+                        }
+                    }
+
+                    // Castle second — shares the same UID so it overwrites the basement in
+                    // _mainObjectPart after sortObjectParts() (pushed last = wins OBJECT_LAYER slot).
+                    mapTile.objects.push_back( { sharedUid, castleGroup, castleIndex } );
+                    castleUidByTileId[tileId] = sharedUid;
+
+                    // Still process any remaining ground/top parts that might belong to other
+                    // unrelated objects overlapping this tile (skipping OBJNTWBA — handled above).
+                    for ( const auto & part : worldTile.getGroundObjectParts() ) {
+                        if ( part.icnType != MP2::OBJ_ICN_TYPE_OBJNTWBA ) {
+                            tryAddObject( part );
+                        }
+                    }
+                    for ( const auto & part : worldTile.getTopObjectParts() ) {
+                        tryAddObject( part );
+                    }
+                    continue;
+                }
+            }
+
+            // --- Generic path ---
+            tryAddObject( worldTile.getMainObjectPart() );
+            for ( const auto & part : worldTile.getGroundObjectParts() ) {
+                tryAddObject( part );
+            }
+            for ( const auto & part : worldTile.getTopObjectParts() ) {
+                tryAddObject( part );
+            }
+        }
+
+        // Step 4: castle metadata — iterate tiles to find castle entrances.
+        for ( int32_t tileId = 0; tileId < totalTiles; ++tileId ) {
+            const Maps::Tile & tile = world.getTile( tileId );
+            if ( tile.getMainObjectType( false ) != MP2::OBJ_CASTLE ) {
+                continue;
+            }
+
+            const Castle * castle = world.getCastleEntrance( Maps::GetPoint( tileId ) );
+            if ( castle == nullptr ) {
+                continue;
+            }
+
+            // Use the UID we assigned in Step 3 (the shared UID for basement + castle).
+            const auto castleUidIt = castleUidByTileId.find( tileId );
+            if ( castleUidIt == castleUidByTileId.end() ) {
+                continue;
+            }
+            const uint32_t uid = castleUidIt->second;
+
+            CastleMetadata meta;
+            meta.customName = castle->GetName();
+
+            Maps::saveCastleArmy( castle->GetArmy(), meta );
+
+            meta.customBuildings = true;
+            for ( const uint32_t building : knownBuildingTypes ) {
+                if ( castle->isBuild( building ) ) {
+                    meta.builtBuildings.push_back( building );
+                }
+            }
+
+            mapFormat.castleMetadata[uid] = std::move( meta );
+        }
+
+        // Step 5: per-tile metadata (heroes, signs, events, sphinxes, capturable objects).
+        for ( int32_t tileId = 0; tileId < totalTiles; ++tileId ) {
+            const Maps::Tile & tile = world.getTile( tileId );
+            const MP2::MapObjectType objType = tile.getMainObjectType();
+
+            if ( objType == MP2::OBJ_NONE ) {
+                continue;
+            }
+
+            const uint32_t uid = tile.getMainObjectPart()._uid;
+
+            switch ( objType ) {
+            case MP2::OBJ_HERO: {
+                // Use the UID we generated in Step 3 (the tile's _mainObjectPart._uid is 0 after
+                // LoadMapMP2() stripped the MINIHERO sprite).
+                const auto it = heroUidByTileId.find( tileId );
+                if ( it != heroUidByTileId.end() ) {
+                    const Heroes * hero = world.GetHeroes( Maps::GetPoint( tileId ) );
+                    if ( hero != nullptr ) {
+                        mapFormat.heroMetadata[it->second] = hero->getHeroMetadata();
+                    }
+                }
+                break;
+            }
+            case MP2::OBJ_JAIL: {
+                // Jail heroes keep their tile sprite intact, so uid is valid.
+                const Heroes * hero = world.GetHeroes( Maps::GetPoint( tileId ) );
+                if ( hero != nullptr ) {
+                    mapFormat.heroMetadata[uid] = hero->getHeroMetadata();
+                }
+                break;
+            }
+
+            case MP2::OBJ_MONSTER:
+            case MP2::OBJ_RANDOM_MONSTER:
+            case MP2::OBJ_RANDOM_MONSTER_WEAK:
+            case MP2::OBJ_RANDOM_MONSTER_MEDIUM:
+            case MP2::OBJ_RANDOM_MONSTER_STRONG:
+            case MP2::OBJ_RANDOM_MONSTER_VERY_STRONG: {
+                // Every MONSTERS-group TileObjectInfo requires a monsterMetadata entry (assertion
+                // in world_loadmap.cpp:884).  Conversely, creating metadata without a matching
+                // TileObjectInfo triggers the reverse assertion at line 1232.  So we only
+                // create metadata when Step 3 actually emitted a TileObjectInfo for this tile,
+                // which we detect by scanning the tile's objects for a MONSTERS-group entry.
+                // Monsters whose sprites are absent from mainObjectByIcn (e.g. Azure Dragon)
+                // produce no TileObjectInfo and must produce no metadata either.
+                const TileInfo & mapTile = mapFormat.tiles[static_cast<size_t>( tileId )];
+                for ( const TileObjectInfo & obj : mapTile.objects ) {
+                    if ( obj.group == ObjectGroup::MONSTERS ) {
+                        MonsterMetadata & meta = mapFormat.monsterMetadata[obj.id];
+                        meta.count = static_cast<int32_t>( tile.metadata()[0] );
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case MP2::OBJ_SIGN:
+            case MP2::OBJ_BOTTLE: {
+                const auto * sign = dynamic_cast<const MapSign *>( world.GetMapObject( static_cast<uint32_t>( tileId ) ) );
+                if ( sign != nullptr ) {
+                    mapFormat.signMetadata[uid].message = sign->message.text;
+                }
+                break;
+            }
+
+            case MP2::OBJ_EVENT: {
+                const auto * ev = dynamic_cast<const MapEvent *>( world.GetMapObject( static_cast<uint32_t>( tileId ) ) );
+                if ( ev != nullptr ) {
+                    mapFormat.adventureMapEventMetadata[uid] = convertMapEvent( *ev );
+                }
+                break;
+            }
+
+            case MP2::OBJ_SPHINX: {
+                const auto * sp = dynamic_cast<const MapSphinx *>( world.GetMapObject( static_cast<uint32_t>( tileId ) ) );
+                if ( sp != nullptr && sp->valid ) {
+                    mapFormat.sphinxMetadata[uid] = convertSphinx( *sp );
+                }
+                break;
+            }
+
+            default:
+                // Capturable objects (mines, lighthouses, sawmills, etc.) – preserve owner color if non-neutral.
+                if ( Maps::isCapturableObject( objType ) ) {
+                    const PlayerColor ownerColor = world.GetCapturedObject( tileId ).GetColor();
+                    if ( ownerColor != PlayerColor::NONE ) {
+                        mapFormat.capturableObjectsMetadata[uid].ownerColor = ownerColor;
+                    }
+                }
+                break;
+            }
+        }
+
+        // Step 6: rumors.
+        for ( const std::string & rumor : world.getCustomRumors() ) {
+            mapFormat.rumors.push_back( rumor );
+        }
+
+        return true;
+    }
+}

@@ -61,6 +61,7 @@
 #include "interface_radar.h"
 #include "localevent.h"
 #include "map_format_helper.h"
+#include "map_format_importmp2.h"
 #include "map_object_info.h"
 #include "maps.h"
 #include "maps_fileinfo.h"
@@ -2313,9 +2314,21 @@ namespace Interface
 
     bool EditorInterface::loadMap( const std::string & filePath )
     {
-        if ( !Maps::Map_Format::loadMap( filePath, _mapFormat ) ) {
-            fheroes2::showStandardTextMessage( _( "Error" ), "Failed to load the map.", Dialog::OK );
-            return false;
+        const std::string lowerPath = StringLower( filePath );
+        const bool isMP2 = lowerPath.size() >= 4
+                           && ( lowerPath.substr( lowerPath.size() - 4 ) == ".mp2" || lowerPath.substr( lowerPath.size() - 4 ) == ".mx2" );
+
+        if ( isMP2 ) {
+            if ( !Maps::Map_Format::importMP2Map( filePath, _mapFormat ) ) {
+                fheroes2::showStandardTextMessage( _( "Error" ), _( "Failed to import the MP2 map." ), Dialog::OK );
+                return false;
+            }
+        }
+        else {
+            if ( !Maps::Map_Format::loadMap( filePath, _mapFormat ) ) {
+                fheroes2::showStandardTextMessage( _( "Error" ), "Failed to load the map.", Dialog::OK );
+                return false;
+            }
         }
 
         if ( !Maps::readMapInEditor( _mapFormat ) ) {

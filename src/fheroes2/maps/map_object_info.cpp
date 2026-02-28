@@ -45,6 +45,11 @@ namespace
     // Since we have a lot of objects it is important to speed up the search even if we take several more KB of memory.
     std::map<std::pair<MP2::ObjectIcnType, uint32_t>, const Maps::ObjectPartInfo *> objectInfoByIcn;
 
+    // This map is used for reverse lookup: given the ICN type and index of the *main* part of an object
+    // (the first groundLevelPart, tileOffset = {0,0}), find which ObjectGroup and object index it belongs to.
+    // Used when converting MP2/MX2 maps to the fheroes2 map format.
+    std::map<std::pair<MP2::ObjectIcnType, uint32_t>, std::pair<Maps::ObjectGroup, uint32_t>> mainObjectByIcn;
+
     void populateRoads( std::vector<Maps::ObjectInfo> & objects )
     {
         assert( objects.empty() );
@@ -6125,6 +6130,18 @@ namespace
             }
         }
 
+        // Build the reverse lookup for the main part (first groundLevelPart) of each object.
+        for ( size_t groupIdx = 0; groupIdx < objectData.size(); ++groupIdx ) {
+            for ( size_t objIdx = 0; objIdx < objectData[groupIdx].size(); ++objIdx ) {
+                const auto & obj = objectData[groupIdx][objIdx];
+                if ( !obj.groundLevelParts.empty() ) {
+                    const auto & mainPart = obj.groundLevelParts.front();
+                    mainObjectByIcn.try_emplace( std::make_pair( mainPart.icnType, mainPart.icnIndex ),
+                                                 std::make_pair( static_cast<Maps::ObjectGroup>( groupIdx ), static_cast<uint32_t>( objIdx ) ) );
+                }
+            }
+        }
+
 #if defined( WITH_DEBUG )
         // It is important to check that all data is accurately generated.
         for ( const auto & objects : objectData ) {
@@ -6281,6 +6298,20 @@ namespace Maps
         // - you updated object properties but didn't do object info migration for save files
         // - you are trying to get info of an object created by an original Editor
         return nullptr;
+    }
+
+    bool getObjectGroupAndIndexByMainIcn( const MP2::ObjectIcnType icnType, const uint32_t icnIndex, ObjectGroup & group, uint32_t & objectIndex )
+    {
+        populateObjectData();
+
+        const auto iter = mainObjectByIcn.find( std::make_pair( icnType, icnIndex ) );
+        if ( iter == mainObjectByIcn.end() ) {
+            return false;
+        }
+
+        group = iter->second.first;
+        objectIndex = iter->second.second;
+        return true;
     }
 
     MP2::MapObjectType getObjectTypeByIcn( const MP2::ObjectIcnType icnType, const uint32_t icnIndex )

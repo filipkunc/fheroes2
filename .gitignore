@@ -111,5 +111,14 @@ fheroes2.js
 fheroes2.wasm
 fheroes2.wasm.map
 
-# Prebuilt tools
-prebuilt_tools/
+# original game data (root-level only, anchored with / to avoid hiding source dirs)
+/anim/
+/data/
+/maps/
+
+# game executable (anchored to root to avoid hiding src/fheroes2/ source directory)
+/fheroes2
+
+# IDE / language-server caches
+/.cache/
+*.idx

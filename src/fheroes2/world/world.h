@@ -512,6 +512,11 @@ public:
 
     void updatePassabilities();
 
+    const std::vector<std::string> & getCustomRumors() const
+    {
+        return _customRumors;
+    }
+
     const std::vector<int32_t> & getAllEyeOfMagiPositions() const
     {
         return _allEyeOfMagi;

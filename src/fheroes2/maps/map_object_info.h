@@ -172,6 +172,11 @@ namespace Maps
     // A valid pointer could also point to LayeredObjectPartInfo object.
     const ObjectPartInfo * getObjectPartByIcn( const MP2::ObjectIcnType icnType, const uint32_t icnIndex );
 
+    // Returns true if the given ICN type and index correspond to the *main* part (first groundLevelPart)
+    // of a known object. On success, fills group and objectIndex with the object's location in the group table.
+    // Used when importing original MP2/MX2 maps into the fheroes2 map format.
+    bool getObjectGroupAndIndexByMainIcn( MP2::ObjectIcnType icnType, uint32_t icnIndex, ObjectGroup & group, uint32_t & objectIndex );
+
     MP2::MapObjectType getObjectTypeByIcn( const MP2::ObjectIcnType icnType, const uint32_t icnIndex );
 
     // The function returns tile offsets only for ground level objects located on OBJECT_LAYER and BACKGROUND_LAYER layers.
