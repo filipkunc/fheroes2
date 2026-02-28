@@ -39,6 +39,7 @@
 #include "maps_objects.h"
 #include "maps.h"
 #include "maps_tiles.h"
+#include "maps_tiles_helper.h"
 #include "mp2.h"
 #include "race.h"
 #include "resource.h"
@@ -470,6 +471,36 @@ namespace Maps::Map_Format
                     if ( obj.group == ObjectGroup::MONSTERS ) {
                         MonsterMetadata & meta = mapFormat.monsterMetadata[obj.id];
                         meta.count = static_cast<int32_t>( tile.metadata()[0] );
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case MP2::OBJ_ARTIFACT:
+            case MP2::OBJ_RANDOM_ULTIMATE_ARTIFACT: {
+                // Every ADVENTURE_ARTIFACTS-group TileObjectInfo requires an artifactMetadata entry.
+                // Same bidirectional constraint as monsters (world_loadmap.cpp:1146 and :1243).
+                // Only create metadata when Step 3 actually emitted an ADVENTURE_ARTIFACTS entry.
+                // After LoadMapMP2() random artifacts are already resolved to OBJ_ARTIFACT, so
+                // only OBJ_RANDOM_ULTIMATE_ARTIFACT keeps its own type.
+                const TileInfo & mapTile = mapFormat.tiles[static_cast<size_t>( tileId )];
+                for ( const TileObjectInfo & obj : mapTile.objects ) {
+                    if ( obj.group == ObjectGroup::ADVENTURE_ARTIFACTS ) {
+                        ArtifactMetadata & meta = mapFormat.artifactMetadata[obj.id];
+                        if ( objType == MP2::OBJ_RANDOM_ULTIMATE_ARTIFACT ) {
+                            meta.radius = static_cast<int32_t>( tile.metadata()[0] );
+                        }
+                        else {
+                            const Artifact art = Maps::getArtifactFromTile( tile );
+                            if ( art.GetID() == Artifact::SPELL_SCROLL ) {
+                                // selected[0] = spell ID; loadResurrectionMap stores it as
+                                // tileData[0] = selected[0] - 1, then updateObjectInfoTile
+                                // adds 1 back and sets metadata()[1] = spell ID.
+                                meta.selected = { art.getSpellId() };
+                            }
+                            // Regular / formerly-random artifacts: default empty metadata is fine.
+                        }
                         break;
                     }
                 }
