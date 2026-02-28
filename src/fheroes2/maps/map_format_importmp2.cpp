@@ -236,8 +236,13 @@ namespace Maps::Map_Format
         // Castles: basement (LANDSCAPE_TOWN_BASEMENTS) and castle (KINGDOM_TOWNS) must share
         //          one UID, with the basement placed first, so the castle sprite wins the main
         //          object part slot after sorting (mirrors _placeCastle() in editor_interface.cpp).
+        // Flags: the two LANDSCAPE_FLAGS tiles adjacent to each castle entrance (tileId±1) must
+        //        also share the castle's UID so that getTownColorIndex() can match them.  They
+        //        are emitted by the generic tryAddObject path with the raw MP2 UID, so we fix
+        //        them up after the main loop.
         std::map<int32_t, uint32_t> heroUidByTileId;
         std::map<int32_t, uint32_t> castleUidByTileId;
+        std::map<int32_t, uint32_t> flagUidByTileId; // tileId → castle sharedUid
 
         for ( int32_t tileId = 0; tileId < totalTiles; ++tileId ) {
             const Maps::Tile & worldTile = world.getTile( tileId );
@@ -336,6 +341,14 @@ namespace Maps::Map_Format
                     mapTile.objects.push_back( { sharedUid, castleGroup, castleIndex } );
                     castleUidByTileId[tileId] = sharedUid;
 
+                    // Record the adjacent flag tiles so we can fix their UIDs after the loop.
+                    if ( tileId > 0 ) {
+                        flagUidByTileId[tileId - 1] = sharedUid;
+                    }
+                    if ( tileId + 1 < totalTiles ) {
+                        flagUidByTileId[tileId + 1] = sharedUid;
+                    }
+
                     // Still process any remaining ground/top parts that might belong to other
                     // unrelated objects overlapping this tile (skipping OBJNTWBA — handled above).
                     for ( const auto & part : worldTile.getGroundObjectParts() ) {
@@ -357,6 +370,18 @@ namespace Maps::Map_Format
             }
             for ( const auto & part : worldTile.getTopObjectParts() ) {
                 tryAddObject( part );
+            }
+        }
+
+        // Fix-up: patch LANDSCAPE_FLAGS UIDs on the tiles adjacent to each castle entrance.
+        // tryAddObject emitted them with the raw MP2 part._uid, but getTownColorIndex() only
+        // finds flags that share the castle's sharedUid.
+        for ( const auto & [flagTileId, sharedUid] : flagUidByTileId ) {
+            for ( auto & obj : mapFormat.tiles[static_cast<size_t>( flagTileId )].objects ) {
+                if ( obj.group == ObjectGroup::LANDSCAPE_FLAGS ) {
+                    obj.id = sharedUid;
+                    break; // at most one flag per tile
+                }
             }
         }
 
