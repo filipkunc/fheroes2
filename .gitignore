@@ -122,3 +122,6 @@ fheroes2.wasm.map
 # IDE / language-server caches
 /.cache/
 *.idx
+
+# Claude Code local settings
+/.claude/
