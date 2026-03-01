@@ -372,6 +372,24 @@ namespace Maps::Map_Format
             for ( const auto & part : worldTile.getTopObjectParts() ) {
                 tryAddObject( part );
             }
+
+            // Fix-up: correct mine resource type.
+            // tryAddObject finds the terrain ICN of the mine, which is registered as the Ore mine
+            // variant (index +0) for each terrain type. The actual resource is encoded in the EXTRAOVR
+            // main part's icnIndex (0=Ore, 1=Sulfur, 2=Crystal, 3=Gems, 4=Gold). Add that offset to
+            // the emitted ADVENTURE_MINES TileObjectInfo index to select the right resource variant.
+            if ( worldTile.getMainObjectType() == MP2::OBJ_MINE
+                 && worldTile.getMainObjectPart().icnType == MP2::OBJ_ICN_TYPE_EXTRAOVR ) {
+                const uint8_t extraovrIdx = worldTile.getMainObjectPart().icnIndex;
+                if ( extraovrIdx > 0 && extraovrIdx < 5 ) {
+                    for ( auto & obj : mapTile.objects ) {
+                        if ( obj.group == ObjectGroup::ADVENTURE_MINES ) {
+                            obj.index += extraovrIdx;
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         // Fix-up: patch LANDSCAPE_FLAGS UIDs on the tiles adjacent to each castle entrance.
@@ -501,6 +519,21 @@ namespace Maps::Map_Format
                             }
                             // Regular / formerly-random artifacts: default empty metadata is fine.
                         }
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case MP2::OBJ_RESOURCE:
+            case MP2::OBJ_RANDOM_RESOURCE: {
+                // Every ADVENTURE_TREASURES OBJ_RESOURCE TileObjectInfo needs a resourceMetadata
+                // entry so that readAllTiles sets the resource count on the tile. Without it the
+                // count stays 0 and getFundsFromTile returns all-zero Funds, crashing the AI.
+                const TileInfo & mapTile = mapFormat.tiles[static_cast<size_t>( tileId )];
+                for ( const TileObjectInfo & obj : mapTile.objects ) {
+                    if ( obj.group == ObjectGroup::ADVENTURE_TREASURES ) {
+                        mapFormat.resourceMetadata[obj.id].count = static_cast<int32_t>( tile.metadata()[1] );
                         break;
                     }
                 }
