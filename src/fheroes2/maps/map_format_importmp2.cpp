@@ -145,13 +145,22 @@ namespace Maps::Map_Format
         case Maps::FileInfo::VICTORY_DEFEAT_EVERYONE:
             // No metadata.
             break;
-        case Maps::FileInfo::VICTORY_CAPTURE_TOWN:
-        case Maps::FileInfo::VICTORY_KILL_HERO: {
-            // metadata[0] = tile index (x + y * width), metadata[1] = color flags (0 = any)
+        case Maps::FileInfo::VICTORY_CAPTURE_TOWN: {
             const uint32_t tileIndex
                 = static_cast<uint32_t>( fi.victoryConditionParams[0] ) + static_cast<uint32_t>( fi.victoryConditionParams[1] ) * fi.width;
             mapFormat.victoryConditionMetadata.push_back( tileIndex );
-            mapFormat.victoryConditionMetadata.push_back( 0 ); // no specific owner color required
+
+            const Castle * castle = world.getCastle( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
+            mapFormat.victoryConditionMetadata.push_back( castle ? static_cast<uint32_t>( castle->GetColor() ) : 0 );
+            break;
+        }
+        case Maps::FileInfo::VICTORY_KILL_HERO: {
+            const uint32_t tileIndex
+                = static_cast<uint32_t>( fi.victoryConditionParams[0] ) + static_cast<uint32_t>( fi.victoryConditionParams[1] ) * fi.width;
+            mapFormat.victoryConditionMetadata.push_back( tileIndex );
+
+            const Heroes * hero = world.GetHeroes( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
+            mapFormat.victoryConditionMetadata.push_back( hero ? static_cast<uint32_t>( hero->GetColor() ) : 0 );
             break;
         }
         case Maps::FileInfo::VICTORY_OBTAIN_ARTIFACT:
@@ -200,13 +209,22 @@ namespace Maps::Map_Format
         case Maps::FileInfo::LOSS_EVERYTHING:
             // No metadata.
             break;
-        case Maps::FileInfo::LOSS_TOWN:
-        case Maps::FileInfo::LOSS_HERO: {
-            // metadata[0] = tile index, metadata[1] = color flags (0 = any human)
+        case Maps::FileInfo::LOSS_TOWN: {
             const uint32_t tileIndex
                 = static_cast<uint32_t>( fi.lossConditionParams[0] ) + static_cast<uint32_t>( fi.lossConditionParams[1] ) * fi.width;
             mapFormat.lossConditionMetadata.push_back( tileIndex );
-            mapFormat.lossConditionMetadata.push_back( 0 );
+
+            const Castle * castle = world.getCastle( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
+            mapFormat.lossConditionMetadata.push_back( castle ? static_cast<uint32_t>( castle->GetColor() ) : 0 );
+            break;
+        }
+        case Maps::FileInfo::LOSS_HERO: {
+            const uint32_t tileIndex
+                = static_cast<uint32_t>( fi.lossConditionParams[0] ) + static_cast<uint32_t>( fi.lossConditionParams[1] ) * fi.width;
+            mapFormat.lossConditionMetadata.push_back( tileIndex );
+
+            const Heroes * hero = world.GetHeroes( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
+            mapFormat.lossConditionMetadata.push_back( hero ? static_cast<uint32_t>( hero->GetColor() ) : 0 );
             break;
         }
         case Maps::FileInfo::LOSS_OUT_OF_TIME:
