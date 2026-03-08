@@ -125,6 +125,7 @@ public:
         // New custom monsters
         AZURE_DRAGON,
         BLOOD_DRAGON,
+        THOR,
 
         // Editor-related monsters.
         RANDOM_MONSTER,

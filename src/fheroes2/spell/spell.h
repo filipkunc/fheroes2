@@ -249,7 +249,7 @@ public:
 
     bool isBuiltinOnly() const
     {
-        return id == PETRIFY;
+        return id == PETRIFY || id == CHAINLIGHTNING;
     }
 
     bool isGuardianType() const;

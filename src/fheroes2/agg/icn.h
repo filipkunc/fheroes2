@@ -1147,6 +1147,15 @@ namespace ICN
         // Upg. Laboratory building sprite (generated from Laboratory dwelling with red palette)
         TWNNUP5A,
 
+        // Thor battle sprite (generated from Titan with electric blue palette)
+        TITNTHOR,
+
+        // Thor portrait (generated from Titan portrait with electric blue palette)
+        MONH_THOR,
+
+        // Hall of Valhalla building sprite (generated from Upg. Cloud Castle with electric blue palette)
+        TWNZUP5A,
+
         // IMPORTANT! Put any new entry just above this one.
         LASTICN
     };

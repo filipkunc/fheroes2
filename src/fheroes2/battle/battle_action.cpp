@@ -216,57 +216,82 @@ void Battle::Arena::BattleProcess( Unit & attacker, Unit & defender, int32_t tgt
         // Only single target spells and special built-in only spells are allowed
         assert( spell.isSingleTarget() || spell.isBuiltinOnly() );
 
-        TargetsInfo spellTargets;
-        spellTargets.reserve( attackTargets.size() );
+        if ( spell.GetID() == Spell::CHAINLIGHTNING && cellDir == Battle::CellDirection::UNKNOWN ) {
+            // Chain Lightning only triggers on ranged attacks, using special multi-target bounce logic.
+            // If the primary target was killed by the physical attack, skip the spell.
+            if ( !attackTargets.empty() && attackTargets.front().defender != nullptr && attackTargets.front().defender->isValid() ) {
+                const int32_t targetIndex = attackTargets.front().defender->GetHeadIndex();
+                TargetsInfo spellTargets = TargetsForChainLightning( nullptr, targetIndex, true );
 
-        // Filter out invalid targets and targets to which the spell cannot be applied
-        for ( const TargetInfo & attackTarget : attackTargets ) {
-            assert( attackTarget.defender != nullptr );
+                if ( !spellTargets.empty() && !spellTargets.front().resist ) {
+                    if ( _interface ) {
+                        _interface->redrawActionSpellCastStatus( spell, targetIndex, attacker.GetName(), spellTargets );
+                        _interface->redrawActionSpellCastPart1( spell, targetIndex, nullptr, spellTargets );
+                    }
 
-            if ( !attackTarget.defender->isValid() ) {
-                continue;
-            }
-            if ( !attackTarget.defender->AllowApplySpell( spell, nullptr ) ) {
-                continue;
-            }
-
-            spellTargets.emplace_back( attackTarget.defender );
-        }
-
-        if ( !spellTargets.empty() ) {
-            // The built-in spell can only be applied to one target. If there are multiple
-            // targets eligible for this spell, then we should randomly select only one.
-            if ( spellTargets.size() > 1 ) {
-                const Unit * selectedUnit = Rand::GetWithGen( spellTargets, _randomGenerator ).defender;
-
-                spellTargets.erase( std::remove_if( spellTargets.begin(), spellTargets.end(),
-                                                    [selectedUnit]( const TargetInfo & v ) { return v.defender != selectedUnit; } ),
-                                    spellTargets.end() );
-            }
-
-            assert( spellTargets.size() == 1 );
-
-            Unit * spellTargetUnit = spellTargets.front().defender;
-            assert( spellTargetUnit != nullptr );
-
-            // The built-in dispel should only remove beneficial spells from the target unit
-            if ( spell.GetID() != Spell::DISPEL || spellTargetUnit->Modes( IS_GOOD_MAGIC ) ) {
-                if ( _interface ) {
-                    _interface->redrawActionSpellCastStatus( spell, spellTargetUnit->GetHeadIndex(), attacker.GetName(), spellTargets );
-                    _interface->redrawActionSpellCastPart1( spell, spellTargetUnit->GetHeadIndex(), nullptr, spellTargets );
-                }
-
-                if ( spell.GetID() == Spell::DISPEL ) {
-                    spellTargetUnit->removeAffection( IS_GOOD_MAGIC );
-                }
-                else {
                     // The unit's built-in spell efficiency does not depend on its commanding hero's skills
                     TargetsApplySpell( nullptr, spell, spellTargets );
+
+                    if ( _interface ) {
+                        _interface->redrawActionSpellCastPart2( spell, spellTargets );
+                        _interface->RedrawActionMonsterSpellCastStatus( spell, attacker, spellTargets.front() );
+                    }
+                }
+            }
+        }
+        else {
+            TargetsInfo spellTargets;
+            spellTargets.reserve( attackTargets.size() );
+
+            // Filter out invalid targets and targets to which the spell cannot be applied
+            for ( const TargetInfo & attackTarget : attackTargets ) {
+                assert( attackTarget.defender != nullptr );
+
+                if ( !attackTarget.defender->isValid() ) {
+                    continue;
+                }
+                if ( !attackTarget.defender->AllowApplySpell( spell, nullptr ) ) {
+                    continue;
                 }
 
-                if ( _interface ) {
-                    _interface->redrawActionSpellCastPart2( spell, spellTargets );
-                    _interface->RedrawActionMonsterSpellCastStatus( spell, attacker, spellTargets.front() );
+                spellTargets.emplace_back( attackTarget.defender );
+            }
+
+            if ( !spellTargets.empty() ) {
+                // The built-in spell can only be applied to one target. If there are multiple
+                // targets eligible for this spell, then we should randomly select only one.
+                if ( spellTargets.size() > 1 ) {
+                    const Unit * selectedUnit = Rand::GetWithGen( spellTargets, _randomGenerator ).defender;
+
+                    spellTargets.erase( std::remove_if( spellTargets.begin(), spellTargets.end(),
+                                                        [selectedUnit]( const TargetInfo & v ) { return v.defender != selectedUnit; } ),
+                                        spellTargets.end() );
+                }
+
+                assert( spellTargets.size() == 1 );
+
+                Unit * spellTargetUnit = spellTargets.front().defender;
+                assert( spellTargetUnit != nullptr );
+
+                // The built-in dispel should only remove beneficial spells from the target unit
+                if ( spell.GetID() != Spell::DISPEL || spellTargetUnit->Modes( IS_GOOD_MAGIC ) ) {
+                    if ( _interface ) {
+                        _interface->redrawActionSpellCastStatus( spell, spellTargetUnit->GetHeadIndex(), attacker.GetName(), spellTargets );
+                        _interface->redrawActionSpellCastPart1( spell, spellTargetUnit->GetHeadIndex(), nullptr, spellTargets );
+                    }
+
+                    if ( spell.GetID() == Spell::DISPEL ) {
+                        spellTargetUnit->removeAffection( IS_GOOD_MAGIC );
+                    }
+                    else {
+                        // The unit's built-in spell efficiency does not depend on its commanding hero's skills
+                        TargetsApplySpell( nullptr, spell, spellTargets );
+                    }
+
+                    if ( _interface ) {
+                        _interface->redrawActionSpellCastPart2( spell, spellTargets );
+                        _interface->RedrawActionMonsterSpellCastStatus( spell, attacker, spellTargets.front() );
+                    }
                 }
             }
         }

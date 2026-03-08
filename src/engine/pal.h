@@ -46,6 +46,8 @@ namespace PAL
         AZURE_TOWER_SMALL, // For transforming Red Tower small sprite into Azure Tower small sprite.
         BLOOD_DRAGON, // For transforming Bone Dragon into Blood (red) Dragon.
         BLOOD_CRYPT, // For transforming Laboratory dwelling into Upg. Laboratory.
+        THOR, // For transforming Titan into Thor (electric blue/white).
+        THOR_TOWER, // For transforming Upg. Cloud Castle into Hall of Valhalla.
         CUSTOM
     };
 

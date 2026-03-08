@@ -359,6 +359,7 @@ namespace
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
         case DWELLING_UPGRADE8:
+        case DWELLING_UPGRADE10:
             return { { 160, 0, 178, 67 } };
         case BUILD_LEFTTURRET:
             return { { 30, 17, 0, 0 } };
@@ -607,6 +608,8 @@ namespace
             return _( "Cloud Castle" );
         case DWELLING_UPGRADE6:
             return _( "Upg. Cloud Castle" );
+        case DWELLING_UPGRADE10:
+            return _( "Hall of Valhalla" );
         default:
             break;
         }
@@ -691,6 +694,8 @@ namespace
             return _( "3x Upg. Dwelling 6" );
         case DWELLING_UPGRADE9:
             return _( "4x Upg. Dwelling 6" );
+        case DWELLING_UPGRADE10:
+            return _( "5x Upg. Dwelling 6" );
         default:
             break;
         }
@@ -1084,6 +1089,8 @@ namespace fheroes2
                 return DWELLING_UPGRADE5;
             case DWELLING_MONSTER6:
                 return DWELLING_UPGRADE6;
+            case DWELLING_UPGRADE6:
+                return DWELLING_UPGRADE10;
             default:
                 break;
             }
@@ -1365,6 +1372,10 @@ namespace fheroes2
             if ( race == Race::NECR )
                 requirement |= DWELLING_MONSTER6;
             break;
+        case DWELLING_UPGRADE10:
+            if ( race == Race::WZRD )
+                requirement |= DWELLING_UPGRADE6;
+            break;
 
         default:
             break;
@@ -1425,6 +1436,8 @@ namespace fheroes2
             return 31; // Azure Tower uses a palette-transformed version of Black Tower sprite
         case DWELLING_UPGRADE9:
             return 32; // Blood Crypt uses a palette-transformed version of Dragon Pit sprite
+        case DWELLING_UPGRADE10:
+            return 33; // Hall of Valhalla uses a palette-transformed version of Upg. Cloud Castle sprite
         case BUILD_MAGEGUILD1:
         case BUILD_MAGEGUILD2:
         case BUILD_MAGEGUILD3:
@@ -1597,6 +1610,7 @@ namespace fheroes2
         case Race::WZRD:
             priorities.emplace_back( DWELLING_MONSTER6 );
             priorities.emplace_back( DWELLING_UPGRADE6 );
+            priorities.emplace_back( DWELLING_UPGRADE10 );
             priorities.emplace_back( BUILD_TENT );
             priorities.emplace_back( BUILD_CASTLE );
             priorities.emplace_back( BUILD_LEFTTURRET );

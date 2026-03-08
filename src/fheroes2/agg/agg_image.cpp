@@ -2521,6 +2521,40 @@ namespace
             // Upg. Laboratory: generated from Laboratory dwelling with red palette transform.
             CopyICNWithPalette( id, ICN::TWNNDW_5, PAL::PaletteType::BLOOD_CRYPT );
             break;
+        case ICN::TITNTHOR: {
+            // Thor battle sprites generated from Titan (TITANBLA) with electric blue palette transformation.
+            // Try to load from H2D file first, fall back to runtime generation.
+            bool loadedFromH2D = false;
+            const size_t thorSpriteCount = 50; // Same as Titan sprite count
+
+            _icnVsSprite[id].resize( thorSpriteCount );
+
+            loadedFromH2D = true;
+            for ( size_t i = 0; i < thorSpriteCount; ++i ) {
+                char spriteNameBuffer[64];
+                snprintf( spriteNameBuffer, sizeof( spriteNameBuffer ), "thor_%03zu.image", i );
+                if ( !fheroes2::h2d::readImage( spriteNameBuffer, _icnVsSprite[id][i] ) ) {
+                    loadedFromH2D = false;
+                    break;
+                }
+            }
+
+            if ( !loadedFromH2D ) {
+                // Fall back to runtime generation from Titan with blue palette transformation.
+                _icnVsSprite[id].clear();
+                CopyICNWithPalette( id, ICN::TITANBLA, PAL::PaletteType::THOR );
+            }
+            break;
+        }
+        case ICN::MONH_THOR:
+            // Thor portrait generated from Titan portrait (MONH0046) with blue palette.
+            // Titan ID is 47, PEASANT is 1, so portrait index = 47 - 1 = 46.
+            CopyICNWithPalette( id, ICN::MONH0046, PAL::PaletteType::THOR );
+            break;
+        case ICN::TWNZUP5A:
+            // Hall of Valhalla: generated from Upg. Cloud Castle (TWNZUP_5) with blue palette transform.
+            CopyICNWithPalette( id, ICN::TWNZUP_5, PAL::PaletteType::THOR_TOWER );
+            break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
             break;
@@ -3073,6 +3107,18 @@ namespace
                 }
                 _icnVsSprite[id][bloodDragonSpriteIndex] = _icnVsSprite[id][boneDragonSpriteIndex];
                 ApplyPalette( _icnVsSprite[id][bloodDragonSpriteIndex], PAL::GetPalette( PAL::PaletteType::BLOOD_DRAGON ) );
+            }
+
+            // Add Thor sprite (based on Titan with blue palette).
+            // Titan is at monster ID 47, so sprite index 46. Thor is at monster ID 69, so sprite index 68.
+            if ( _icnVsSprite[id].size() > 46 ) {
+                const size_t titanSpriteIndex = 46;
+                const size_t thorSpriteIndex = 68;
+                if ( _icnVsSprite[id].size() <= thorSpriteIndex ) {
+                    _icnVsSprite[id].resize( thorSpriteIndex + 1 );
+                }
+                _icnVsSprite[id][thorSpriteIndex] = _icnVsSprite[id][titanSpriteIndex];
+                ApplyPalette( _icnVsSprite[id][thorSpriteIndex], PAL::GetPalette( PAL::PaletteType::THOR ) );
             }
 
             break;
@@ -3691,6 +3737,16 @@ namespace
                         original.image()[4333] = 23;
                     }
                 }
+            }
+            // Add Hall of Valhalla small sprite (palette-transformed from Upg. Cloud Castle sprite at index 29).
+            if ( _icnVsSprite[id].size() > 29 ) {
+                // Ensure we have space for index 33.
+                while ( _icnVsSprite[id].size() <= 33 ) {
+                    _icnVsSprite[id].push_back( fheroes2::Sprite() );
+                }
+                // Copy Upg. Cloud Castle sprite and apply Hall of Valhalla palette.
+                _icnVsSprite[id][33] = _icnVsSprite[id][29];
+                ApplyPalette( _icnVsSprite[id][33], PAL::GetPalette( PAL::PaletteType::THOR_TOWER ) );
             }
             break;
         case ICN::CSTLCAPK:

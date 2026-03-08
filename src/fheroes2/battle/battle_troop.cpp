@@ -1124,6 +1124,11 @@ double Battle::Unit::evaluateThreatForUnit( const Unit & defender ) const
                     attackerThreat += static_cast<double>( getDefenderDamage() ) * abilityIter->percentage / 100.0 / 10.0;
                 }
                 break;
+            case Spell::LIGHTNINGBOLT:
+            case Spell::CHAINLIGHTNING:
+                // Lightning spells deal significant damage; treat as high threat with damage scaling.
+                attackerThreat += static_cast<double>( getDefenderDamage() ) * abilityIter->percentage / 100.0 * 0.8;
+                break;
             default:
                 // Did you add a new spell casting ability? Add the logic above!
                 assert( 0 );

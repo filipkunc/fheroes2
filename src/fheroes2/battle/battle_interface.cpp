@@ -5128,6 +5128,9 @@ void Battle::Interface::RedrawActionMonsterSpellCastStatus( const Spell & spell,
     case Spell::DISPEL:
         msg = _n( "The %{attacker} dispels all good spells on your %{target}!", "The %{attacker} dispel all good spells on your %{target}!", attackerCount );
         break;
+    case Spell::CHAINLIGHTNING:
+        msg = _n( "The %{attacker}'s lightning strikes the %{target}!", "The %{attacker}' lightning strikes the %{target}!", attackerCount );
+        break;
     default:
         // Did you add a new monster spell casting ability? Add the logic above!
         assert( 0 );
@@ -5918,8 +5921,21 @@ void Battle::Interface::_redrawActionLightningBoltSpell( const Unit & target )
 
 void Battle::Interface::_redrawActionChainLightningSpell( const TargetsInfo & targets )
 {
-    const fheroes2::Point startingPos
-        = arena.GetCurrentCommander() == _attackingOpponent->GetHero() ? _attackingOpponent->GetCastPosition() : _defendingOpponent->GetCastPosition();
+    fheroes2::Point startingPos;
+    const HeroBase * commander = arena.GetCurrentCommander();
+    if ( commander ) {
+        startingPos = commander == _attackingOpponent->GetHero() ? _attackingOpponent->GetCastPosition() : _defendingOpponent->GetCastPosition();
+    }
+    else if ( _currentUnit ) {
+        // Creature-cast Chain Lightning: start from the creature's position
+        const fheroes2::Rect & unitPos = _currentUnit->GetRectPosition();
+        startingPos = { unitPos.x + unitPos.width / 2, unitPos.y };
+    }
+    else if ( !targets.empty() ) {
+        // Fallback: start from the first target
+        const fheroes2::Rect & pos = targets.front().defender->GetRectPosition();
+        startingPos = { pos.x + pos.width / 2, pos.y };
+    }
     std::vector<fheroes2::Point> points;
     points.reserve( size( targets ) + 1 );
     points.push_back( startingPos );

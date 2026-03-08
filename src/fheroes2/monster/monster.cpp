@@ -62,6 +62,7 @@ uint32_t Monster::GetMissileICN( uint32_t monsterID )
     case Monster::HALFLING:
         return ICN::HALFLMSL;
     case Monster::TITAN:
+    case Monster::THOR:
         return ICN::TITANMSL;
     case Monster::LICH:
     case Monster::POWER_LICH:
@@ -264,6 +265,8 @@ Monster Monster::GetDowngrade() const
         return Monster( LICH );
     case BLOOD_DRAGON:
         return Monster( BONE_DRAGON );
+    case THOR:
+        return Monster( TITAN );
     case MINOTAUR_KING:
         return Monster( MINOTAUR );
     case RED_DRAGON:
@@ -335,6 +338,8 @@ Monster Monster::GetUpgrade() const
         return Monster( ARCHMAGE );
     case GIANT:
         return Monster( TITAN );
+    case TITAN:
+        return Monster( THOR );
 
     default:
         break;
@@ -592,6 +597,15 @@ Monster Monster::FromDwelling( int race, uint64_t dwelling )
         }
         break;
 
+    case DWELLING_UPGRADE10:
+        switch ( race ) {
+        case Race::WZRD:
+            return Monster( THOR );
+        default:
+            break;
+        }
+        break;
+
     default:
         break;
     }
@@ -804,6 +818,9 @@ uint64_t Monster::GetDwelling() const
     case BLOOD_DRAGON:
         return DWELLING_UPGRADE9;
 
+    case THOR:
+        return DWELLING_UPGRADE10;
+
     default:
         break;
     }
@@ -866,6 +883,10 @@ int32_t Monster::ICNMonh() const
     if ( id == BLOOD_DRAGON ) {
         return ICN::MONH_BLOOD_DRAGON;
     }
+    // Thor uses a generated portrait with electric blue palette transformation
+    if ( id == THOR ) {
+        return ICN::MONH_THOR;
+    }
     return id >= PEASANT && id <= WATER_ELEMENT ? ICN::MONH0000 + id - PEASANT : ICN::UNKNOWN;
 }
 
@@ -879,6 +900,11 @@ Funds Monster::GetUpgradeCost() const
     // Blood Dragon has a special fixed upgrade cost.
     if ( upgr.id == BLOOD_DRAGON ) {
         return Funds( Cost{ 2000, 0, 1, 0, 0, 0, 0 } );
+    }
+
+    // Thor has a special fixed upgrade cost.
+    if ( upgr.id == THOR ) {
+        return Funds( Cost{ 2000, 0, 0, 0, 0, 0, 1 } );
     }
 
     return ( upgr.GetCost() - GetCost() ) * 2;
