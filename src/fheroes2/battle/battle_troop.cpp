@@ -280,9 +280,23 @@ int Battle::Unit::GetMorale() const
 
     int armyTroopMorale = ArmyTroop::GetMorale();
 
-    // enemy Bone dragons affect morale
-    if ( isAffectedByMorale() && arena->getEnemyForce( GetArmyColor() ).HasMonster( Monster::BONE_DRAGON ) && armyTroopMorale > Morale::TREASON ) {
-        --armyTroopMorale;
+    // Enemy units with MORAL_DECREMENT ability (e.g. Bone Dragon, Azure Dragon, Blood Dragon) affect morale
+    if ( isAffectedByMorale() && armyTroopMorale > Morale::TREASON ) {
+        for ( const Unit * unit : arena->getEnemyForce( GetArmyColor() ) ) {
+            if ( unit == nullptr || !unit->isValid() ) {
+                continue;
+            }
+
+            const std::vector<fheroes2::MonsterAbility> & abilities = fheroes2::getMonsterData( unit->GetID() ).battleStats.abilities;
+            const auto abilityIter = std::find( abilities.begin(), abilities.end(), fheroes2::MonsterAbilityType::MORAL_DECREMENT );
+
+            if ( abilityIter != abilities.end() ) {
+                armyTroopMorale -= static_cast<int>( abilityIter->value );
+                if ( armyTroopMorale <= Morale::TREASON ) {
+                    break;
+                }
+            }
+        }
     }
 
     return armyTroopMorale;
@@ -387,7 +401,17 @@ bool Battle::Unit::isIdling() const
 void Battle::Unit::NewTurn()
 {
     if ( isRegenerating() ) {
-        _hitPoints = ArmyTroop::GetHitPoints();
+        const std::vector<fheroes2::MonsterAbility> & abilities = fheroes2::getMonsterData( GetID() ).battleStats.abilities;
+        const auto abilityIter = std::find( abilities.begin(), abilities.end(), fheroes2::MonsterAbilityType::HP_REGENERATION );
+        assert( abilityIter != abilities.end() );
+
+        const uint32_t maxHitPoints = ArmyTroop::GetHitPoints();
+        if ( abilityIter->value > 0 ) {
+            _hitPoints = std::min( maxHitPoints, _hitPoints + abilityIter->value );
+        }
+        else {
+            _hitPoints = maxHitPoints;
+        }
     }
 
     ResetModes( TR_RETALIATED );

@@ -309,9 +309,9 @@ namespace
             { 7, 7, 2, 8, 35, Speed::VERYFAST, 0, 0, {}, {} }, // Air Elemental
             { 8, 6, 4, 6, 40, Speed::FAST, 0, 0, {}, {} }, // Fire Elemental
             { 6, 8, 3, 7, 45, Speed::AVERAGE, 0, 0, {}, {} }, // Water Elemental
-            { 16, 16, 30, 60, 400, Speed::ULTRAFAST, 0, 0, {}, {} }, // Azure Dragon
+            { 16, 16, 30, 60, 350, Speed::ULTRAFAST, 0, 0, {}, {} }, // Azure Dragon
             { 13, 11, 30, 50, 200, Speed::FAST, 0, 0, {}, {} }, // Blood Dragon
-            { 17, 17, 25, 35, 350, Speed::ULTRAFAST, 24, 0, {}, {} }, // Thor
+            { 16, 16, 25, 35, 300, Speed::ULTRAFAST, 24, 0, {}, {} }, // Thor
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster 1
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster 2
@@ -388,7 +388,7 @@ namespace
                 { gettext_noop( "Air Elemental" ), gettext_noop( "Air Elementals" ), 4, Race::NONE, 4, { 500, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Fire Elemental" ), gettext_noop( "Fire Elementals" ), 4, Race::NONE, 4, { 500, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Water Elemental" ), gettext_noop( "Water Elementals" ), 4, Race::NONE, 4, { 500, 0, 0, 0, 0, 0, 0 } },
-                { gettext_noop( "Azure Dragon" ), gettext_noop( "Azure Dragons" ), 1, Race::WRLK, 6, { 5000, 0, 0, 0, 3, 0, 0 } },
+                { gettext_noop( "Azure Dragon" ), gettext_noop( "Azure Dragons" ), 1, Race::WRLK, 6, { 6000, 0, 0, 0, 3, 0, 0 } },
                 { gettext_noop( "Blood Dragon" ), gettext_noop( "Blood Dragons" ), 1, Race::NECR, 6, { 2500, 0, 1, 0, 0, 0, 0 } },
                 { gettext_noop( "Thor" ), gettext_noop( "Thors" ), 1, Race::WZRD, 6, { 7000, 0, 0, 0, 0, 0, 3 } },
                 { gettext_noop( "Random Monster" ), gettext_noop( "Random Monsters" ), 0, Race::NONE, 0, { 0, 0, 0, 0, 0, 0, 0 } },
@@ -482,7 +482,7 @@ namespace
         monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::MAGIC_RESISTANCE, 100, 0 );
         monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::TWO_CELL_MELEE_ATTACK );
         // Chilling attack - curses enemies on hit
-        monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::SPELL_CASTER, 50, Spell::CURSE );
+        monsterData[Monster::AZURE_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::MORAL_DECREMENT, 100, 1 );
 
         monsterData[Monster::BLOOD_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DRAGON );
         monsterData[Monster::BLOOD_DRAGON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_HEX_SIZE );
@@ -515,10 +515,7 @@ namespace
 
         monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::NO_MELEE_PENALTY );
         monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::MIND_SPELL_IMMUNITY );
-        monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::IMMUNE_TO_CERTAIN_SPELL, 100, Spell::LIGHTNINGBOLT );
-        monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::IMMUNE_TO_CERTAIN_SPELL, 100, Spell::CHAINLIGHTNING );
-        // Chain Lightning caster - always casts on attack, bounces to nearby enemies
-        monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::SPELL_CASTER, 100, Spell::CHAINLIGHTNING );
+        monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::HP_REGENERATION, 0, 50 );
 
         monsterData[Monster::SKELETON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::UNDEAD );
 
@@ -708,6 +705,11 @@ namespace fheroes2
                 return std::to_string( ability.percentage ) + str;
             }
         case MonsterAbilityType::HP_REGENERATION:
+            if ( ability.value > 0 ) {
+                std::string str = _( "Regenerates %{hp} HP per turn" );
+                StringReplace( str, "%{hp}", ability.value );
+                return str;
+            }
             return _( "HP regeneration" );
         case MonsterAbilityType::TWO_CELL_MELEE_ATTACK:
             return _( "Two hexes attack" );
