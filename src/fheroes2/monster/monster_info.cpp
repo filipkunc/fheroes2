@@ -309,7 +309,7 @@ namespace
             { 7, 7, 2, 8, 35, Speed::VERYFAST, 0, 0, {}, {} }, // Air Elemental
             { 8, 6, 4, 6, 40, Speed::FAST, 0, 0, {}, {} }, // Fire Elemental
             { 6, 8, 3, 7, 45, Speed::AVERAGE, 0, 0, {}, {} }, // Water Elemental
-            { 16, 16, 30, 60, 350, Speed::ULTRAFAST, 0, 0, {}, {} }, // Azure Dragon
+            { 16, 16, 30, 60, 400, Speed::ULTRAFAST, 0, 0, {}, {} }, // Azure Dragon
             { 13, 11, 30, 50, 200, Speed::FAST, 0, 0, {}, {} }, // Blood Dragon
             { 16, 16, 25, 35, 300, Speed::ULTRAFAST, 24, 0, {}, {} }, // Thor
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster
@@ -515,7 +515,7 @@ namespace
 
         monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::NO_MELEE_PENALTY );
         monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::MIND_SPELL_IMMUNITY );
-        monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::HP_REGENERATION, 0, 50 );
+        monsterData[Monster::THOR].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::HP_REGENERATION, 0, 30 );
 
         monsterData[Monster::SKELETON].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::UNDEAD );
 
