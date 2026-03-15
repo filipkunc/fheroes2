@@ -93,8 +93,8 @@ double AnimationSequence::movementProgress() const
 AnimationReference::AnimationReference( const int monsterID )
     : _monsterID( monsterID )
 {
-    // Azure Dragon, Blood Dragon and Thor are custom monsters after WATER_ELEMENT
-    if ( monsterID < Monster::PEASANT || ( monsterID > Monster::WATER_ELEMENT && monsterID != Monster::AZURE_DRAGON && monsterID != Monster::BLOOD_DRAGON && monsterID != Monster::THOR ) ) {
+    // Custom monsters after WATER_ELEMENT need to be explicitly allowed
+    if ( monsterID < Monster::PEASANT || ( monsterID > Monster::WATER_ELEMENT && monsterID != Monster::AZURE_DRAGON && monsterID != Monster::BLOOD_DRAGON && monsterID != Monster::THOR && monsterID != Monster::AVENGER ) ) {
         return;
     }
 

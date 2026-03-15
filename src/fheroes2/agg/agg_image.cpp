@@ -2555,6 +2555,39 @@ namespace
             // Hall of Valhalla: generated from Upg. Cloud Castle (TWNZUP_5) with blue palette transform.
             CopyICNWithPalette( id, ICN::TWNZUP_5, PAL::PaletteType::THOR_TOWER );
             break;
+        case ICN::AVENGER: {
+            // Avenger battle sprites generated from Crusader (PALADIN2) with golden palette transformation.
+            bool loadedFromH2D = false;
+            const size_t avengerSpriteCount = 50; // Same as Crusader sprite count
+
+            _icnVsSprite[id].resize( avengerSpriteCount );
+
+            loadedFromH2D = true;
+            for ( size_t i = 0; i < avengerSpriteCount; ++i ) {
+                char spriteNameBuffer[64];
+                snprintf( spriteNameBuffer, sizeof( spriteNameBuffer ), "avenger_%03zu.image", i );
+                if ( !fheroes2::h2d::readImage( spriteNameBuffer, _icnVsSprite[id][i] ) ) {
+                    loadedFromH2D = false;
+                    break;
+                }
+            }
+
+            if ( !loadedFromH2D ) {
+                // Fall back to runtime generation from Crusader with golden palette transformation.
+                _icnVsSprite[id].clear();
+                CopyICNWithPalette( id, ICN::PALADIN2, PAL::PaletteType::AVENGER );
+            }
+            break;
+        }
+        case ICN::MONH_AVENGER:
+            // Avenger portrait generated from Crusader portrait (MONH0010) with golden palette.
+            // Crusader ID is 11, PEASANT is 1, so portrait index = 11 - 1 = 10.
+            CopyICNWithPalette( id, ICN::MONH0010, PAL::PaletteType::AVENGER );
+            break;
+        case ICN::TWNKUP5A:
+            // Avenger's Chapel: generated from Upg. Cathedral (TWNKUP_5) with golden palette transform.
+            CopyICNWithPalette( id, ICN::TWNKUP_5, PAL::PaletteType::AVENGER_CHAPEL );
+            break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
             break;
@@ -3119,6 +3152,18 @@ namespace
                 }
                 _icnVsSprite[id][thorSpriteIndex] = _icnVsSprite[id][titanSpriteIndex];
                 ApplyPalette( _icnVsSprite[id][thorSpriteIndex], PAL::GetPalette( PAL::PaletteType::THOR ) );
+            }
+
+            // Add Avenger sprite (based on Crusader with golden palette).
+            // Crusader is at monster ID 11, so sprite index 10. Avenger is at monster ID 70, so sprite index 69.
+            if ( _icnVsSprite[id].size() > 10 ) {
+                const size_t crusaderSpriteIndex = 10;
+                const size_t avengerSpriteIndex = 69;
+                if ( _icnVsSprite[id].size() <= avengerSpriteIndex ) {
+                    _icnVsSprite[id].resize( avengerSpriteIndex + 1 );
+                }
+                _icnVsSprite[id][avengerSpriteIndex] = _icnVsSprite[id][crusaderSpriteIndex];
+                ApplyPalette( _icnVsSprite[id][avengerSpriteIndex], PAL::GetPalette( PAL::PaletteType::AVENGER ) );
             }
 
             break;
@@ -3747,6 +3792,18 @@ namespace
                 // Copy Upg. Cloud Castle sprite and apply Hall of Valhalla palette.
                 _icnVsSprite[id][33] = _icnVsSprite[id][29];
                 ApplyPalette( _icnVsSprite[id][33], PAL::GetPalette( PAL::PaletteType::THOR_TOWER ) );
+            }
+            break;
+        case ICN::CSTLKNGT:
+            // Add Avenger's Chapel small sprite (palette-transformed from Upg. Cathedral sprite at index 29).
+            if ( _icnVsSprite[id].size() > 29 ) {
+                // Ensure we have space for index 34.
+                while ( _icnVsSprite[id].size() <= 34 ) {
+                    _icnVsSprite[id].push_back( fheroes2::Sprite() );
+                }
+                // Copy Upg. Cathedral sprite and apply Avenger's Chapel palette.
+                _icnVsSprite[id][34] = _icnVsSprite[id][29];
+                ApplyPalette( _icnVsSprite[id][34], PAL::GetPalette( PAL::PaletteType::AVENGER_CHAPEL ) );
             }
             break;
         case ICN::CSTLCAPK:
@@ -4950,6 +5007,48 @@ namespace
                 for ( uint32_t i = 0; i < 9; ++i ) {
                     _icnVsSprite[ICN::MINIMON][azureDragonMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][greenDragonMiniBaseIndex + i];
                     ApplyPalette( _icnVsSprite[ICN::MINIMON][azureDragonMiniBaseIndex + i], azureDragonPalette );
+                }
+            }
+
+            // Add Blood Dragon mini sprites (based on Bone Dragon with red palette).
+            constexpr uint32_t boneDragonMiniBaseIndex = 56 * 9;
+            constexpr uint32_t bloodDragonMiniBaseIndex = 67 * 9;
+            if ( _icnVsSprite[ICN::MINIMON].size() > boneDragonMiniBaseIndex + 8 ) {
+                if ( _icnVsSprite[ICN::MINIMON].size() <= bloodDragonMiniBaseIndex + 8 ) {
+                    _icnVsSprite[ICN::MINIMON].resize( bloodDragonMiniBaseIndex + 9 );
+                }
+                const std::vector<uint8_t> & bloodDragonPalette = PAL::GetPalette( PAL::PaletteType::BLOOD_DRAGON );
+                for ( uint32_t i = 0; i < 9; ++i ) {
+                    _icnVsSprite[ICN::MINIMON][bloodDragonMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][boneDragonMiniBaseIndex + i];
+                    ApplyPalette( _icnVsSprite[ICN::MINIMON][bloodDragonMiniBaseIndex + i], bloodDragonPalette );
+                }
+            }
+
+            // Add Thor mini sprites (based on Titan with red palette).
+            constexpr uint32_t titanMiniBaseIndex = 46 * 9;
+            constexpr uint32_t thorMiniBaseIndex = 68 * 9;
+            if ( _icnVsSprite[ICN::MINIMON].size() > titanMiniBaseIndex + 8 ) {
+                if ( _icnVsSprite[ICN::MINIMON].size() <= thorMiniBaseIndex + 8 ) {
+                    _icnVsSprite[ICN::MINIMON].resize( thorMiniBaseIndex + 9 );
+                }
+                const std::vector<uint8_t> & thorPalette = PAL::GetPalette( PAL::PaletteType::THOR );
+                for ( uint32_t i = 0; i < 9; ++i ) {
+                    _icnVsSprite[ICN::MINIMON][thorMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][titanMiniBaseIndex + i];
+                    ApplyPalette( _icnVsSprite[ICN::MINIMON][thorMiniBaseIndex + i], thorPalette );
+                }
+            }
+
+            // Add Avenger mini sprites (based on Crusader with golden palette).
+            constexpr uint32_t crusaderMiniBaseIndex = 10 * 9;
+            constexpr uint32_t avengerMiniBaseIndex = 69 * 9;
+            if ( _icnVsSprite[ICN::MINIMON].size() > crusaderMiniBaseIndex + 8 ) {
+                if ( _icnVsSprite[ICN::MINIMON].size() <= avengerMiniBaseIndex + 8 ) {
+                    _icnVsSprite[ICN::MINIMON].resize( avengerMiniBaseIndex + 9 );
+                }
+                const std::vector<uint8_t> & avengerPalette = PAL::GetPalette( PAL::PaletteType::AVENGER );
+                for ( uint32_t i = 0; i < 9; ++i ) {
+                    _icnVsSprite[ICN::MINIMON][avengerMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][crusaderMiniBaseIndex + i];
+                    ApplyPalette( _icnVsSprite[ICN::MINIMON][avengerMiniBaseIndex + i], avengerPalette );
                 }
             }
 

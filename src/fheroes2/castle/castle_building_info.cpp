@@ -86,6 +86,7 @@ namespace
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
         case DWELLING_UPGRADE8:
+        case DWELLING_UPGRADE11:
             return { { 445, 50, 195, 157 } };
         case BUILD_LEFTTURRET:
             return { { 7, 33, 0, 0 } };
@@ -470,6 +471,8 @@ namespace
             return _( "Cathedral" );
         case DWELLING_UPGRADE6:
             return _( "Upg. Cathedral" );
+        case DWELLING_UPGRADE11:
+            return _( "Avenger's Chapel" );
         default:
             break;
         }
@@ -696,6 +699,8 @@ namespace
             return _( "4x Upg. Dwelling 6" );
         case DWELLING_UPGRADE10:
             return _( "5x Upg. Dwelling 6" );
+        case DWELLING_UPGRADE11:
+            return _( "6x Upg. Dwelling 6" );
         default:
             break;
         }
@@ -1035,6 +1040,8 @@ namespace fheroes2
                 return DWELLING_UPGRADE5;
             case DWELLING_MONSTER6:
                 return DWELLING_UPGRADE6;
+            case DWELLING_UPGRADE6:
+                return DWELLING_UPGRADE11;
             default:
                 break;
             }
@@ -1376,6 +1383,10 @@ namespace fheroes2
             if ( race == Race::WZRD )
                 requirement |= DWELLING_UPGRADE6;
             break;
+        case DWELLING_UPGRADE11:
+            if ( race == Race::KNGT )
+                requirement |= DWELLING_UPGRADE6;
+            break;
 
         default:
             break;
@@ -1438,6 +1449,8 @@ namespace fheroes2
             return 32; // Blood Crypt uses a palette-transformed version of Dragon Pit sprite
         case DWELLING_UPGRADE10:
             return 33; // Hall of Valhalla uses a palette-transformed version of Upg. Cloud Castle sprite
+        case DWELLING_UPGRADE11:
+            return 34; // Avenger's Chapel uses a palette-transformed version of Upg. Cathedral sprite
         case BUILD_MAGEGUILD1:
         case BUILD_MAGEGUILD2:
         case BUILD_MAGEGUILD3:
@@ -1507,6 +1520,7 @@ namespace fheroes2
             priorities.emplace_back( DWELLING_UPGRADE5 );
             priorities.emplace_back( DWELLING_MONSTER6 );
             priorities.emplace_back( DWELLING_UPGRADE6 );
+            priorities.emplace_back( DWELLING_UPGRADE11 );
             priorities.emplace_back( DWELLING_MONSTER1 );
             priorities.emplace_back( DWELLING_MONSTER3 );
             priorities.emplace_back( DWELLING_UPGRADE3 );

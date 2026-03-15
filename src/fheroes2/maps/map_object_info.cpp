@@ -5961,7 +5961,7 @@ namespace
 
         // Monsters are "unique" objects in terms of their ICN resources.
         // The Editor uses ICN::MON32 while the Adventure Map renderer uses modified ICN::MINIMON resources.
-        for ( int32_t monsterId = Monster::PEASANT; monsterId <= Monster::THOR; ++monsterId ) {
+        for ( int32_t monsterId = Monster::PEASANT; monsterId <= Monster::AVENGER; ++monsterId ) {
             Maps::ObjectInfo object{ MP2::OBJ_MONSTER };
             object.groundLevelParts.emplace_back( MP2::OBJ_ICN_TYPE_MONS32, monsterId - 1, fheroes2::Point{ 0, 0 }, MP2::OBJ_MONSTER, Maps::OBJECT_LAYER );
             object.metadata[0] = monsterId;

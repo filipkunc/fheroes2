@@ -67,6 +67,10 @@ namespace
             damagePotential *= 1.15; // 15% of all Monsters are Undead, deals double damage.
         }
 
+        if ( fheroes2::isAbilityPresent( abilities, fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_DRAGONS ) ) {
+            damagePotential *= 1.1; // ~10% of all Monsters are Dragons, deals double damage.
+        }
+
         if ( fheroes2::isAbilityPresent( abilities, fheroes2::MonsterAbilityType::TWO_CELL_MELEE_ATTACK ) ) {
             damagePotential *= 1.2;
         }
@@ -146,7 +150,7 @@ namespace
                 ICN::DRAGGREE, ICN::DRAGRED,  ICN::DRAGBLAK, ICN::HALFLING, ICN::BOAR,     ICN::GOLEM,    ICN::GOLEM2,   ICN::ROC,      ICN::MAGE1,
                 ICN::MAGE2,    ICN::TITANBLU, ICN::TITANBLA, ICN::SKELETON, ICN::ZOMBIE,   ICN::ZOMBIE2,  ICN::MUMMYW,   ICN::MUMMY2,   ICN::VAMPIRE,
                 ICN::VAMPIRE2, ICN::LICH,     ICN::LICH2,    ICN::DRAGBONE, ICN::ROGUE,    ICN::NOMAD,    ICN::GHOST,    ICN::GENIE,    ICN::MEDUSA,
-                ICN::EELEM,    ICN::AELEM,    ICN::FELEM,    ICN::WELEM,    ICN::DRAGAZUR, ICN::DRAGBLOD, ICN::TITNTHOR,
+                ICN::EELEM,    ICN::AELEM,    ICN::FELEM,    ICN::WELEM,    ICN::DRAGAZUR, ICN::DRAGBLOD, ICN::TITNTHOR, ICN::AVENGER,
                 ICN::UNKNOWN,  ICN::UNKNOWN,  ICN::UNKNOWN,  ICN::UNKNOWN,  ICN::UNKNOWN };
 
         const char * binFileName[Monster::MONSTER_COUNT]
@@ -157,7 +161,7 @@ namespace
                 "DRAGGFRM.BIN", "DRAGRFRM.BIN", "DRAGBFRM.BIN", "HALFLFRM.BIN", "BOAR_FRM.BIN", "GOLEMFRM.BIN", "GOLEMFRM.BIN", "ROC__FRM.BIN", "MAGE1FRM.BIN",
                 "MAGE1FRM.BIN", "TITANFRM.BIN", "TITA2FRM.BIN", "SKEL_FRM.BIN", "ZOMB_FRM.BIN", "ZOMB_FRM.BIN", "MUMMYFRM.BIN", "MUMMYFRM.BIN", "VAMPIFRM.BIN",
                 "VAMPIFRM.BIN", "LICH_FRM.BIN", "LICH_FRM.BIN", "DRABNFRM.BIN", "ROGUEFRM.BIN", "NOMADFRM.BIN", "GHOSTFRM.BIN", "GENIEFRM.BIN", "MEDUSFRM.BIN",
-                "FELEMFRM.BIN", "FELEMFRM.BIN", "FELEMFRM.BIN", "FELEMFRM.BIN", "DRAGBFRM.BIN", "DRABNFRM.BIN", "TITA2FRM.BIN",
+                "FELEMFRM.BIN", "FELEMFRM.BIN", "FELEMFRM.BIN", "FELEMFRM.BIN", "DRAGBFRM.BIN", "DRABNFRM.BIN", "TITA2FRM.BIN", "PALADFRM.BIN",
                 "UNKNOWN",      "UNKNOWN",      "UNKNOWN",      "UNKNOWN",      "UNKNOWN" };
 
         const fheroes2::MonsterSound monsterSounds[Monster::MONSTER_COUNT] = {
@@ -232,6 +236,7 @@ namespace
             { M82::DRGNATTK, M82::DRGNKILL, M82::DRGNMOVE, M82::DRGNWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Azure Dragon
             { M82::BONEATTK, M82::BONEKILL, M82::BONEMOVE, M82::BONEWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Blood Dragon
             { M82::TITNATTK, M82::TITNKILL, M82::TITNMOVE, M82::TITNWNCE, M82::TITNSHOT, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Thor
+            { M82::PLDNATTK, M82::PLDNKILL, M82::PLDNMOVE, M82::PLDNWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Avenger
             { M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Random Monster
             { M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Random Monster 1
             { M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Random Monster 2
@@ -312,6 +317,7 @@ namespace
             { 16, 16, 30, 60, 400, Speed::ULTRAFAST, 0, 0, {}, {} }, // Azure Dragon
             { 13, 11, 30, 50, 200, Speed::FAST, 0, 0, {}, {} }, // Blood Dragon
             { 16, 16, 25, 35, 300, Speed::ULTRAFAST, 24, 0, {}, {} }, // Thor
+            { 15, 15, 20, 35, 100, Speed::ULTRAFAST, 0, 0, {}, {} }, // Avenger
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster 1
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster 2
@@ -391,6 +397,7 @@ namespace
                 { gettext_noop( "Azure Dragon" ), gettext_noop( "Azure Dragons" ), 1, Race::WRLK, 6, { 6000, 0, 0, 0, 3, 0, 0 } },
                 { gettext_noop( "Blood Dragon" ), gettext_noop( "Blood Dragons" ), 1, Race::NECR, 6, { 2500, 0, 1, 0, 0, 0, 0 } },
                 { gettext_noop( "Thor" ), gettext_noop( "Thors" ), 1, Race::WZRD, 6, { 7000, 0, 0, 0, 0, 0, 3 } },
+                { gettext_noop( "Avenger" ), gettext_noop( "Avengers" ), 2, Race::KNGT, 6, { 1500, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Random Monster" ), gettext_noop( "Random Monsters" ), 0, Race::NONE, 0, { 0, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Random Monster 1" ), gettext_noop( "Random Monsters 1" ), 0, Race::NONE, 1, { 0, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Random Monster 2" ), gettext_noop( "Random Monsters 2" ), 0, Race::NONE, 2, { 0, 0, 0, 0, 0, 0, 0 } },
@@ -416,6 +423,12 @@ namespace
         monsterData[Monster::CRUSADER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_UNDEAD );
         monsterData[Monster::CRUSADER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::IMMUNE_TO_CERTAIN_SPELL, 100, Spell::CURSE );
         monsterData[Monster::CRUSADER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::IMMUNE_TO_CERTAIN_SPELL, 100, Spell::MASSCURSE );
+
+        monsterData[Monster::AVENGER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_MELEE_ATTACK );
+        monsterData[Monster::AVENGER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_UNDEAD );
+        monsterData[Monster::AVENGER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_DRAGONS );
+        monsterData[Monster::AVENGER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::IMMUNE_TO_CERTAIN_SPELL, 100, Spell::CURSE );
+        monsterData[Monster::AVENGER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::IMMUNE_TO_CERTAIN_SPELL, 100, Spell::MASSCURSE );
 
         monsterData[Monster::WOLF].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_HEX_SIZE );
         monsterData[Monster::WOLF].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_MELEE_ATTACK );
@@ -657,6 +670,8 @@ namespace fheroes2
             return _( "Double strike" );
         case MonsterAbilityType::DOUBLE_DAMAGE_TO_UNDEAD:
             return _( "Double damage to Undead" );
+        case MonsterAbilityType::DOUBLE_DAMAGE_TO_DRAGONS:
+            return _( "Double damage to Dragons" );
         case MonsterAbilityType::MAGIC_RESISTANCE:
             return std::to_string( ability.percentage ) + _( "% magic resistance" );
         case MonsterAbilityType::MIND_SPELL_IMMUNITY:

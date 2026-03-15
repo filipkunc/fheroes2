@@ -589,6 +589,7 @@ uint32_t Battle::Unit::CalculateDamageUnit( const Unit & enemy, double dmg ) con
 
     // If multiple options are suitable at the same time, the damage should be doubled only once
     if ( ( isAbilityPresent( fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_UNDEAD ) && enemy.isAbilityPresent( fheroes2::MonsterAbilityType::UNDEAD ) )
+         || ( isAbilityPresent( fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_DRAGONS ) && enemy.isAbilityPresent( fheroes2::MonsterAbilityType::DRAGON ) )
          || ( isAbilityPresent( fheroes2::MonsterAbilityType::EARTH_CREATURE )
               && enemy.isWeaknessPresent( fheroes2::MonsterWeaknessType::DOUBLE_DAMAGE_FROM_EARTH_CREATURES ) )
          || ( isAbilityPresent( fheroes2::MonsterAbilityType::AIR_CREATURE )

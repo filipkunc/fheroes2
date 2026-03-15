@@ -267,6 +267,8 @@ Monster Monster::GetDowngrade() const
         return Monster( BONE_DRAGON );
     case THOR:
         return Monster( TITAN );
+    case AVENGER:
+        return Monster( CRUSADER );
     case MINOTAUR_KING:
         return Monster( MINOTAUR );
     case RED_DRAGON:
@@ -302,6 +304,8 @@ Monster Monster::GetUpgrade() const
         return Monster( CHAMPION );
     case PALADIN:
         return Monster( CRUSADER );
+    case CRUSADER:
+        return Monster( AVENGER );
     case ORC:
         return Monster( ORC_CHIEF );
     case OGRE:
@@ -606,6 +610,15 @@ Monster Monster::FromDwelling( int race, uint64_t dwelling )
         }
         break;
 
+    case DWELLING_UPGRADE11:
+        switch ( race ) {
+        case Race::KNGT:
+            return Monster( AVENGER );
+        default:
+            break;
+        }
+        break;
+
     default:
         break;
     }
@@ -821,6 +834,9 @@ uint64_t Monster::GetDwelling() const
     case THOR:
         return DWELLING_UPGRADE10;
 
+    case AVENGER:
+        return DWELLING_UPGRADE11;
+
     default:
         break;
     }
@@ -887,6 +903,10 @@ int32_t Monster::ICNMonh() const
     if ( id == THOR ) {
         return ICN::MONH_THOR;
     }
+    // Avenger uses a generated portrait with golden palette transformation
+    if ( id == AVENGER ) {
+        return ICN::MONH_AVENGER;
+    }
     return id >= PEASANT && id <= WATER_ELEMENT ? ICN::MONH0000 + id - PEASANT : ICN::UNKNOWN;
 }
 
@@ -905,6 +925,11 @@ Funds Monster::GetUpgradeCost() const
     // Thor has a special fixed upgrade cost.
     if ( upgr.id == THOR ) {
         return Funds( Cost{ 2000, 0, 0, 0, 0, 0, 1 } );
+    }
+
+    // Avenger has a special fixed upgrade cost.
+    if ( upgr.id == AVENGER ) {
+        return Funds( Cost{ 500, 0, 0, 0, 0, 0, 0 } );
     }
 
     return ( upgr.GetCost() - GetCost() ) * 2;

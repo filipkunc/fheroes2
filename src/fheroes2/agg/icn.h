@@ -1156,6 +1156,15 @@ namespace ICN
         // Hall of Valhalla building sprite (generated from Upg. Cloud Castle with electric blue palette)
         TWNZUP5A,
 
+        // Avenger battle sprite (generated from Crusader with golden palette)
+        AVENGER,
+
+        // Avenger portrait (generated from Crusader portrait with golden palette)
+        MONH_AVENGER,
+
+        // Avenger's Chapel building sprite (generated from Upg. Cathedral with golden palette)
+        TWNKUP5A,
+
         // IMPORTANT! Put any new entry just above this one.
         LASTICN
     };

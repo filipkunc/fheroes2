@@ -96,7 +96,7 @@ namespace
         // De-prioritizing dwelling 5 (you can reach 6 without it), 1 and upgrades of 3 and 4
         // Well, tavern and Archery upgrade are more important
         static const std::vector<BuildOrder> knightBuildOrder
-            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 },   { DWELLING_UPGRADE6, 2 }, { DWELLING_MONSTER6, 1 },
+            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 },   { DWELLING_UPGRADE11, 1 }, { DWELLING_UPGRADE6, 2 }, { DWELLING_MONSTER6, 1 },
                 { DWELLING_UPGRADE5, 2 }, { DWELLING_MONSTER5, 2 }, { DWELLING_UPGRADE4, 2 },   { DWELLING_MONSTER4, 1 }, { DWELLING_UPGRADE3, 2 },
                 { DWELLING_MONSTER3, 1 }, { DWELLING_UPGRADE2, 1 }, { DWELLING_MONSTER2, 3 },   { DWELLING_MONSTER1, 4 }, { BUILD_WELL, 1 },
                 { BUILD_TAVERN, 1 },      { BUILD_MAGEGUILD1, 2 },  { BUILD_MAGEGUILD2, 3 },    { BUILD_MAGEGUILD3, 5 },  { BUILD_MAGEGUILD4, 5 },
@@ -345,7 +345,7 @@ void AI::Planner::reinforceCastle( Castle & castle )
     }
 
     // It is allowed to hire non-upgraded units even if an upgraded dwelling is built
-    static const std::array<uint64_t, 15> castleDwellings{ DWELLING_UPGRADE10, DWELLING_UPGRADE9, DWELLING_UPGRADE8, DWELLING_UPGRADE7, DWELLING_UPGRADE6, DWELLING_MONSTER6,
+    static const std::array<uint64_t, 16> castleDwellings{ DWELLING_UPGRADE11, DWELLING_UPGRADE10, DWELLING_UPGRADE9, DWELLING_UPGRADE8, DWELLING_UPGRADE7, DWELLING_UPGRADE6, DWELLING_MONSTER6,
                                                            DWELLING_UPGRADE5, DWELLING_MONSTER5, DWELLING_UPGRADE4, DWELLING_MONSTER4, DWELLING_UPGRADE3,
                                                            DWELLING_MONSTER3, DWELLING_UPGRADE2, DWELLING_MONSTER2, DWELLING_MONSTER1 };
 

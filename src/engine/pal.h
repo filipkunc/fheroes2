@@ -48,6 +48,8 @@ namespace PAL
         BLOOD_CRYPT, // For transforming Laboratory dwelling into Upg. Laboratory.
         THOR, // For transforming Titan into Thor (electric blue/white).
         THOR_TOWER, // For transforming Upg. Cloud Castle into Hall of Valhalla.
+        AVENGER, // For transforming Crusader into Avenger (golden/white).
+        AVENGER_CHAPEL, // For transforming Upg. Cathedral into Avenger's Chapel.
         CUSTOM
     };
 

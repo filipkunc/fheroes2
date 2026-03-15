@@ -68,7 +68,8 @@ namespace fheroes2
         AREA_SHOT,
         MORAL_DECREMENT,
         ENEMY_HALVING,
-        SOUL_EATER
+        SOUL_EATER,
+        DOUBLE_DAMAGE_TO_DRAGONS
     };
 
     enum class MonsterWeaknessType : int
