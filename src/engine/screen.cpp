@@ -1084,10 +1084,22 @@ namespace
 
         bool _isVSyncEnabled{ false };
 
+        // Cached SDL texture for RGBA overlay rendering at physical pixel resolution.
+        SDL_Texture * _rgbaOverlayTexture{ nullptr };
+        int32_t _rgbaOverlayTextureW{ 0 };
+        int32_t _rgbaOverlayTextureH{ 0 };
+
         RenderEngine() = default;
 
         void clear() override
         {
+            if ( _rgbaOverlayTexture != nullptr ) {
+                SDL_DestroyTexture( _rgbaOverlayTexture );
+                _rgbaOverlayTexture = nullptr;
+                _rgbaOverlayTextureW = 0;
+                _rgbaOverlayTextureH = 0;
+            }
+
             if ( _texture != nullptr ) {
                 SDL_DestroyTexture( _texture );
                 _texture = nullptr;
@@ -1160,7 +1172,89 @@ namespace
                 return;
             }
 
+            // Render RGBA overlays at 1:1 physical pixel resolution on top of the scaled game scene.
+            _renderRGBAOverlays( display );
+
             SDL_RenderPresent( _renderer );
+        }
+
+        void _renderRGBAOverlays( const fheroes2::Display & display )
+        {
+            const auto & overlays = display.getRGBAOverlays();
+            if ( overlays.empty() || _renderer == nullptr ) {
+                return;
+            }
+
+            // Get the physical output size of the renderer (actual pixels on screen).
+            int outputW = 0;
+            int outputH = 0;
+            SDL_GetRendererOutputSize( _renderer, &outputW, &outputH );
+
+            if ( outputW <= 0 || outputH <= 0 ) {
+                return;
+            }
+
+            const int32_t gameW = display.width();
+            const int32_t gameH = display.height();
+
+            if ( gameW <= 0 || gameH <= 0 ) {
+                return;
+            }
+
+            // Compute the scale factor and letterbox/pillarbox offset that SDL_RenderSetLogicalSize applies.
+            const float scaleX = static_cast<float>( outputW ) / static_cast<float>( gameW );
+            const float scaleY = static_cast<float>( outputH ) / static_cast<float>( gameH );
+            const float scale = std::min( scaleX, scaleY );
+
+            const int32_t viewportW = static_cast<int32_t>( static_cast<float>( gameW ) * scale );
+            const int32_t viewportH = static_cast<int32_t>( static_cast<float>( gameH ) * scale );
+            const int32_t offsetX = ( outputW - viewportW ) / 2;
+            const int32_t offsetY = ( outputH - viewportH ) / 2;
+
+            // Temporarily disable logical size so we can render at physical pixel coordinates.
+            SDL_RenderSetLogicalSize( _renderer, 0, 0 );
+
+            for ( const fheroes2::RGBAOverlay & overlay : overlays ) {
+                if ( overlay.image == nullptr || overlay.image->empty() ) {
+                    continue;
+                }
+
+                const int32_t srcW = overlay.image->width();
+                const int32_t srcH = overlay.image->height();
+
+                // Recreate the texture if the overlay size changed.
+                if ( _rgbaOverlayTexture == nullptr || _rgbaOverlayTextureW != srcW || _rgbaOverlayTextureH != srcH ) {
+                    if ( _rgbaOverlayTexture != nullptr ) {
+                        SDL_DestroyTexture( _rgbaOverlayTexture );
+                    }
+                    _rgbaOverlayTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, srcW, srcH );
+                    if ( _rgbaOverlayTexture == nullptr ) {
+                        continue;
+                    }
+                    SDL_SetTextureBlendMode( _rgbaOverlayTexture, SDL_BLENDMODE_BLEND );
+                    _rgbaOverlayTextureW = srcW;
+                    _rgbaOverlayTextureH = srcH;
+                }
+
+                // Upload RGBA pixel data to the texture.
+                SDL_UpdateTexture( _rgbaOverlayTexture, nullptr, overlay.image->data(), srcW * 4 );
+
+                // Compute the desired physical pixel size. If gameWidth is set, scale to match that many game pixels.
+                const int32_t targetGameW = ( overlay.gameWidth > 0 ) ? overlay.gameWidth : srcW;
+                const float overlayScale = ( static_cast<float>( targetGameW ) * scale ) / static_cast<float>( srcW );
+
+                SDL_Rect dstRect;
+                dstRect.x = offsetX + static_cast<int>( static_cast<float>( overlay.x ) * scale );
+                dstRect.y = offsetY + static_cast<int>( static_cast<float>( overlay.y ) * scale );
+                dstRect.w = static_cast<int>( static_cast<float>( srcW ) * overlayScale );
+                dstRect.h = static_cast<int>( static_cast<float>( srcH ) * overlayScale );
+
+                const SDL_RendererFlip flipFlag = overlay.flip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+                SDL_RenderCopyEx( _renderer, _rgbaOverlayTexture, nullptr, &dstRect, 0.0, nullptr, flipFlag );
+            }
+
+            // Restore logical size for subsequent rendering.
+            SDL_RenderSetLogicalSize( _renderer, gameW, gameH );
         }
 
         bool allocate( fheroes2::ResolutionInfo & resolutionInfo, bool isFullScreen ) override

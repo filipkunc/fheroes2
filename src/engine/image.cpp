@@ -3266,4 +3266,44 @@ namespace fheroes2
             }
         }
     }
+
+    RGBAImage::RGBAImage( const int32_t width, const int32_t height )
+    {
+        resize( width, height );
+    }
+
+    RGBAImage::RGBAImage( RGBAImage && image ) noexcept
+        : _width( image._width )
+        , _height( image._height )
+        , _data( std::move( image._data ) )
+    {
+        image._width = 0;
+        image._height = 0;
+    }
+
+    RGBAImage & RGBAImage::operator=( RGBAImage && image ) noexcept
+    {
+        if ( this != &image ) {
+            _width = image._width;
+            _height = image._height;
+            _data = std::move( image._data );
+            image._width = 0;
+            image._height = 0;
+        }
+        return *this;
+    }
+
+    void RGBAImage::resize( const int32_t width, const int32_t height )
+    {
+        if ( width <= 0 || height <= 0 ) {
+            _width = 0;
+            _height = 0;
+            _data.reset();
+            return;
+        }
+
+        _width = width;
+        _height = height;
+        _data.reset( new uint8_t[static_cast<size_t>( width ) * height * 4] );
+    }
 }

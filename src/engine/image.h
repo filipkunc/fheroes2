@@ -366,4 +366,64 @@ namespace fheroes2
     void Transpose( const Image & in, Image & out );
 
     void updateShadow( Image & image, const Point & shadowOffset, const uint8_t transformId, const bool connectCorners );
+
+    // RGBA image with 4 bytes per pixel (R, G, B, A). Used for true-color rendering.
+    class RGBAImage
+    {
+    public:
+        RGBAImage() = default;
+        RGBAImage( const int32_t width, const int32_t height );
+
+        RGBAImage( const RGBAImage & ) = delete;
+        RGBAImage & operator=( const RGBAImage & ) = delete;
+
+        ~RGBAImage() = default;
+
+        RGBAImage( RGBAImage && image ) noexcept;
+        RGBAImage & operator=( RGBAImage && image ) noexcept;
+
+        int32_t width() const
+        {
+            return _width;
+        }
+
+        int32_t height() const
+        {
+            return _height;
+        }
+
+        bool empty() const
+        {
+            return !_data;
+        }
+
+        uint8_t * data()
+        {
+            return _data.get();
+        }
+
+        const uint8_t * data() const
+        {
+            return _data.get();
+        }
+
+        void resize( int32_t width, int32_t height );
+
+    private:
+        int32_t _width{ 0 };
+        int32_t _height{ 0 };
+        std::unique_ptr<uint8_t[]> _data; // RGBA, 4 bytes per pixel
+    };
+
+    // Position info for RGBA overlay rendering. Position is in game pixels.
+    struct RGBAOverlay
+    {
+        const RGBAImage * image{ nullptr };
+        int32_t x{ 0 };
+        int32_t y{ 0 };
+        // Desired width in game pixels. The height is computed to preserve aspect ratio.
+        // If 0, uses the source image width (1 source pixel = 1 game pixel).
+        int32_t gameWidth{ 0 };
+        bool flip{ false };
+    };
 }

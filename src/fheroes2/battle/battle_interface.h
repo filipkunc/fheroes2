@@ -619,6 +619,10 @@ namespace Battle
             }
         };
 
+        // RGBA sprite frames for Thor (true-color rendering).
+        std::vector<fheroes2::RGBAImage> _rgbaThorFrames;
+        bool _rgbaThorLoaded{ false };
+
         // Intents are used to confirm actions in combat performed using touch gestures
         BoardActionIntent _boardActionIntent;
 

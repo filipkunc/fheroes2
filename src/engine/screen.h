@@ -263,6 +263,22 @@ namespace fheroes2
             return _screenSize;
         }
 
+        // RGBA overlay support for true-color rendering.
+        void addRGBAOverlay( const RGBAImage & overlay, const int32_t x, const int32_t y, const int32_t gameWidth = 0, const bool flip = false )
+        {
+            _rgbaOverlays.push_back( { &overlay, x, y, gameWidth, flip } );
+        }
+
+        void clearRGBAOverlays()
+        {
+            _rgbaOverlays.clear();
+        }
+
+        const std::vector<RGBAOverlay> & getRGBAOverlays() const
+        {
+            return _rgbaOverlays;
+        }
+
         friend BaseRenderEngine & engine();
         friend Cursor & cursor();
 
@@ -278,6 +294,8 @@ namespace fheroes2
         Rect _prevRoi;
 
         Size _screenSize;
+
+        std::vector<RGBAOverlay> _rgbaOverlays;
 
         // Only for cases of direct drawing on rendered 8-bit image.
         void linkRenderSurface( uint8_t * surface )

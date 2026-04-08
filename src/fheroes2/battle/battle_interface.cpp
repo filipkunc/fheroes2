@@ -55,6 +55,7 @@
 #include "game_delays.h"
 #include "game_hotkeys.h"
 #include "ground.h"
+#include "image_tool.h"
 #include "heroes_base.h"
 #include "interface_list.h"
 #include "localevent.h"
@@ -1483,10 +1484,24 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
     _battleGround.resize( area.width, battlefieldHeight );
 
     AudioManager::ResetAudio();
+
+    // Load all RGBA Thor animation frames.
+    _rgbaThorFrames.resize( 56 );
+    _rgbaThorLoaded = true;
+    for ( int i = 0; i < 56; ++i ) {
+        char filename[64];
+        snprintf( filename, sizeof( filename ), "files/data/sprites/thor_%03d.png", i );
+        if ( !fheroes2::LoadRGBA( filename, _rgbaThorFrames[i] ) ) {
+            _rgbaThorLoaded = false;
+            break;
+        }
+    }
 }
 
 Battle::Interface::~Interface()
 {
+    fheroes2::Display::instance().clearRGBAOverlays();
+
     AudioManager::ResetAudio();
 
     // Turn order dialog can be outside the battlefield area.
@@ -1600,6 +1615,7 @@ void Battle::Interface::Redraw()
 
 void Battle::Interface::RedrawPartialStart()
 {
+    fheroes2::Display::instance().clearRGBAOverlays();
     RedrawCover();
     RedrawArmies();
 }
@@ -2002,9 +2018,55 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
 
     const fheroes2::Sprite & monsterSprite = isCurrentMonsterAction ? *_spriteInsteadCurrentUnit : fheroes2::AGG::GetICN( unit.GetMonsterSprite(), unit.GetFrame() );
 
+    const bool isThorRGBA = _rgbaThorLoaded && unit.GetID() == Monster::THOR && !isCurrentMonsterAction;
+
     fheroes2::Point drawnPosition;
 
-    if ( unit.Modes( SP_STONE | CAP_MIRRORIMAGE ) ) {
+    if ( isThorRGBA ) {
+        // For Thor with RGBA sprites: compute position from palette sprite but skip the palette blit.
+        drawnPosition = GetTroopPosition( unit, monsterSprite );
+
+        // Apply movement/flying offsets (same logic as _drawTroopSprite).
+        if ( _movingUnit == &unit && _movingUnit->animation.animationLength() ) {
+            const fheroes2::Rect & unitPosition = unit.GetRectPosition();
+            const int32_t moveX = _movingPos.x - unitPosition.x;
+            const int32_t moveY = _movingPos.y - unitPosition.y;
+
+            if ( _movingUnit->isAbilityPresent( fheroes2::MonsterAbilityType::FLYING ) ) {
+                const double movementProgress = _movingUnit->animation.movementProgress();
+                drawnPosition.x += static_cast<int32_t>( movementProgress * moveX );
+                drawnPosition.y += static_cast<int32_t>( movementProgress * moveY );
+            }
+            else if ( moveY != 0 ) {
+                drawnPosition.x -= Sign( moveX ) * ( _movingUnit->animation.getCurrentFrameXOffset() ) / 2;
+                drawnPosition.y += static_cast<int32_t>( _movingUnit->animation.movementProgress() * moveY );
+            }
+        }
+        else if ( _flyingUnit == &unit ) {
+            const fheroes2::Rect & unitPosition = unit.GetRectPosition();
+            const int32_t moveX = _flyingPos.x - unitPosition.x;
+            const int32_t moveY = _flyingPos.y - unitPosition.y;
+            const double movementProgress = _flyingUnit->animation.movementProgress();
+            drawnPosition.x += moveX + static_cast<int32_t>( ( _movingPos.x - _flyingPos.x ) * movementProgress );
+            drawnPosition.y += moveY + static_cast<int32_t>( ( _movingPos.y - _flyingPos.y ) * movementProgress );
+        }
+
+        // Add the RGBA overlay for the current animation frame.
+        const int32_t frame = unit.GetFrame();
+        if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) ) {
+            const fheroes2::RGBAImage & rgbaFrame = _rgbaThorFrames[frame];
+
+            // Scale factor: ratio of palette sprite width to RGBA sprite width, applied to game-pixel width.
+            const int32_t gameWidth = monsterSprite.width();
+
+            // Convert _mainSurface position to Display position.
+            const int32_t displayX = _interfacePosition.x + drawnPosition.x;
+            const int32_t displayY = _interfacePosition.y + drawnPosition.y;
+
+            fheroes2::Display::instance().addRGBAOverlay( rgbaFrame, displayX, displayY, gameWidth, unit.isReflect() );
+        }
+    }
+    else if ( unit.Modes( SP_STONE | CAP_MIRRORIMAGE ) ) {
         // Apply Stone or Mirror image visual effect.
         fheroes2::Sprite modifiedMonsterSprite( monsterSprite );
         const PAL::PaletteType paletteType = unit.Modes( SP_STONE ) ? PAL::PaletteType::GRAY : PAL::PaletteType::MIRROR_IMAGE;

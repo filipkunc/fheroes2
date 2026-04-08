@@ -246,6 +246,46 @@ namespace fheroes2
         return true;
     }
 
+    bool LoadRGBA( const std::string & path, RGBAImage & image )
+    {
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+
+#if defined( WITH_IMAGE )
+        loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
+#else
+        loadedSurface.reset( SDL_LoadBMP( System::encLocalToUTF8( path ).c_str() ) );
+#endif
+        if ( !loadedSurface ) {
+            return false;
+        }
+
+        // Convert to RGBA32 format.
+        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
+        if ( !pixelFormat ) {
+            return false;
+        }
+
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ), SDL_FreeSurface );
+        if ( !surface ) {
+            return false;
+        }
+
+        assert( surface->format->BytesPerPixel == 4 );
+
+        image.resize( surface->w, surface->h );
+
+        const uint8_t * srcRow = static_cast<const uint8_t *>( surface->pixels );
+        uint8_t * dstRow = image.data();
+
+        for ( int32_t y = 0; y < surface->h; ++y ) {
+            memcpy( dstRow, srcRow, static_cast<size_t>( surface->w ) * 4 );
+            srcRow += surface->pitch;
+            dstRow += static_cast<ptrdiff_t>( surface->w ) * 4;
+        }
+
+        return true;
+    }
+
     Sprite decodeICNSprite( const uint8_t * data, const uint8_t * dataEnd, const ICNHeader & icnHeader )
     {
         Sprite sprite( icnHeader.width, icnHeader.height, icnHeader.offsetX, icnHeader.offsetY );
