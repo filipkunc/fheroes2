@@ -23,9 +23,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <initializer_list>
 #include <iterator>
 #include <optional>
+#include <vector>
 #include <ostream>
 #include <set>
 #include <utility>
@@ -1085,6 +1085,11 @@ namespace
 
         bool _isVSyncEnabled{ false };
 
+        // Cached SDL texture for software cursor rendering on top of RGBA overlays.
+        SDL_Texture * _cursorTexture{ nullptr };
+        int32_t _cursorTextureW{ 0 };
+        int32_t _cursorTextureH{ 0 };
+
         // Cached SDL texture for RGBA overlay rendering at physical pixel resolution.
         SDL_Texture * _rgbaOverlayTexture{ nullptr };
         int32_t _rgbaOverlayTextureW{ 0 };
@@ -1094,6 +1099,13 @@ namespace
 
         void clear() override
         {
+            if ( _cursorTexture != nullptr ) {
+                SDL_DestroyTexture( _cursorTexture );
+                _cursorTexture = nullptr;
+                _cursorTextureW = 0;
+                _cursorTextureH = 0;
+            }
+
             if ( _rgbaOverlayTexture != nullptr ) {
                 SDL_DestroyTexture( _rgbaOverlayTexture );
                 _rgbaOverlayTexture = nullptr;
@@ -1141,12 +1153,6 @@ namespace
 
             copyImageToSurface( display, _surface, roi );
 
-            // Composite the parallel RGBA layer onto the 32-bit surface, replacing palette-converted pixels with true RGBA colors.
-            const fheroes2::RGBAImage * compositLayer = display.getRGBACompositLayer();
-            if ( compositLayer != nullptr && !compositLayer->empty() && _surface->format->BitsPerPixel == 32 ) {
-                _compositeRGBALayer( display, roi );
-            }
-
             const bool fullFrame = ( roi.width == display.width() ) && ( roi.height == display.height() );
             if ( fullFrame ) {
                 const int returnCode = SDL_UpdateTexture( _texture, nullptr, _surface->pixels, _surface->pitch );
@@ -1183,58 +1189,6 @@ namespace
             _renderRGBAOverlays( display );
 
             SDL_RenderPresent( _renderer );
-        }
-
-        void _compositeRGBALayer( const fheroes2::Display & display, const fheroes2::Rect & roi )
-        {
-            const fheroes2::RGBAImage * layer = display.getRGBACompositLayer();
-            if ( layer == nullptr || layer->empty() || _surface == nullptr || _surface->format->BitsPerPixel != 32 ) {
-                return;
-            }
-
-            const int32_t layerW = layer->width();
-            const int32_t layerH = layer->height();
-            const int32_t layerOffX = display.getRGBACompositOffsetX();
-            const int32_t layerOffY = display.getRGBACompositOffsetY();
-            const int32_t displayW = display.width();
-
-            // Compute the intersection of the ROI with the RGBA layer area.
-            const int32_t startX = std::max( { roi.x, layerOffX, 0 } );
-            const int32_t startY = std::max( { roi.y, layerOffY, 0 } );
-            const int32_t endX = std::min( { roi.x + roi.width, layerOffX + layerW, displayW } );
-            const int32_t endY = std::min( { roi.y + roi.height, layerOffY + layerH, static_cast<int32_t>( _surface->h ) } );
-
-            if ( startX >= endX || startY >= endY ) {
-                return;
-            }
-
-            if ( SDL_MUSTLOCK( _surface ) ) {
-                SDL_LockSurface( _surface );
-            }
-
-            const uint8_t * layerData = layer->data();
-
-            for ( int32_t y = startY; y < endY; ++y ) {
-                const int32_t layerY = y - layerOffY;
-                const uint8_t * layerRow = layerData + ( static_cast<ptrdiff_t>( layerY ) * layerW * 4 );
-                uint32_t * surfaceRow = reinterpret_cast<uint32_t *>( static_cast<uint8_t *>( _surface->pixels )
-                                                                      + ( static_cast<ptrdiff_t>( y ) * _surface->pitch ) );
-
-                for ( int32_t x = startX; x < endX; ++x ) {
-                    const int32_t layerX = x - layerOffX;
-                    const uint8_t * px = layerRow + ( static_cast<ptrdiff_t>( layerX ) * 4 );
-
-                    if ( px[3] == 0 ) {
-                        continue;
-                    }
-
-                    surfaceRow[x] = SDL_MapRGB( _surface->format, px[0], px[1], px[2] );
-                }
-            }
-
-            if ( SDL_MUSTLOCK( _surface ) ) {
-                SDL_UnlockSurface( _surface );
-            }
         }
 
         void _renderRGBAOverlays( const fheroes2::Display & display )
@@ -1312,8 +1266,70 @@ namespace
                 SDL_RenderCopyEx( _renderer, _rgbaOverlayTexture, nullptr, &dstRect, 0.0, nullptr, flipFlag );
             }
 
+            // Render the software cursor as an RGBA texture on top of everything.
+            if ( fheroes2::cursor().isVisible() && fheroes2::cursor().isSoftwareEmulation() ) {
+                _renderCursorOverlay( scale, offsetX, offsetY );
+            }
+
             // Restore logical size for subsequent rendering.
             SDL_RenderSetLogicalSize( _renderer, gameW, gameH );
+        }
+
+        // Render the software cursor as an RGBA texture on top of all overlays.
+        void _renderCursorOverlay( const float scale, const int32_t offsetX, const int32_t offsetY )
+        {
+            const fheroes2::Sprite & cursorImg = fheroes2::cursor().getImage();
+            if ( cursorImg.empty() ) {
+                return;
+            }
+
+            const int32_t w = cursorImg.width();
+            const int32_t h = cursorImg.height();
+
+            // Recreate cursor texture if size changed.
+            if ( _cursorTexture == nullptr || _cursorTextureW != w || _cursorTextureH != h ) {
+                if ( _cursorTexture != nullptr ) {
+                    SDL_DestroyTexture( _cursorTexture );
+                }
+                _cursorTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, w, h );
+                if ( _cursorTexture == nullptr ) {
+                    return;
+                }
+                SDL_SetTextureBlendMode( _cursorTexture, SDL_BLENDMODE_BLEND );
+                _cursorTextureW = w;
+                _cursorTextureH = h;
+            }
+
+            // Convert the indexed cursor sprite to RGBA.
+            const uint8_t * imageData = cursorImg.image();
+            const uint8_t * transformData = cursorImg.singleLayer() ? nullptr : cursorImg.transform();
+
+            // Use a stack buffer for small cursors, heap for large ones.
+            const size_t pixelCount = static_cast<size_t>( w ) * h;
+            std::vector<uint32_t> rgbaPixels( pixelCount );
+
+            for ( size_t i = 0; i < pixelCount; ++i ) {
+                if ( transformData != nullptr && transformData[i] == 1 ) {
+                    // Transparent pixel.
+                    rgbaPixels[i] = 0;
+                }
+                else {
+                    const uint8_t * pal = currentPalette + static_cast<ptrdiff_t>( imageData[i] ) * 3;
+                    // RGBA32: R, G, B, A in byte order.
+                    rgbaPixels[i] = static_cast<uint32_t>( pal[0] ) | ( static_cast<uint32_t>( pal[1] ) << 8 ) | ( static_cast<uint32_t>( pal[2] ) << 16 )
+                                    | ( static_cast<uint32_t>( 255 ) << 24 );
+                }
+            }
+
+            SDL_UpdateTexture( _cursorTexture, nullptr, rgbaPixels.data(), w * 4 );
+
+            SDL_Rect dstRect;
+            dstRect.x = offsetX + static_cast<int>( static_cast<float>( cursorImg.x() ) * scale );
+            dstRect.y = offsetY + static_cast<int>( static_cast<float>( cursorImg.y() ) * scale );
+            dstRect.w = static_cast<int>( static_cast<float>( w ) * scale );
+            dstRect.h = static_cast<int>( static_cast<float>( h ) * scale );
+
+            SDL_RenderCopy( _renderer, _cursorTexture, nullptr, &dstRect );
         }
 
         bool allocate( fheroes2::ResolutionInfo & resolutionInfo, bool isFullScreen ) override

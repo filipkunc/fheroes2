@@ -619,13 +619,34 @@ namespace Battle
             }
         };
 
-        // Parallel RGBA layer for true-color sprite compositing (same size as _mainSurface).
-        fheroes2::RGBAImage _rgbaLayer;
+        // Depth buffer for z-order tracking (same dimensions as _mainSurface).
+        // Each pixel stores the draw-order index of the last sprite that wrote it.
+        std::vector<uint16_t> _depthBuffer;
+        uint16_t _currentDepth{ 0 };
 
-        // RGBA sprite frames for Thor (true-color rendering).
-        // Pre-scaled to match palette sprite dimensions per frame.
+        // Write the current depth value into the depth buffer for a sprite's non-transparent pixels.
+        void _writeDepth( const fheroes2::Image & sprite, int32_t outX, int32_t outY, bool flip );
+
+        // RGBA sprite frames for Thor at original PNG resolution.
         std::vector<fheroes2::RGBAImage> _rgbaThorFrames;
         bool _rgbaThorLoaded{ false };
+
+        // Per-frame RGBA overlay info for depth-masked rendering.
+        struct RGBAOverlayInfo
+        {
+            const fheroes2::RGBAImage * src{ nullptr };
+            int32_t posX{ 0 };
+            int32_t posY{ 0 };
+            int32_t gameWidth{ 0 };
+            int32_t gameHeight{ 0 };
+            bool flip{ false };
+            uint16_t depth{ 0 };
+            fheroes2::RGBAImage masked;
+        };
+
+        std::vector<RGBAOverlayInfo> _rgbaOverlays;
+
+        void _generateMaskedRGBAOverlays();
 
         // Intents are used to confirm actions in combat performed using touch gestures
         BoardActionIntent _boardActionIntent;
