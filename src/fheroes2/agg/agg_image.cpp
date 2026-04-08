@@ -26,6 +26,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <initializer_list>
 #include <map>
 #include <numeric>
@@ -47,8 +48,11 @@
 #include "math_base.h"
 #include "pal.h"
 #include "rand.h"
+#include "logging.h"
 #include "screen.h"
 #include "serialize.h"
+#include "settings.h"
+#include "system.h"
 #include "til.h"
 #include "tools.h"
 #include "translations.h"
@@ -2444,6 +2448,144 @@ namespace
         }
     }
 
+    // Try to load custom monster sprites from PNG files in files/data/sprites/ directory.
+    // Uses offsets from the base ICN sprites to position frames correctly on the battle hex.
+    // Returns true if all frames were loaded successfully.
+    bool loadCustomSpritesFromPNG( const std::string & prefix, const int baseIcnId, const size_t frameCount, std::vector<fheroes2::Sprite> & sprites )
+    {
+        const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
+
+        // Try to find the first frame to verify the directory exists
+        char fileNameBuffer[128];
+        snprintf( fileNameBuffer, sizeof( fileNameBuffer ), "%s_%03d.png", prefix.c_str(), 0 );
+
+        VERBOSE_LOG( "Looking for custom sprites: dir=" << spritesDir << " file=" << fileNameBuffer )
+
+        std::string firstFramePath;
+        if ( !Settings::findFile( spritesDir, fileNameBuffer, firstFramePath ) ) {
+            VERBOSE_LOG( "Custom sprites not found for " << prefix )
+            return false;
+        }
+
+        // Ensure the base ICN is loaded so we can copy per-frame position offsets.
+        loadICN( baseIcnId );
+
+        VERBOSE_LOG( "Loading custom sprites from PNG: " << prefix << " (" << frameCount << " frames) first=" << firstFramePath )
+
+        sprites.resize( frameCount );
+
+        for ( size_t i = 0; i < frameCount; ++i ) {
+            snprintf( fileNameBuffer, sizeof( fileNameBuffer ), "%s_%03d.png", prefix.c_str(), static_cast<int>( i ) );
+
+            std::string framePath;
+            if ( !Settings::findFile( spritesDir, fileNameBuffer, framePath ) ) {
+                VERBOSE_LOG( "  Missing frame: " << fileNameBuffer )
+                sprites.clear();
+                return false;
+            }
+
+            fheroes2::Sprite loadedSprite;
+            const bool loadOk = fheroes2::Load( framePath, loadedSprite );
+
+            if ( !loadOk || loadedSprite.width() <= 1 ) {
+                // Placeholder or failed frame — use the base sprite instead.
+                if ( i < _icnVsSprite[baseIcnId].size() ) {
+                    const fheroes2::Sprite & base = _icnVsSprite[baseIcnId][i];
+                    sprites[i] = base;
+                    VERBOSE_LOG( "  Frame " << i << ": FALLBACK to base (" << base.width() << "x" << base.height()
+                                            << " pos=" << base.x() << "," << base.y() << " singleLayer=" << base.singleLayer()
+                                            << ") loadOk=" << loadOk << " loadedSize=" << loadedSprite.width() << "x" << loadedSprite.height() )
+                }
+                else {
+                    VERBOSE_LOG( "  Frame " << i << ": FALLBACK but no base sprite available" )
+                }
+                continue;
+            }
+
+            if ( i < _icnVsSprite[baseIcnId].size() ) {
+                const fheroes2::Sprite & base = _icnVsSprite[baseIcnId][i];
+                const int32_t loadedW = loadedSprite.width();
+                const int32_t loadedH = loadedSprite.height();
+                const bool needsResize = ( loadedW != base.width() || loadedH != base.height() );
+
+                if ( needsResize ) {
+                    sprites[i].resize( base.width(), base.height() );
+                    sprites[i].reset();
+                    fheroes2::Resize( loadedSprite, 0, 0, loadedW, loadedH,
+                                      sprites[i], 0, 0, base.width(), base.height() );
+                }
+                else {
+                    sprites[i] = std::move( loadedSprite );
+                }
+
+                sprites[i].setPosition( base.x(), base.y() );
+
+                // For same-size sprites, copy the base transform layer to preserve shadows.
+                // For resized sprites, keep the transform from Load() (PNG alpha).
+                const bool copyTransform = !needsResize && !base.singleLayer();
+                if ( copyTransform ) {
+                    memcpy( sprites[i].transform(), base.transform(),
+                            static_cast<size_t>( base.width() ) * base.height() );
+                }
+
+                VERBOSE_LOG( "  Frame " << i << ": loaded=" << loadedW << "x" << loadedH
+                                        << " base=" << base.width() << "x" << base.height()
+                                        << " pos=" << base.x() << "," << base.y()
+                                        << " resized=" << needsResize
+                                        << " copyTransform=" << copyTransform
+                                        << " final=" << sprites[i].width() << "x" << sprites[i].height()
+                                        << " singleLayer=" << sprites[i].singleLayer() )
+            }
+            else {
+                sprites[i] = std::move( loadedSprite );
+                VERBOSE_LOG( "  Frame " << i << ": loaded=" << loadedSprite.width() << "x" << loadedSprite.height() << " (no base)" )
+            }
+        }
+
+        VERBOSE_LOG( "  Successfully loaded " << frameCount << " custom sprites for " << prefix )
+        return true;
+    }
+
+    // Try to load a single custom PNG sprite from files/data/sprites/ directory.
+    // The base sprite provides dimensions and position offsets.
+    // Returns true if the sprite was loaded successfully.
+    bool loadSingleCustomPNG( const std::string & fileName, const fheroes2::Sprite & baseSprite, fheroes2::Sprite & outSprite )
+    {
+        const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
+
+        std::string filePath;
+        if ( !Settings::findFile( spritesDir, fileName, filePath ) ) {
+            return false;
+        }
+
+        fheroes2::Sprite loadedSprite;
+        if ( !fheroes2::Load( filePath, loadedSprite ) || loadedSprite.width() <= 1 ) {
+            return false;
+        }
+
+        const int32_t loadedW = loadedSprite.width();
+        const int32_t loadedH = loadedSprite.height();
+        const bool needsResize = ( loadedW != baseSprite.width() || loadedH != baseSprite.height() );
+
+        if ( needsResize ) {
+            outSprite.resize( baseSprite.width(), baseSprite.height() );
+            outSprite.reset();
+            fheroes2::Resize( loadedSprite, 0, 0, loadedW, loadedH, outSprite, 0, 0, baseSprite.width(), baseSprite.height() );
+        }
+        else {
+            outSprite = std::move( loadedSprite );
+        }
+
+        outSprite.setPosition( baseSprite.x(), baseSprite.y() );
+
+        if ( !needsResize && !baseSprite.singleLayer() ) {
+            memcpy( outSprite.transform(), baseSprite.transform(), static_cast<size_t>( baseSprite.width() ) * baseSprite.height() );
+        }
+
+        VERBOSE_LOG( "  Loaded custom sprite: " << fileName << " " << loadedW << "x" << loadedH << " -> " << outSprite.width() << "x" << outSprite.height() )
+        return true;
+    }
+
     //  This function modifies (fixes) the original ICNs and generate new fheroes2-related ICNs.
     // WARNING: This function must be called only once from `loadICN()` function!
     void processICN( const int id )
@@ -2453,15 +2595,18 @@ namespace
 
         switch ( id ) {
         case ICN::DRAGAZUR: {
-            // Try to load Azure Dragon sprites from H2D file first (allows custom/AI-edited sprites).
-            // If not available, fall back to runtime generation from Green Dragon with palette transformation.
-            bool loadedFromH2D = false;
-            const size_t azureDragonSpriteCount = 54; // Same as Green Dragon sprite count
+            const size_t azureDragonSpriteCount = 54;
 
+            // 1. Try loading custom PNG sprites from files/data/sprites/azure_dragon_NNN.png
+            //    Uses Green Dragon (DRAGGREE) offsets for correct positioning.
+            if ( loadCustomSpritesFromPNG( "azure_dragon", ICN::DRAGGREE, azureDragonSpriteCount, _icnVsSprite[id] ) ) {
+                break;
+            }
+
+            // 2. Try to load from H2D file.
+            bool loadedFromH2D = true;
             _icnVsSprite[id].resize( azureDragonSpriteCount );
 
-            // Try loading each sprite from H2D
-            loadedFromH2D = true;
             for ( size_t i = 0; i < azureDragonSpriteCount; ++i ) {
                 char spriteNameBuffer[64];
                 snprintf( spriteNameBuffer, sizeof( spriteNameBuffer ), "azure_dragon_%03zu.image", i );
@@ -2472,7 +2617,7 @@ namespace
             }
 
             if ( !loadedFromH2D ) {
-                // Fall back to runtime generation from Green Dragon with blue palette transformation.
+                // 3. Fall back to runtime generation from Green Dragon with blue palette transformation.
                 _icnVsSprite[id].clear();
                 CopyICNWithPalette( id, ICN::DRAGGREE, PAL::PaletteType::AZURE_DRAGON );
             }
@@ -2522,14 +2667,17 @@ namespace
             CopyICNWithPalette( id, ICN::TWNNDW_5, PAL::PaletteType::BLOOD_CRYPT );
             break;
         case ICN::TITNTHOR: {
-            // Thor battle sprites generated from Titan (TITANBLA) with electric blue palette transformation.
-            // Try to load from H2D file first, fall back to runtime generation.
-            bool loadedFromH2D = false;
-            const size_t thorSpriteCount = 50; // Same as Titan sprite count
+            const size_t thorSpriteCount = 56; // Must cover all animation frames including ranged (up to frame 53)
 
+            // 1. Try loading custom PNG sprites from files/data/sprites/thor_NNN.png
+            if ( loadCustomSpritesFromPNG( "thor", ICN::TITANBLA, thorSpriteCount, _icnVsSprite[id] ) ) {
+                break;
+            }
+
+            // 2. Try to load from H2D file.
+            bool loadedFromH2D = true;
             _icnVsSprite[id].resize( thorSpriteCount );
 
-            loadedFromH2D = true;
             for ( size_t i = 0; i < thorSpriteCount; ++i ) {
                 char spriteNameBuffer[64];
                 snprintf( spriteNameBuffer, sizeof( spriteNameBuffer ), "thor_%03zu.image", i );
@@ -2540,17 +2688,26 @@ namespace
             }
 
             if ( !loadedFromH2D ) {
-                // Fall back to runtime generation from Titan with blue palette transformation.
+                // 3. Fall back to runtime generation from Titan with blue palette transformation.
                 _icnVsSprite[id].clear();
                 CopyICNWithPalette( id, ICN::TITANBLA, PAL::PaletteType::THOR );
             }
             break;
         }
-        case ICN::MONH_THOR:
-            // Thor portrait generated from Titan portrait (MONH0046) with blue palette.
-            // Titan ID is 47, PEASANT is 1, so portrait index = 47 - 1 = 46.
+        case ICN::MONH_THOR: {
+            // Thor portrait: try custom PNG first, fall back to palette remap from Titan portrait.
+            loadICN( ICN::MONH0046 );
+            _icnVsSprite[id].resize( 1 );
+
+            if ( !_icnVsSprite[ICN::MONH0046].empty()
+                 && loadSingleCustomPNG( "thor_portrait.png", _icnVsSprite[ICN::MONH0046][0], _icnVsSprite[id][0] ) ) {
+                break;
+            }
+
+            _icnVsSprite[id].clear();
             CopyICNWithPalette( id, ICN::MONH0046, PAL::PaletteType::THOR );
             break;
+        }
         case ICN::TWNZUP5A:
             // Hall of Valhalla: generated from Upg. Cloud Castle (TWNZUP_5) with blue palette transform.
             CopyICNWithPalette( id, ICN::TWNZUP_5, PAL::PaletteType::THOR_TOWER );
@@ -3150,8 +3307,11 @@ namespace
                 if ( _icnVsSprite[id].size() <= thorSpriteIndex ) {
                     _icnVsSprite[id].resize( thorSpriteIndex + 1 );
                 }
-                _icnVsSprite[id][thorSpriteIndex] = _icnVsSprite[id][titanSpriteIndex];
-                ApplyPalette( _icnVsSprite[id][thorSpriteIndex], PAL::GetPalette( PAL::PaletteType::THOR ) );
+
+                if ( !loadSingleCustomPNG( "thor_mons32.png", _icnVsSprite[id][titanSpriteIndex], _icnVsSprite[id][thorSpriteIndex] ) ) {
+                    _icnVsSprite[id][thorSpriteIndex] = _icnVsSprite[id][titanSpriteIndex];
+                    ApplyPalette( _icnVsSprite[id][thorSpriteIndex], PAL::GetPalette( PAL::PaletteType::THOR ) );
+                }
             }
 
             // Add Avenger sprite (based on Crusader with golden palette).
@@ -5024,17 +5184,31 @@ namespace
                 }
             }
 
-            // Add Thor mini sprites (based on Titan with red palette).
+            // Add Thor mini sprites (based on Titan with blue palette).
             constexpr uint32_t titanMiniBaseIndex = 46 * 9;
             constexpr uint32_t thorMiniBaseIndex = 68 * 9;
             if ( _icnVsSprite[ICN::MINIMON].size() > titanMiniBaseIndex + 8 ) {
                 if ( _icnVsSprite[ICN::MINIMON].size() <= thorMiniBaseIndex + 8 ) {
                     _icnVsSprite[ICN::MINIMON].resize( thorMiniBaseIndex + 9 );
                 }
-                const std::vector<uint8_t> & thorPalette = PAL::GetPalette( PAL::PaletteType::THOR );
+
+                bool loadedCustomMini = true;
                 for ( uint32_t i = 0; i < 9; ++i ) {
-                    _icnVsSprite[ICN::MINIMON][thorMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][titanMiniBaseIndex + i];
-                    ApplyPalette( _icnVsSprite[ICN::MINIMON][thorMiniBaseIndex + i], thorPalette );
+                    char miniFileName[64];
+                    snprintf( miniFileName, sizeof( miniFileName ), "thor_mini_%03u.png", i );
+                    if ( !loadSingleCustomPNG( miniFileName, _icnVsSprite[ICN::MINIMON][titanMiniBaseIndex + i],
+                                               _icnVsSprite[ICN::MINIMON][thorMiniBaseIndex + i] ) ) {
+                        loadedCustomMini = false;
+                        break;
+                    }
+                }
+
+                if ( !loadedCustomMini ) {
+                    const std::vector<uint8_t> & thorPalette = PAL::GetPalette( PAL::PaletteType::THOR );
+                    for ( uint32_t i = 0; i < 9; ++i ) {
+                        _icnVsSprite[ICN::MINIMON][thorMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][titanMiniBaseIndex + i];
+                        ApplyPalette( _icnVsSprite[ICN::MINIMON][thorMiniBaseIndex + i], thorPalette );
+                    }
                 }
             }
 
