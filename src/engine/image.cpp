@@ -447,6 +447,7 @@ namespace fheroes2
         std::swap( _width, image._width );
         std::swap( _height, image._height );
         std::swap( _singleLayer, image._singleLayer );
+        std::swap( _format, image._format );
     }
 
     Image & Image::operator=( const Image & image )
@@ -470,6 +471,7 @@ namespace fheroes2
         std::swap( _height, image._height );
         std::swap( _data, image._data );
         std::swap( _singleLayer, image._singleLayer );
+        std::swap( _format, image._format );
 
         return *this;
     }
@@ -494,6 +496,8 @@ namespace fheroes2
 
     void Image::fill( const uint8_t value )
     {
+        assert( _format == ImageFormat::INDEXED_8BIT );
+
         if ( !empty() ) {
             const size_t totalSize = static_cast<size_t>( _width ) * _height;
             memset( image(), value, totalSize );
@@ -518,7 +522,10 @@ namespace fheroes2
 
         const size_t size = static_cast<size_t>( width_ ) * height_;
 
-        if ( _singleLayer ) {
+        if ( _format == ImageFormat::RGBA_32BIT ) {
+            _data.reset( new uint8_t[size * 4] );
+        }
+        else if ( _singleLayer ) {
             _data.reset( new uint8_t[size] );
         }
         else {
@@ -533,11 +540,18 @@ namespace fheroes2
     {
         if ( !empty() ) {
             const size_t totalSize = static_cast<size_t>( _width ) * _height;
-            memset( image(), static_cast<uint8_t>( 0 ), totalSize );
 
-            if ( !_singleLayer ) {
-                // Set the transform layer to skip all data.
-                memset( transform(), static_cast<uint8_t>( 1 ), totalSize );
+            if ( _format == ImageFormat::RGBA_32BIT ) {
+                // Zero all RGBA data (fully transparent black).
+                memset( image(), 0, totalSize * 4 );
+            }
+            else {
+                memset( image(), static_cast<uint8_t>( 0 ), totalSize );
+
+                if ( !_singleLayer ) {
+                    // Set the transform layer to skip all data.
+                    memset( transform(), static_cast<uint8_t>( 1 ), totalSize );
+                }
             }
         }
     }
@@ -553,9 +567,15 @@ namespace fheroes2
         const size_t imageSize = static_cast<size_t>( image._width ) * image._height;
 
         _singleLayer = image._singleLayer;
+        _format = image._format;
 
-        if ( image._width != _width || image._height != _height ) {
-            if ( _singleLayer ) {
+        const bool needsRealloc = ( image._width != _width || image._height != _height );
+
+        if ( needsRealloc ) {
+            if ( _format == ImageFormat::RGBA_32BIT ) {
+                _data.reset( new uint8_t[imageSize * 4] );
+            }
+            else if ( _singleLayer ) {
                 _data.reset( new uint8_t[imageSize] );
             }
             else {
@@ -566,7 +586,15 @@ namespace fheroes2
             _height = image._height;
         }
 
-        memcpy( _data.get(), image._data.get(), _singleLayer ? imageSize : imageSize * 2 );
+        size_t copySize = imageSize;
+        if ( _format == ImageFormat::RGBA_32BIT ) {
+            copySize = imageSize * 4;
+        }
+        else if ( !_singleLayer ) {
+            copySize = imageSize * 2;
+        }
+
+        memcpy( _data.get(), image._data.get(), copySize );
     }
 
     Sprite::Sprite( Sprite && sprite ) noexcept
@@ -905,6 +933,105 @@ namespace fheroes2
         return out;
     }
 
+    // Blit an RGBA_32BIT source image onto an INDEXED_8BIT destination, with palette quantization and alpha handling.
+    void BlitRGBAToIndexed( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const bool flip )
+    {
+        assert( in.format() == ImageFormat::RGBA_32BIT );
+        assert( out.format() == ImageFormat::INDEXED_8BIT );
+
+        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+            return;
+        }
+
+        const int32_t widthIn = in.width();
+        const int32_t widthOut = out.width();
+
+        uint8_t * imageOutY = out.image() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX;
+        uint8_t * transformOutY = out.singleLayer() ? nullptr : ( out.transform() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX );
+
+        for ( int32_t y = 0; y < height; ++y ) {
+            uint8_t * imageOutX = imageOutY;
+            uint8_t * transformOutX = transformOutY;
+
+            for ( int32_t x = 0; x < width; ++x ) {
+                const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( inY + y ) * widthIn + srcX ) * 4;
+                const uint8_t * px = in.image() + pixelOffset;
+
+                const uint8_t alpha = px[3];
+                if ( alpha == 0 ) {
+                    ++imageOutX;
+                    if ( transformOutX ) {
+                        ++transformOutX;
+                    }
+                    continue;
+                }
+
+                *imageOutX = GetPALColorId( px[0], px[1], px[2] );
+                if ( transformOutX ) {
+                    *transformOutX = 0;
+                    ++transformOutX;
+                }
+                ++imageOutX;
+            }
+
+            imageOutY += widthOut;
+            if ( transformOutY ) {
+                transformOutY += widthOut;
+            }
+        }
+    }
+
+    // AlphaBlit an RGBA_32BIT source onto an INDEXED_8BIT destination with per-pixel alpha and overall alpha.
+    void AlphaBlitRGBAToIndexed( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
+                                 const uint8_t alphaValue, const bool flip )
+    {
+        assert( in.format() == ImageFormat::RGBA_32BIT );
+        assert( out.format() == ImageFormat::INDEXED_8BIT );
+
+        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+            return;
+        }
+
+        const int32_t widthIn = in.width();
+        const int32_t widthOut = out.width();
+        const uint8_t * gamePalette = getGamePalette();
+
+        uint8_t * imageOutY = out.image() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX;
+
+        for ( int32_t y = 0; y < height; ++y ) {
+            uint8_t * imageOutX = imageOutY;
+
+            for ( int32_t x = 0; x < width; ++x, ++imageOutX ) {
+                const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( inY + y ) * widthIn + srcX ) * 4;
+                const uint8_t * px = in.image() + pixelOffset;
+
+                const uint8_t srcAlpha = px[3];
+                if ( srcAlpha == 0 ) {
+                    continue;
+                }
+
+                // Combine per-pixel alpha with the overall alpha value.
+                const uint32_t combinedAlpha = ( static_cast<uint32_t>( srcAlpha ) * alphaValue ) / 255;
+                if ( combinedAlpha == 0 ) {
+                    continue;
+                }
+
+                const uint32_t behindAlpha = 255 - combinedAlpha;
+                const uint8_t * outPAL = gamePalette + ( static_cast<ptrdiff_t>( *imageOutX ) * 3 );
+
+                const uint32_t red = ( static_cast<uint32_t>( px[0] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[0] ) * behindAlpha );
+                const uint32_t green = ( static_cast<uint32_t>( px[1] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[1] ) * behindAlpha );
+                const uint32_t blue = ( static_cast<uint32_t>( px[2] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[2] ) * behindAlpha );
+
+                *imageOutX = GetPALColorId( static_cast<uint8_t>( red / 255 ), static_cast<uint8_t>( green / 255 ), static_cast<uint8_t>( blue / 255 ) );
+            }
+
+            imageOutY += widthOut;
+        }
+    }
+
     void AlphaBlit( const Image & in, Image & out, const uint8_t alphaValue, const bool flip /* = false */ )
     {
         AlphaBlit( in, 0, 0, out, 0, 0, in.width(), in.height(), alphaValue, flip );
@@ -920,6 +1047,16 @@ namespace fheroes2
     {
         if ( alphaValue == 0 ) {
             // There is nothing we need to do.
+            return;
+        }
+
+        if ( in.format() == ImageFormat::RGBA_32BIT ) {
+            if ( alphaValue == 255 ) {
+                BlitRGBAToIndexed( in, inX, inY, out, outX, outY, width, height, flip );
+            }
+            else {
+                AlphaBlitRGBAToIndexed( in, inX, inY, out, outX, outY, width, height, alphaValue, flip );
+            }
             return;
         }
 
@@ -1153,7 +1290,6 @@ namespace fheroes2
             }
         }
     }
-
     void Blit( const Image & in, Image & out, const bool flip /* = false */ )
     {
         Blit( in, 0, 0, out, 0, 0, in.width(), in.height(), flip );
@@ -1176,6 +1312,11 @@ namespace fheroes2
 
     void Blit( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const bool flip /* = false */ )
     {
+        if ( in.format() == ImageFormat::RGBA_32BIT ) {
+            BlitRGBAToIndexed( in, inX, inY, out, outX, outY, width, height, flip );
+            return;
+        }
+
         if ( in.singleLayer() && !flip ) {
             Copy( in, inX, inY, out, outX, outY, width, height );
             return;
@@ -3305,5 +3446,78 @@ namespace fheroes2
         _width = width;
         _height = height;
         _data.reset( new uint8_t[static_cast<size_t>( width ) * height * 4] );
+    }
+
+    void BlitRGBA( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const bool flip )
+    {
+        if ( in.empty() || out.empty() ) {
+            return;
+        }
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t dstW = out.width();
+        const int32_t dstH = out.height();
+
+        // Clip to destination bounds.
+        const int32_t startX = std::max( outX, 0 );
+        const int32_t startY = std::max( outY, 0 );
+        const int32_t endX = std::min( outX + srcW, dstW );
+        const int32_t endY = std::min( outY + srcH, dstH );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        const uint8_t * srcData = in.data();
+        uint8_t * dstData = out.data();
+
+        for ( int32_t y = startY; y < endY; ++y ) {
+            const int32_t srcY = y - outY;
+            const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcY ) * srcW * 4 );
+            uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( y ) * dstW * 4 );
+
+            for ( int32_t x = startX; x < endX; ++x ) {
+                const int32_t srcX = flip ? ( srcW - 1 - ( x - outX ) ) : ( x - outX );
+                const uint8_t * srcPx = srcRow + ( static_cast<ptrdiff_t>( srcX ) * 4 );
+
+                if ( srcPx[3] == 0 ) {
+                    continue;
+                }
+
+                uint8_t * dstPx = dstRow + ( static_cast<ptrdiff_t>( x ) * 4 );
+                dstPx[0] = srcPx[0];
+                dstPx[1] = srcPx[1];
+                dstPx[2] = srcPx[2];
+                dstPx[3] = srcPx[3];
+            }
+        }
+    }
+
+    void ClearRGBARegion( RGBAImage & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height )
+    {
+        if ( image.empty() ) {
+            return;
+        }
+
+        const int32_t imgW = image.width();
+        const int32_t imgH = image.height();
+
+        const int32_t startX = std::max( x, 0 );
+        const int32_t startY = std::max( y, 0 );
+        const int32_t endX = std::min( x + width, imgW );
+        const int32_t endY = std::min( y + height, imgH );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        uint8_t * data = image.data();
+        const int32_t clearWidth = endX - startX;
+
+        for ( int32_t row = startY; row < endY; ++row ) {
+            const ptrdiff_t offset = ( static_cast<ptrdiff_t>( row ) * imgW + startX ) * 4;
+            memset( data + offset, 0, static_cast<size_t>( clearWidth ) * 4 );
+        }
     }
 }

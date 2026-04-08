@@ -286,6 +286,148 @@ namespace fheroes2
         return true;
     }
 
+    bool LoadRGBA( const std::string & path, RGBAImage & image, const int32_t targetWidth, const int32_t targetHeight )
+    {
+        if ( targetWidth <= 0 || targetHeight <= 0 ) {
+            return false;
+        }
+
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+
+#if defined( WITH_IMAGE )
+        loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
+#else
+        loadedSurface.reset( SDL_LoadBMP( System::encLocalToUTF8( path ).c_str() ) );
+#endif
+        if ( !loadedSurface ) {
+            return false;
+        }
+
+        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
+        if ( !pixelFormat ) {
+            return false;
+        }
+
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> rgbaSurface( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ), SDL_FreeSurface );
+        if ( !rgbaSurface ) {
+            return false;
+        }
+
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> scaledSurface(
+            SDL_CreateRGBSurfaceWithFormat( 0, targetWidth, targetHeight, 32, SDL_PIXELFORMAT_RGBA32 ), SDL_FreeSurface );
+        if ( !scaledSurface ) {
+            return false;
+        }
+
+        if ( SDL_BlitScaled( rgbaSurface.get(), nullptr, scaledSurface.get(), nullptr ) != 0 ) {
+            return false;
+        }
+
+        image.resize( targetWidth, targetHeight );
+
+        const uint8_t * srcRow = static_cast<const uint8_t *>( scaledSurface->pixels );
+        uint8_t * dstRow = image.data();
+
+        for ( int32_t y = 0; y < targetHeight; ++y ) {
+            memcpy( dstRow, srcRow, static_cast<size_t>( targetWidth ) * 4 );
+            srcRow += scaledSurface->pitch;
+            dstRow += static_cast<ptrdiff_t>( targetWidth ) * 4;
+        }
+
+        return true;
+    }
+
+    bool LoadAsRGBA( const std::string & path, Image & image )
+    {
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+
+#if defined( WITH_IMAGE )
+        loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
+#else
+        loadedSurface.reset( SDL_LoadBMP( System::encLocalToUTF8( path ).c_str() ) );
+#endif
+        if ( !loadedSurface ) {
+            return false;
+        }
+
+        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
+        if ( !pixelFormat ) {
+            return false;
+        }
+
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ), SDL_FreeSurface );
+        if ( !surface ) {
+            return false;
+        }
+
+        assert( surface->format->BytesPerPixel == 4 );
+
+        image = Image( surface->w, surface->h, ImageFormat::RGBA_32BIT );
+
+        const uint8_t * srcRow = static_cast<const uint8_t *>( surface->pixels );
+        uint8_t * dstRow = image.image();
+
+        for ( int32_t y = 0; y < surface->h; ++y ) {
+            memcpy( dstRow, srcRow, static_cast<size_t>( surface->w ) * 4 );
+            srcRow += surface->pitch;
+            dstRow += static_cast<ptrdiff_t>( surface->w ) * 4;
+        }
+
+        return true;
+    }
+
+    bool LoadAsRGBA( const std::string & path, Image & image, const int32_t targetWidth, const int32_t targetHeight )
+    {
+        if ( targetWidth <= 0 || targetHeight <= 0 ) {
+            return false;
+        }
+
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+
+#if defined( WITH_IMAGE )
+        loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
+#else
+        loadedSurface.reset( SDL_LoadBMP( System::encLocalToUTF8( path ).c_str() ) );
+#endif
+        if ( !loadedSurface ) {
+            return false;
+        }
+
+        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
+        if ( !pixelFormat ) {
+            return false;
+        }
+
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> rgbaSurface( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ), SDL_FreeSurface );
+        if ( !rgbaSurface ) {
+            return false;
+        }
+
+        // Create a target surface and scale into it.
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> scaledSurface(
+            SDL_CreateRGBSurfaceWithFormat( 0, targetWidth, targetHeight, 32, SDL_PIXELFORMAT_RGBA32 ), SDL_FreeSurface );
+        if ( !scaledSurface ) {
+            return false;
+        }
+
+        if ( SDL_BlitScaled( rgbaSurface.get(), nullptr, scaledSurface.get(), nullptr ) != 0 ) {
+            return false;
+        }
+
+        image = Image( targetWidth, targetHeight, ImageFormat::RGBA_32BIT );
+
+        const uint8_t * srcRow = static_cast<const uint8_t *>( scaledSurface->pixels );
+        uint8_t * dstRow = image.image();
+
+        for ( int32_t y = 0; y < targetHeight; ++y ) {
+            memcpy( dstRow, srcRow, static_cast<size_t>( targetWidth ) * 4 );
+            srcRow += scaledSurface->pitch;
+            dstRow += static_cast<ptrdiff_t>( targetWidth ) * 4;
+        }
+
+        return true;
+    }
+
     Sprite decodeICNSprite( const uint8_t * data, const uint8_t * dataEnd, const ICNHeader & icnHeader )
     {
         Sprite sprite( icnHeader.width, icnHeader.height, icnHeader.offsetX, icnHeader.offsetY );

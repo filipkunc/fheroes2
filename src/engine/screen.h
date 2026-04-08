@@ -279,6 +279,30 @@ namespace fheroes2
             return _rgbaOverlays;
         }
 
+        // Set a parallel RGBA compositing layer. The layer is composited during copyImageToSurface,
+        // replacing palette-converted pixels with RGBA colors where alpha > 0.
+        void setRGBACompositLayer( const RGBAImage * layer, const int32_t offsetX, const int32_t offsetY )
+        {
+            _rgbaCompositLayer = layer;
+            _rgbaCompositOffsetX = offsetX;
+            _rgbaCompositOffsetY = offsetY;
+        }
+
+        const RGBAImage * getRGBACompositLayer() const
+        {
+            return _rgbaCompositLayer;
+        }
+
+        int32_t getRGBACompositOffsetX() const
+        {
+            return _rgbaCompositOffsetX;
+        }
+
+        int32_t getRGBACompositOffsetY() const
+        {
+            return _rgbaCompositOffsetY;
+        }
+
         friend BaseRenderEngine & engine();
         friend Cursor & cursor();
 
@@ -296,6 +320,10 @@ namespace fheroes2
         Size _screenSize;
 
         std::vector<RGBAOverlay> _rgbaOverlays;
+
+        const RGBAImage * _rgbaCompositLayer{ nullptr };
+        int32_t _rgbaCompositOffsetX{ 0 };
+        int32_t _rgbaCompositOffsetY{ 0 };
 
         // Only for cases of direct drawing on rendered 8-bit image.
         void linkRenderSurface( uint8_t * surface )

@@ -30,9 +30,16 @@
 
 namespace fheroes2
 {
+    enum class ImageFormat : uint8_t
+    {
+        INDEXED_8BIT = 0,
+        RGBA_32BIT = 1
+    };
+
     // Image always contains an image layer and if image is not a single-layer then also a transform layer.
     // - image layer contains visible pixels which are copy to a destination image
     // - transform layer is used to apply some transformation to an image on which we draw the current one. For example, shadowing
+    // - for RGBA_32BIT format: data is 4 bytes per pixel (R,G,B,A), no transform layer
     class Image
     {
     public:
@@ -40,6 +47,15 @@ namespace fheroes2
 
         Image( const int32_t width, const int32_t height )
         {
+            Image::resize( width, height );
+        }
+
+        Image( const int32_t width, const int32_t height, const ImageFormat format )
+            : _format( format )
+        {
+            if ( format == ImageFormat::RGBA_32BIT ) {
+                _singleLayer = true;
+            }
             Image::resize( width, height );
         }
 
@@ -74,18 +90,21 @@ namespace fheroes2
 
         uint8_t * transform()
         {
-            // Why do you want to get transform layer from the single-layer image?
-            assert( !_singleLayer );
+            assert( !_singleLayer && _format == ImageFormat::INDEXED_8BIT );
 
             return _singleLayer ? nullptr : _data.get() + width() * height();
         }
 
         const uint8_t * transform() const
         {
-            // Why do you want to get transform layer from the single-layer image?
-            assert( !_singleLayer );
+            assert( !_singleLayer && _format == ImageFormat::INDEXED_8BIT );
 
             return _singleLayer ? nullptr : _data.get() + width() * height();
+        }
+
+        ImageFormat format() const
+        {
+            return _format;
         }
 
         bool empty() const
@@ -119,10 +138,12 @@ namespace fheroes2
 
         int32_t _width{ 0 };
         int32_t _height{ 0 };
-        std::unique_ptr<uint8_t[]> _data; // holds 2 image layers
+        std::unique_ptr<uint8_t[]> _data; // holds 2 image layers (8-bit) or RGBA data (32-bit)
 
         // Only for images which are not used for any other operations except displaying on screen.
         bool _singleLayer{ false };
+
+        ImageFormat _format{ ImageFormat::INDEXED_8BIT };
     };
 
     class Sprite : public Image
@@ -414,6 +435,12 @@ namespace fheroes2
         int32_t _height{ 0 };
         std::unique_ptr<uint8_t[]> _data; // RGBA, 4 bytes per pixel
     };
+
+    // Blit an RGBAImage onto another RGBAImage with optional horizontal flip. Clips to destination bounds.
+    void BlitRGBA( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, bool flip = false );
+
+    // Clear a rectangular region of an RGBAImage (set alpha to 0).
+    void ClearRGBARegion( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height );
 
     // Position info for RGBA overlay rendering. Position is in game pixels.
     struct RGBAOverlay

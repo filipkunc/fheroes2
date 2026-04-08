@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <iterator>
 #include <optional>
 #include <ostream>
@@ -1140,6 +1141,12 @@ namespace
 
             copyImageToSurface( display, _surface, roi );
 
+            // Composite the parallel RGBA layer onto the 32-bit surface, replacing palette-converted pixels with true RGBA colors.
+            const fheroes2::RGBAImage * compositLayer = display.getRGBACompositLayer();
+            if ( compositLayer != nullptr && !compositLayer->empty() && _surface->format->BitsPerPixel == 32 ) {
+                _compositeRGBALayer( display, roi );
+            }
+
             const bool fullFrame = ( roi.width == display.width() ) && ( roi.height == display.height() );
             if ( fullFrame ) {
                 const int returnCode = SDL_UpdateTexture( _texture, nullptr, _surface->pixels, _surface->pitch );
@@ -1176,6 +1183,58 @@ namespace
             _renderRGBAOverlays( display );
 
             SDL_RenderPresent( _renderer );
+        }
+
+        void _compositeRGBALayer( const fheroes2::Display & display, const fheroes2::Rect & roi )
+        {
+            const fheroes2::RGBAImage * layer = display.getRGBACompositLayer();
+            if ( layer == nullptr || layer->empty() || _surface == nullptr || _surface->format->BitsPerPixel != 32 ) {
+                return;
+            }
+
+            const int32_t layerW = layer->width();
+            const int32_t layerH = layer->height();
+            const int32_t layerOffX = display.getRGBACompositOffsetX();
+            const int32_t layerOffY = display.getRGBACompositOffsetY();
+            const int32_t displayW = display.width();
+
+            // Compute the intersection of the ROI with the RGBA layer area.
+            const int32_t startX = std::max( { roi.x, layerOffX, 0 } );
+            const int32_t startY = std::max( { roi.y, layerOffY, 0 } );
+            const int32_t endX = std::min( { roi.x + roi.width, layerOffX + layerW, displayW } );
+            const int32_t endY = std::min( { roi.y + roi.height, layerOffY + layerH, static_cast<int32_t>( _surface->h ) } );
+
+            if ( startX >= endX || startY >= endY ) {
+                return;
+            }
+
+            if ( SDL_MUSTLOCK( _surface ) ) {
+                SDL_LockSurface( _surface );
+            }
+
+            const uint8_t * layerData = layer->data();
+
+            for ( int32_t y = startY; y < endY; ++y ) {
+                const int32_t layerY = y - layerOffY;
+                const uint8_t * layerRow = layerData + ( static_cast<ptrdiff_t>( layerY ) * layerW * 4 );
+                uint32_t * surfaceRow = reinterpret_cast<uint32_t *>( static_cast<uint8_t *>( _surface->pixels )
+                                                                      + ( static_cast<ptrdiff_t>( y ) * _surface->pitch ) );
+
+                for ( int32_t x = startX; x < endX; ++x ) {
+                    const int32_t layerX = x - layerOffX;
+                    const uint8_t * px = layerRow + ( static_cast<ptrdiff_t>( layerX ) * 4 );
+
+                    if ( px[3] == 0 ) {
+                        continue;
+                    }
+
+                    surfaceRow[x] = SDL_MapRGB( _surface->format, px[0], px[1], px[2] );
+                }
+            }
+
+            if ( SDL_MUSTLOCK( _surface ) ) {
+                SDL_UnlockSurface( _surface );
+            }
         }
 
         void _renderRGBAOverlays( const fheroes2::Display & display )

@@ -41,6 +41,15 @@ namespace fheroes2
     // Load a PNG file into an RGBAImage preserving full 32-bit RGBA data.
     bool LoadRGBA( const std::string & path, RGBAImage & image );
 
+    // Load a PNG file into an RGBAImage, scaled to the given target dimensions.
+    bool LoadRGBA( const std::string & path, RGBAImage & image, int32_t targetWidth, int32_t targetHeight );
+
+    // Load a PNG file into an Image with RGBA_32BIT format.
+    bool LoadAsRGBA( const std::string & path, Image & image );
+
+    // Load a PNG file into an Image with RGBA_32BIT format, scaled to the given target dimensions.
+    bool LoadAsRGBA( const std::string & path, Image & image, int32_t targetWidth, int32_t targetHeight );
+
     Sprite decodeICNSprite( const uint8_t * data, const uint8_t * dataEnd, const ICNHeader & icnHeader );
 
     void decodeTILImages( const uint8_t * data, const size_t imageCount, const int32_t width, const int32_t height, std::vector<Image> & output );

@@ -415,7 +415,7 @@ namespace Battle
         void RedrawArmies();
         void RedrawTroopSprite( const Unit & unit );
 
-        fheroes2::Point _drawTroopSprite( const Unit & unit, const fheroes2::Sprite & troopSprite );
+        fheroes2::Point _drawTroopSprite( const Unit & unit, const fheroes2::Sprite & troopSprite, bool skipBlit = false );
 
         void RedrawTroopCount( const Unit & unit );
 
@@ -619,7 +619,11 @@ namespace Battle
             }
         };
 
+        // Parallel RGBA layer for true-color sprite compositing (same size as _mainSurface).
+        fheroes2::RGBAImage _rgbaLayer;
+
         // RGBA sprite frames for Thor (true-color rendering).
+        // Pre-scaled to match palette sprite dimensions per frame.
         std::vector<fheroes2::RGBAImage> _rgbaThorFrames;
         bool _rgbaThorLoaded{ false };
 

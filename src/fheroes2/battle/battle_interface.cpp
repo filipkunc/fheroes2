@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -1483,15 +1484,24 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
     _mainSurface.resize( area.width, battlefieldHeight );
     _battleGround.resize( area.width, battlefieldHeight );
 
+    // Parallel RGBA layer for true-color sprite compositing.
+    _rgbaLayer.resize( area.width, battlefieldHeight );
+    fheroes2::Display::instance().setRGBACompositLayer( &_rgbaLayer, _interfacePosition.x, _interfacePosition.y );
+
     AudioManager::ResetAudio();
 
-    // Load all RGBA Thor animation frames.
+    // Load all RGBA Thor animation frames, pre-scaled to match palette sprite dimensions.
     _rgbaThorFrames.resize( 56 );
     _rgbaThorLoaded = true;
     for ( int i = 0; i < 56; ++i ) {
+        const fheroes2::Sprite & paletteSprite = fheroes2::AGG::GetICN( ICN::TITNTHOR, i );
+        const int32_t targetW = paletteSprite.width();
+        const int32_t targetH = paletteSprite.height();
+
         char filename[64];
         snprintf( filename, sizeof( filename ), "files/data/sprites/thor_%03d.png", i );
-        if ( !fheroes2::LoadRGBA( filename, _rgbaThorFrames[i] ) ) {
+
+        if ( targetW <= 0 || targetH <= 0 || !fheroes2::LoadRGBA( filename, _rgbaThorFrames[i], targetW, targetH ) ) {
             _rgbaThorLoaded = false;
             break;
         }
@@ -1501,6 +1511,7 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
 Battle::Interface::~Interface()
 {
     fheroes2::Display::instance().clearRGBAOverlays();
+    fheroes2::Display::instance().setRGBACompositLayer( nullptr, 0, 0 );
 
     AudioManager::ResetAudio();
 
@@ -1615,7 +1626,11 @@ void Battle::Interface::Redraw()
 
 void Battle::Interface::RedrawPartialStart()
 {
-    fheroes2::Display::instance().clearRGBAOverlays();
+    // Clear the parallel RGBA layer for this frame.
+    if ( !_rgbaLayer.empty() ) {
+        memset( _rgbaLayer.data(), 0, static_cast<size_t>( _rgbaLayer.width() ) * _rgbaLayer.height() * 4 );
+    }
+
     RedrawCover();
     RedrawArmies();
 }
@@ -2022,51 +2037,7 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
 
     fheroes2::Point drawnPosition;
 
-    if ( isThorRGBA ) {
-        // For Thor with RGBA sprites: compute position from palette sprite but skip the palette blit.
-        drawnPosition = GetTroopPosition( unit, monsterSprite );
-
-        // Apply movement/flying offsets (same logic as _drawTroopSprite).
-        if ( _movingUnit == &unit && _movingUnit->animation.animationLength() ) {
-            const fheroes2::Rect & unitPosition = unit.GetRectPosition();
-            const int32_t moveX = _movingPos.x - unitPosition.x;
-            const int32_t moveY = _movingPos.y - unitPosition.y;
-
-            if ( _movingUnit->isAbilityPresent( fheroes2::MonsterAbilityType::FLYING ) ) {
-                const double movementProgress = _movingUnit->animation.movementProgress();
-                drawnPosition.x += static_cast<int32_t>( movementProgress * moveX );
-                drawnPosition.y += static_cast<int32_t>( movementProgress * moveY );
-            }
-            else if ( moveY != 0 ) {
-                drawnPosition.x -= Sign( moveX ) * ( _movingUnit->animation.getCurrentFrameXOffset() ) / 2;
-                drawnPosition.y += static_cast<int32_t>( _movingUnit->animation.movementProgress() * moveY );
-            }
-        }
-        else if ( _flyingUnit == &unit ) {
-            const fheroes2::Rect & unitPosition = unit.GetRectPosition();
-            const int32_t moveX = _flyingPos.x - unitPosition.x;
-            const int32_t moveY = _flyingPos.y - unitPosition.y;
-            const double movementProgress = _flyingUnit->animation.movementProgress();
-            drawnPosition.x += moveX + static_cast<int32_t>( ( _movingPos.x - _flyingPos.x ) * movementProgress );
-            drawnPosition.y += moveY + static_cast<int32_t>( ( _movingPos.y - _flyingPos.y ) * movementProgress );
-        }
-
-        // Add the RGBA overlay for the current animation frame.
-        const int32_t frame = unit.GetFrame();
-        if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) ) {
-            const fheroes2::RGBAImage & rgbaFrame = _rgbaThorFrames[frame];
-
-            // Scale factor: ratio of palette sprite width to RGBA sprite width, applied to game-pixel width.
-            const int32_t gameWidth = monsterSprite.width();
-
-            // Convert _mainSurface position to Display position.
-            const int32_t displayX = _interfacePosition.x + drawnPosition.x;
-            const int32_t displayY = _interfacePosition.y + drawnPosition.y;
-
-            fheroes2::Display::instance().addRGBAOverlay( rgbaFrame, displayX, displayY, gameWidth, unit.isReflect() );
-        }
-    }
-    else if ( unit.Modes( SP_STONE | CAP_MIRRORIMAGE ) ) {
+    if ( unit.Modes( SP_STONE | CAP_MIRRORIMAGE ) ) {
         // Apply Stone or Mirror image visual effect.
         fheroes2::Sprite modifiedMonsterSprite( monsterSprite );
         const PAL::PaletteType paletteType = unit.Modes( SP_STONE ) ? PAL::PaletteType::GRAY : PAL::PaletteType::MIRROR_IMAGE;
@@ -2076,7 +2047,16 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
         drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite );
     }
     else {
-        drawnPosition = _drawTroopSprite( unit, monsterSprite );
+        // For Thor with RGBA: compute position but skip the palette blit (RGBA layer handles rendering).
+        drawnPosition = _drawTroopSprite( unit, monsterSprite, isThorRGBA );
+    }
+
+    // After drawing the palette sprite, also blit RGBA data to the parallel RGBA layer for true-color compositing.
+    if ( isThorRGBA ) {
+        const int32_t frame = unit.GetFrame();
+        if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) && !_rgbaThorFrames[frame].empty() ) {
+            fheroes2::BlitRGBA( _rgbaThorFrames[frame], _rgbaLayer, drawnPosition.x, drawnPosition.y, unit.isReflect() );
+        }
     }
 
     if ( _unitToHighlight == &unit ) {
@@ -2092,7 +2072,7 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
     }
 }
 
-fheroes2::Point Battle::Interface::_drawTroopSprite( const Unit & unit, const fheroes2::Sprite & troopSprite )
+fheroes2::Point Battle::Interface::_drawTroopSprite( const Unit & unit, const fheroes2::Sprite & troopSprite, const bool skipBlit )
 {
     // Get the sprite rendering offset.
     fheroes2::Point offset = GetTroopPosition( unit, troopSprite );
@@ -2142,11 +2122,25 @@ fheroes2::Point Battle::Interface::_drawTroopSprite( const Unit & unit, const fh
         offset.y += moveY + static_cast<int32_t>( ( _movingPos.y - _flyingPos.y ) * movementProgress );
     }
 
+    if ( skipBlit ) {
+        // Position computed but no palette blit — used for RGBA-only sprites.
+        return offset;
+    }
+
     if ( _drawTroopSpriteWithMoatMask( unit, troopSprite, offset, movementDelta, movementDirection ) ) {
+        // Clear RGBA layer in the region this sprite occupies (for z-order correctness).
+        if ( !_rgbaLayer.empty() ) {
+            fheroes2::ClearRGBARegion( _rgbaLayer, offset.x, offset.y, troopSprite.width(), troopSprite.height() );
+        }
         return offset;
     }
 
     fheroes2::AlphaBlit( troopSprite, _mainSurface, offset.x, offset.y, unit.GetCustomAlpha(), unit.isReflect() );
+
+    // Clear RGBA layer in the region this sprite occupies (for z-order correctness).
+    if ( !_rgbaLayer.empty() ) {
+        fheroes2::ClearRGBARegion( _rgbaLayer, offset.x, offset.y, troopSprite.width(), troopSprite.height() );
+    }
 
     return offset;
 }
