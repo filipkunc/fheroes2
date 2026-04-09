@@ -56,6 +56,7 @@
 #include "game_delays.h"
 #include "game_hotkeys.h"
 #include "ground.h"
+#include "image_palette.h"
 #include "image_tool.h"
 #include "heroes_base.h"
 #include "interface_list.h"
@@ -1484,8 +1485,18 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
     _mainSurface.resize( area.width, battlefieldHeight );
     _battleGround.resize( area.width, battlefieldHeight );
 
-    // Depth buffer for z-order tracking.
-    _depthBuffer.resize( static_cast<size_t>( area.width ) * battlefieldHeight, 0 );
+    // Compute physical resolution scale for the RGBA composite surface.
+    {
+        const fheroes2::Size screenSize = display.screenSize();
+        const float scaleX = static_cast<float>( screenSize.width ) / static_cast<float>( display.width() );
+        const float scaleY = static_cast<float>( screenSize.height ) / static_cast<float>( display.height() );
+        _rgbaScale = std::min( scaleX, scaleY );
+        if ( _rgbaScale < 1.0f ) {
+            _rgbaScale = 1.0f;
+        }
+    }
+    _mainSurfaceRGBA.resize( static_cast<int32_t>( static_cast<float>( area.width ) * _rgbaScale ),
+                             static_cast<int32_t>( static_cast<float>( battlefieldHeight ) * _rgbaScale ) );
 
     AudioManager::ResetAudio();
 
@@ -1505,6 +1516,7 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
 Battle::Interface::~Interface()
 {
     fheroes2::Display::instance().clearRGBAOverlays();
+    fheroes2::Display::instance().setRGBACompositLayer( nullptr, 0, 0 );
 
     AudioManager::ResetAudio();
 
@@ -1619,12 +1631,13 @@ void Battle::Interface::Redraw()
 
 void Battle::Interface::RedrawPartialStart()
 {
-    // Clear depth buffer and overlay state for this frame.
-    std::fill( _depthBuffer.begin(), _depthBuffer.end(), static_cast<uint16_t>( 0 ) );
-    _currentDepth = 0;
-    _rgbaOverlays.clear();
+    _rgbaBlits.clear();
 
     RedrawCover();
+
+    // Convert the background to the high-res RGBA composite surface.
+    _updateRGBARegion( 0, 0, _mainSurface.width(), _mainSurface.height() );
+
     RedrawArmies();
 }
 
@@ -1664,19 +1677,28 @@ void Battle::Interface::redrawPreRender()
     }
 #endif
 
-    // Generate depth-masked RGBA overlays before copying to Display.
-    _generateMaskedRGBAOverlays();
+    // Sync the full _mainSurface to _mainSurfaceRGBA. This captures all palette draws
+    // (contours, heroes, flags, turn order, troop counts, castle elements, spell effects).
+    _updateRGBARegion( 0, 0, _mainSurface.width(), _mainSurface.height() );
 
-    fheroes2::Copy( _mainSurface, 0, 0, fheroes2::Display::instance(), _interfacePosition.x, _interfacePosition.y, _mainSurface.width(), _mainSurface.height() );
-
-    // Register all masked overlays for physical-resolution rendering.
-    auto & display = fheroes2::Display::instance();
-    display.clearRGBAOverlays();
-    for ( const RGBAOverlayInfo & info : _rgbaOverlays ) {
-        if ( !info.masked.empty() && info.depth > 0 ) {
-            display.addRGBAOverlay( info.masked, _interfacePosition.x + info.posX, _interfacePosition.y + info.posY, info.gameWidth, info.flip, info.alpha );
+    // Re-paint high-res RGBA sprites (the full sync above overwrote them with palette versions).
+    for ( const RGBABlitRecord & rec : _rgbaBlits ) {
+        if ( rec.src != nullptr && !rec.src->empty() ) {
+            const int32_t physX = static_cast<int32_t>( static_cast<float>( rec.posX ) * _rgbaScale );
+            const int32_t physY = static_cast<int32_t>( static_cast<float>( rec.posY ) * _rgbaScale );
+            const int32_t physW = static_cast<int32_t>( static_cast<float>( rec.gameWidth ) * _rgbaScale );
+            const int32_t physH = static_cast<int32_t>( static_cast<float>( rec.gameHeight ) * _rgbaScale );
+            fheroes2::BlitRGBAScaled( *rec.src, _mainSurfaceRGBA, physX, physY, physW, physH, rec.flip );
         }
     }
+
+    // Copy to Display for UI elements (status bar, buttons).
+    auto & display = fheroes2::Display::instance();
+    fheroes2::Copy( _mainSurface, 0, 0, display, _interfacePosition.x, _interfacePosition.y, _mainSurface.width(), _mainSurface.height() );
+
+    // Register the composited RGBA surface for physical-resolution rendering.
+    display.clearRGBAOverlays();
+    display.addRGBAOverlay( _mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _mainSurface.width() );
 
     RedrawInterface();
 }
@@ -2035,54 +2057,37 @@ void Battle::Interface::RedrawOpponentsFlags()
 
 void Battle::Interface::RedrawTroopSprite( const Unit & unit )
 {
-    ++_currentDepth;
-
     const bool isCurrentMonsterAction = ( _currentUnit == &unit && _spriteInsteadCurrentUnit != nullptr );
 
     const fheroes2::Sprite & monsterSprite = isCurrentMonsterAction ? *_spriteInsteadCurrentUnit : fheroes2::AGG::GetICN( unit.GetMonsterSprite(), unit.GetFrame() );
 
-    // Determine rendering path.
-    const bool useThorPNG = _rgbaThorLoaded && unit.GetID() == Monster::THOR && !isCurrentMonsterAction;
-    const bool useRGBAOverlay = !isCurrentMonsterAction;
+    // Only Thor with custom high-res PNGs uses the RGBA overlay path.
+    const bool isThorRGBA = _rgbaThorLoaded && unit.GetID() == Monster::THOR && !isCurrentMonsterAction;
 
     fheroes2::Point drawnPosition;
 
     if ( unit.Modes( SP_STONE | CAP_MIRRORIMAGE ) ) {
-        // Stone/mirror: apply palette modification, then convert to RGBA.
         fheroes2::Sprite modifiedMonsterSprite( monsterSprite );
         const PAL::PaletteType paletteType = unit.Modes( SP_STONE ) ? PAL::PaletteType::GRAY : PAL::PaletteType::MIRROR_IMAGE;
         fheroes2::ApplyPalette( modifiedMonsterSprite, PAL::GetPalette( paletteType ) );
-
-        if ( useRGBAOverlay ) {
-            drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite, true );
-
-            // Convert the modified sprite to RGBA on the fly (not cached since palette-modified).
-            fheroes2::RGBAImage convertedRGBA;
-            fheroes2::ConvertIndexedToRGBA( modifiedMonsterSprite, convertedRGBA );
-            _rgbaOverlays.push_back( { nullptr, drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect(), _currentDepth,
-                                       unit.GetCustomAlpha(), std::move( convertedRGBA ) } );
-        }
-        else {
-            drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite, false );
-        }
+        drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite, false );
     }
     else {
-        // All monsters skip the palette blit and render via RGBA overlay.
-        drawnPosition = _drawTroopSprite( unit, monsterSprite, useRGBAOverlay );
+        drawnPosition = _drawTroopSprite( unit, monsterSprite, isThorRGBA );
+    }
 
-        if ( useThorPNG ) {
-            // Thor with custom high-res PNG frames.
-            const int32_t frame = unit.GetFrame();
-            if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) && !_rgbaThorFrames[frame].empty() ) {
-                _rgbaOverlays.push_back( { &_rgbaThorFrames[frame], drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect(),
-                                           _currentDepth, unit.GetCustomAlpha(), {} } );
-            }
-        }
-        else if ( useRGBAOverlay ) {
-            // Convert palette sprite to RGBA via cache.
-            const fheroes2::RGBAImage & rgbaSprite = _getOrConvertToRGBA( monsterSprite, unit.GetMonsterSprite(), unit.GetFrame() );
-            _rgbaOverlays.push_back( { &rgbaSprite, drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect(), _currentDepth,
-                                       unit.GetCustomAlpha(), {} } );
+    // For Thor: composite RGBA directly onto _mainSurfaceRGBA at the right z-order position (painter's algorithm).
+    // Also record the overlay info so it can be re-composited after post-troop updates in redrawPreRender.
+    if ( isThorRGBA ) {
+        const int32_t frame = unit.GetFrame();
+        if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) && !_rgbaThorFrames[frame].empty() ) {
+            const int32_t physX = static_cast<int32_t>( static_cast<float>( drawnPosition.x ) * _rgbaScale );
+            const int32_t physY = static_cast<int32_t>( static_cast<float>( drawnPosition.y ) * _rgbaScale );
+            const int32_t physW = static_cast<int32_t>( static_cast<float>( monsterSprite.width() ) * _rgbaScale );
+            const int32_t physH = static_cast<int32_t>( static_cast<float>( monsterSprite.height() ) * _rgbaScale );
+            fheroes2::BlitRGBAScaled( _rgbaThorFrames[frame], _mainSurfaceRGBA, physX, physY, physW, physH, unit.isReflect() );
+
+            _rgbaBlits.push_back( { &_rgbaThorFrames[frame], drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect() } );
         }
     }
 
@@ -2092,9 +2097,9 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
         const uint8_t contourColor = ( _unitToHighlight == &unit ) ? GetArmyColorFromPlayerColor( unit.GetArmyColor() ) : _contourColor;
 
         // For RGBA overlays with high-res source (Thor PNGs), derive contour from RGBA alpha.
-        if ( useThorPNG && !_rgbaOverlays.empty() && _rgbaOverlays.back().src != nullptr
-             && _rgbaOverlays.back().src->width() != monsterSprite.width() ) {
-            const fheroes2::RGBAImage & rgbaSrc = *_rgbaOverlays.back().src;
+        if ( isThorRGBA && !_rgbaBlits.empty() && _rgbaBlits.back().src != nullptr
+             && _rgbaBlits.back().src->width() != monsterSprite.width() ) {
+            const fheroes2::RGBAImage & rgbaSrc = *_rgbaBlits.back().src;
             const int32_t gameW = monsterSprite.width();
             const int32_t gameH = monsterSprite.height();
 
@@ -2186,61 +2191,68 @@ fheroes2::Point Battle::Interface::_drawTroopSprite( const Unit & unit, const fh
     }
 
     if ( skipBlit ) {
-        // Position computed but no palette blit — used for RGBA-only sprites.
-        // Still write depth so other sprites know this area is occupied.
-        _writeDepth( troopSprite, offset.x, offset.y, unit.isReflect() );
         return offset;
     }
 
     if ( _drawTroopSpriteWithMoatMask( unit, troopSprite, offset, movementDelta, movementDirection ) ) {
-        _writeDepth( troopSprite, offset.x, offset.y, unit.isReflect() );
         return offset;
     }
 
     fheroes2::AlphaBlit( troopSprite, _mainSurface, offset.x, offset.y, unit.GetCustomAlpha(), unit.isReflect() );
-    _writeDepth( troopSprite, offset.x, offset.y, unit.isReflect() );
 
     return offset;
 }
 
-void Battle::Interface::_writeDepth( const fheroes2::Image & sprite, const int32_t outX, const int32_t outY, const bool flip )
+void Battle::Interface::_updateRGBARegion( const int32_t x, const int32_t y, const int32_t w, const int32_t h )
 {
-    if ( _depthBuffer.empty() || _currentDepth == 0 ) {
+    if ( _mainSurfaceRGBA.empty() ) {
         return;
     }
 
     const int32_t surfW = _mainSurface.width();
     const int32_t surfH = _mainSurface.height();
-    const int32_t sprW = sprite.width();
-    const int32_t sprH = sprite.height();
 
-    // Clip to _mainSurface bounds.
-    int32_t startX = std::max( outX, 0 );
-    int32_t startY = std::max( outY, 0 );
-    int32_t endX = std::min( outX + sprW, surfW );
-    int32_t endY = std::min( outY + sprH, surfH );
+    const int32_t startX = std::max( x, 0 );
+    const int32_t startY = std::max( y, 0 );
+    const int32_t endX = std::min( x + w, surfW );
+    const int32_t endY = std::min( y + h, surfH );
 
     if ( startX >= endX || startY >= endY ) {
         return;
     }
 
-    const uint8_t * transformData = sprite.singleLayer() ? nullptr : sprite.transform();
-    const uint16_t depthVal = _currentDepth;
+    const uint8_t * gamePalette = fheroes2::getGamePalette();
+    const uint8_t * srcImage = _mainSurface.image();
+    uint8_t * dstData = _mainSurfaceRGBA.data();
+    const int32_t dstW = _mainSurfaceRGBA.width();
+    const int32_t dstH = _mainSurfaceRGBA.height();
+    const float scale = _rgbaScale;
 
-    for ( int32_t y = startY; y < endY; ++y ) {
-        uint16_t * depthRow = _depthBuffer.data() + static_cast<ptrdiff_t>( y ) * surfW;
-        const int32_t srcY = y - outY;
+    // For each game pixel in the region, fill the corresponding block in the high-res surface.
+    for ( int32_t row = startY; row < endY; ++row ) {
+        const uint8_t * srcRow = srcImage + static_cast<ptrdiff_t>( row ) * surfW;
 
-        for ( int32_t x = startX; x < endX; ++x ) {
-            const int32_t srcX = flip ? ( sprW - 1 - ( x - outX ) ) : ( x - outX );
+        const int32_t dstRowStart = static_cast<int32_t>( static_cast<float>( row ) * scale );
+        const int32_t dstRowEnd = std::min( static_cast<int32_t>( static_cast<float>( row + 1 ) * scale ), dstH );
 
-            bool isTransparent = false;
-            if ( transformData != nullptr ) {
-                isTransparent = ( transformData[static_cast<ptrdiff_t>( srcY ) * sprW + srcX] == 1 );
-            }
+        for ( int32_t col = startX; col < endX; ++col ) {
+            const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( srcRow[col] ) * 3;
+            const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
+            const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
+            const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
 
-            if ( !isTransparent ) {
-                depthRow[x] = depthVal;
+            const int32_t dstColStart = static_cast<int32_t>( static_cast<float>( col ) * scale );
+            const int32_t dstColEnd = std::min( static_cast<int32_t>( static_cast<float>( col + 1 ) * scale ), dstW );
+
+            for ( int32_t dy = dstRowStart; dy < dstRowEnd; ++dy ) {
+                uint8_t * dstRow2 = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
+                for ( int32_t dx = dstColStart; dx < dstColEnd; ++dx ) {
+                    uint8_t * dst = dstRow2 + static_cast<ptrdiff_t>( dx ) * 4;
+                    dst[0] = r;
+                    dst[1] = g;
+                    dst[2] = b;
+                    dst[3] = 255;
+                }
             }
         }
     }
@@ -2259,64 +2271,7 @@ const fheroes2::RGBAImage & Battle::Interface::_getOrConvertToRGBA( const fheroe
     return entry;
 }
 
-void Battle::Interface::_generateMaskedRGBAOverlays()
-{
-    const int32_t surfW = _mainSurface.width();
-    const int32_t surfH = _mainSurface.height();
 
-    for ( RGBAOverlayInfo & info : _rgbaOverlays ) {
-        if ( info.depth == 0 ) {
-            continue;
-        }
-
-        // If src is set, copy from it into masked. If src is null, masked was already populated (e.g., stone/mirror).
-        if ( info.src != nullptr && !info.src->empty() ) {
-            const fheroes2::RGBAImage & src = *info.src;
-            info.masked.resize( src.width(), src.height() );
-            memcpy( info.masked.data(), src.data(), static_cast<size_t>( src.width() ) * src.height() * 4 );
-        }
-
-        if ( info.masked.empty() ) {
-            continue;
-        }
-
-        const int32_t srcW = info.masked.width();
-        const int32_t srcH = info.masked.height();
-
-        // Scale factors: RGBA source pixels to game pixels.
-        const float scaleX = ( info.gameWidth > 0 ) ? static_cast<float>( srcW ) / static_cast<float>( info.gameWidth ) : 1.0f;
-        const float scaleY = ( info.gameHeight > 0 ) ? static_cast<float>( srcH ) / static_cast<float>( info.gameHeight ) : 1.0f;
-
-        uint8_t * pixels = info.masked.data();
-
-        for ( int32_t row = 0; row < srcH; ++row ) {
-            const int32_t gameY = info.posY + static_cast<int32_t>( static_cast<float>( row ) / scaleY );
-            if ( gameY < 0 || gameY >= surfH ) {
-                continue;
-            }
-
-            for ( int32_t col = 0; col < srcW; ++col ) {
-                const int32_t rgbaCol = info.flip ? ( srcW - 1 - col ) : col;
-                uint8_t * px = pixels + ( static_cast<ptrdiff_t>( row ) * srcW + rgbaCol ) * 4;
-
-                if ( px[3] == 0 ) {
-                    continue;
-                }
-
-                const int32_t gameX = info.posX + static_cast<int32_t>( static_cast<float>( col ) / scaleX );
-                if ( gameX < 0 || gameX >= surfW ) {
-                    px[3] = 0;
-                    continue;
-                }
-
-                const uint16_t depthAtPixel = _depthBuffer[static_cast<ptrdiff_t>( gameY ) * surfW + gameX];
-                if ( depthAtPixel > info.depth ) {
-                    px[3] = 0;
-                }
-            }
-        }
-    }
-}
 
 bool Battle::Interface::_drawTroopSpriteWithMoatMask( const Unit & unit, const fheroes2::Sprite & sprite, const fheroes2::Point & offset,
                                                       const fheroes2::Point & movementDelta, const CellDirection movementDirection )

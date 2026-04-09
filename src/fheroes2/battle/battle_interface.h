@@ -620,20 +620,15 @@ namespace Battle
             }
         };
 
-        // Depth buffer for z-order tracking (same dimensions as _mainSurface).
-        // Each pixel stores the draw-order index of the last sprite that wrote it.
-        std::vector<uint16_t> _depthBuffer;
-        uint16_t _currentDepth{ 0 };
-
-        // Write the current depth value into the depth buffer for a sprite's non-transparent pixels.
-        void _writeDepth( const fheroes2::Image & sprite, int32_t outX, int32_t outY, bool flip );
+        // Copy a region from _mainSurface to _mainSurfaceRGBA, converting palette indices to RGBA.
+        void _updateRGBARegion( int32_t x, int32_t y, int32_t w, int32_t h );
 
         // RGBA sprite frames for Thor at original PNG resolution.
         std::vector<fheroes2::RGBAImage> _rgbaThorFrames;
         bool _rgbaThorLoaded{ false };
 
-        // Per-frame RGBA overlay info for depth-masked rendering.
-        struct RGBAOverlayInfo
+        // Per-frame RGBA blit records for re-painting after palette sync.
+        struct RGBABlitRecord
         {
             const fheroes2::RGBAImage * src{ nullptr };
             int32_t posX{ 0 };
@@ -641,14 +636,13 @@ namespace Battle
             int32_t gameWidth{ 0 };
             int32_t gameHeight{ 0 };
             bool flip{ false };
-            uint16_t depth{ 0 };
-            uint8_t alpha{ 255 };
-            fheroes2::RGBAImage masked;
         };
 
-        std::vector<RGBAOverlayInfo> _rgbaOverlays;
+        std::vector<RGBABlitRecord> _rgbaBlits;
 
-        void _generateMaskedRGBAOverlays();
+        // RGBA composite at physical screen resolution for the battle area.
+        fheroes2::RGBAImage _mainSurfaceRGBA;
+        float _rgbaScale{ 1.0f };  // game pixels → _mainSurfaceRGBA pixels
 
         // Cache for palette-to-RGBA converted sprites. Key = (icnId << 32) | frameIndex.
         std::map<uint64_t, fheroes2::RGBAImage> _rgbaSpriteCache;

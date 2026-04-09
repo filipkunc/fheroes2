@@ -439,6 +439,9 @@ namespace fheroes2
     // Blit an RGBAImage onto another RGBAImage with optional horizontal flip. Clips to destination bounds.
     void BlitRGBA( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, bool flip = false );
 
+    // Blit an RGBAImage onto another RGBAImage, scaled to fit dstW x dstH game pixels, with optional flip.
+    void BlitRGBAScaled( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, int32_t dstW, int32_t dstH, bool flip = false );
+
     // Clear a rectangular region of an RGBAImage (set alpha to 0).
     void ClearRGBARegion( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height );
 

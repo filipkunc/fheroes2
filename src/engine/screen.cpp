@@ -1191,6 +1191,57 @@ namespace
             SDL_RenderPresent( _renderer );
         }
 
+        // Copy a physical-resolution RGBA surface directly onto the SDL surface, replacing the palette-converted pixels.
+        void _compositeRGBALayer( const fheroes2::Display & display )
+        {
+            const fheroes2::RGBAImage * layer = display.getRGBACompositLayer();
+            if ( layer == nullptr || layer->empty() || _surface == nullptr || _surface->format->BitsPerPixel != 32 ) {
+                return;
+            }
+
+            const int32_t layerW = layer->width();
+            const int32_t layerH = layer->height();
+            const int32_t gameOffX = display.getRGBACompositOffsetX();
+            const int32_t gameOffY = display.getRGBACompositOffsetY();
+            const int32_t gameW = display.width();
+            const int32_t gameH = display.height();
+
+            // Compute physical pixel offset for the composit layer area.
+            const float scaleX = static_cast<float>( _surface->w ) / static_cast<float>( gameW );
+            const float scaleY = static_cast<float>( _surface->h ) / static_cast<float>( gameH );
+            const float scale = std::min( scaleX, scaleY );
+
+            const int32_t physOffX = static_cast<int32_t>( static_cast<float>( gameOffX ) * scale );
+            const int32_t physOffY = static_cast<int32_t>( static_cast<float>( gameOffY ) * scale );
+
+            if ( SDL_MUSTLOCK( _surface ) ) {
+                SDL_LockSurface( _surface );
+            }
+
+            const uint8_t * layerData = layer->data();
+
+            // Copy RGBA pixels directly — the layer is already at physical resolution.
+            const int32_t copyW = std::min( layerW, _surface->w - physOffX );
+            const int32_t copyH = std::min( layerH, _surface->h - physOffY );
+
+            for ( int32_t y = 0; y < copyH; ++y ) {
+                const uint8_t * srcRow = layerData + static_cast<ptrdiff_t>( y ) * layerW * 4;
+                uint32_t * dstRow = reinterpret_cast<uint32_t *>( static_cast<uint8_t *>( _surface->pixels )
+                                                                  + static_cast<ptrdiff_t>( physOffY + y ) * _surface->pitch );
+
+                for ( int32_t x = 0; x < copyW; ++x ) {
+                    const uint8_t * px = srcRow + static_cast<ptrdiff_t>( x ) * 4;
+                    if ( px[3] > 0 ) {
+                        dstRow[physOffX + x] = SDL_MapRGB( _surface->format, px[0], px[1], px[2] );
+                    }
+                }
+            }
+
+            if ( SDL_MUSTLOCK( _surface ) ) {
+                SDL_UnlockSurface( _surface );
+            }
+        }
+
         void _renderRGBAOverlays( const fheroes2::Display & display )
         {
             const auto & overlays = display.getRGBAOverlays();
@@ -1227,22 +1278,6 @@ namespace
             // Temporarily disable logical size so we can render at physical pixel coordinates.
             SDL_RenderSetLogicalSize( _renderer, 0, 0 );
 
-            // Ensure atlas texture is large enough for any overlay (Thor PNGs can be up to ~400x660).
-            static constexpr int32_t ATLAS_SIZE = 1024;
-            if ( _rgbaOverlayTexture == nullptr ) {
-                _rgbaOverlayTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, ATLAS_SIZE, ATLAS_SIZE );
-                if ( _rgbaOverlayTexture != nullptr ) {
-                    SDL_SetTextureBlendMode( _rgbaOverlayTexture, SDL_BLENDMODE_BLEND );
-                    _rgbaOverlayTextureW = ATLAS_SIZE;
-                    _rgbaOverlayTextureH = ATLAS_SIZE;
-                }
-            }
-
-            if ( _rgbaOverlayTexture == nullptr ) {
-                SDL_RenderSetLogicalSize( _renderer, gameW, gameH );
-                return;
-            }
-
             for ( const fheroes2::RGBAOverlay & overlay : overlays ) {
                 if ( overlay.image == nullptr || overlay.image->empty() ) {
                     continue;
@@ -1251,12 +1286,25 @@ namespace
                 const int32_t srcW = overlay.image->width();
                 const int32_t srcH = overlay.image->height();
 
-                if ( srcW > ATLAS_SIZE || srcH > ATLAS_SIZE ) {
-                    // Sprite too large for atlas — skip (shouldn't happen in practice).
-                    continue;
+                // Ensure the texture is large enough for this overlay.
+                if ( _rgbaOverlayTexture == nullptr || _rgbaOverlayTextureW < srcW || _rgbaOverlayTextureH < srcH ) {
+                    if ( _rgbaOverlayTexture != nullptr ) {
+                        SDL_DestroyTexture( _rgbaOverlayTexture );
+                    }
+                    const int32_t texW = std::max( _rgbaOverlayTextureW, srcW );
+                    const int32_t texH = std::max( _rgbaOverlayTextureH, srcH );
+                    _rgbaOverlayTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, texW, texH );
+                    if ( _rgbaOverlayTexture == nullptr ) {
+                        _rgbaOverlayTextureW = 0;
+                        _rgbaOverlayTextureH = 0;
+                        continue;
+                    }
+                    SDL_SetTextureBlendMode( _rgbaOverlayTexture, SDL_BLENDMODE_BLEND );
+                    _rgbaOverlayTextureW = texW;
+                    _rgbaOverlayTextureH = texH;
                 }
 
-                // Upload RGBA data into the top-left corner of the atlas texture.
+                // Upload RGBA data into the top-left corner of the texture.
                 SDL_Rect uploadRect = { 0, 0, srcW, srcH };
                 SDL_UpdateTexture( _rgbaOverlayTexture, &uploadRect, overlay.image->data(), srcW * 4 );
 

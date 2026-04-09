@@ -3494,6 +3494,52 @@ namespace fheroes2
         }
     }
 
+    void BlitRGBAScaled( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const int32_t dstW, const int32_t dstH, const bool flip )
+    {
+        if ( in.empty() || out.empty() || dstW <= 0 || dstH <= 0 ) {
+            return;
+        }
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t outW = out.width();
+        const int32_t outH = out.height();
+
+        const int32_t startX = std::max( outX, 0 );
+        const int32_t startY = std::max( outY, 0 );
+        const int32_t endX = std::min( outX + dstW, outW );
+        const int32_t endY = std::min( outY + dstH, outH );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        const uint8_t * srcData = in.data();
+        uint8_t * dstData = out.data();
+
+        for ( int32_t y = startY; y < endY; ++y ) {
+            const int32_t srcY = ( ( y - outY ) * srcH ) / dstH;
+            const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcY ) * srcW * 4 );
+            uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( y ) * outW * 4 );
+
+            for ( int32_t x = startX; x < endX; ++x ) {
+                const int32_t relX = x - outX;
+                const int32_t srcX = ( ( flip ? ( dstW - 1 - relX ) : relX ) * srcW ) / dstW;
+                const uint8_t * srcPx = srcRow + ( static_cast<ptrdiff_t>( srcX ) * 4 );
+
+                if ( srcPx[3] == 0 ) {
+                    continue;
+                }
+
+                uint8_t * dstPx = dstRow + ( static_cast<ptrdiff_t>( x ) * 4 );
+                dstPx[0] = srcPx[0];
+                dstPx[1] = srcPx[1];
+                dstPx[2] = srcPx[2];
+                dstPx[3] = srcPx[3];
+            }
+        }
+    }
+
     void ClearRGBARegion( RGBAImage & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height )
     {
         if ( image.empty() ) {
