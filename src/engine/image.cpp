@@ -3520,4 +3520,41 @@ namespace fheroes2
             memset( data + offset, 0, static_cast<size_t>( clearWidth ) * 4 );
         }
     }
+
+    void ConvertIndexedToRGBA( const Image & indexed, RGBAImage & out )
+    {
+        if ( indexed.empty() ) {
+            return;
+        }
+
+        const int32_t w = indexed.width();
+        const int32_t h = indexed.height();
+        out.resize( w, h );
+
+        const uint8_t * imageData = indexed.image();
+        const uint8_t * transformData = indexed.singleLayer() ? nullptr : indexed.transform();
+        // The game palette stores 6-bit values (0-63); shift left by 2 to get 8-bit (0-252), matching PALPalette().
+        const uint8_t * gamePalette = getGamePalette();
+        uint8_t * dst = out.data();
+
+        const size_t pixelCount = static_cast<size_t>( w ) * h;
+
+        for ( size_t i = 0; i < pixelCount; ++i ) {
+            if ( transformData != nullptr && transformData[i] != 0 ) {
+                // Transparent (1) or shadow (2-5) — skip.
+                dst[0] = 0;
+                dst[1] = 0;
+                dst[2] = 0;
+                dst[3] = 0;
+            }
+            else {
+                const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( imageData[i] ) * 3;
+                dst[0] = static_cast<uint8_t>( pal[0] << 2 );
+                dst[1] = static_cast<uint8_t>( pal[1] << 2 );
+                dst[2] = static_cast<uint8_t>( pal[2] << 2 );
+                dst[3] = 255;
+            }
+            dst += 4;
+        }
+    }
 }

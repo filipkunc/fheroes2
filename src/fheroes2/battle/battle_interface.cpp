@@ -1674,7 +1674,7 @@ void Battle::Interface::redrawPreRender()
     display.clearRGBAOverlays();
     for ( const RGBAOverlayInfo & info : _rgbaOverlays ) {
         if ( !info.masked.empty() && info.depth > 0 ) {
-            display.addRGBAOverlay( info.masked, _interfacePosition.x + info.posX, _interfacePosition.y + info.posY, info.gameWidth, info.flip );
+            display.addRGBAOverlay( info.masked, _interfacePosition.x + info.posX, _interfacePosition.y + info.posY, info.gameWidth, info.flip, info.alpha );
         }
     }
 
@@ -2041,42 +2041,63 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
 
     const fheroes2::Sprite & monsterSprite = isCurrentMonsterAction ? *_spriteInsteadCurrentUnit : fheroes2::AGG::GetICN( unit.GetMonsterSprite(), unit.GetFrame() );
 
-    const bool isThorRGBA = _rgbaThorLoaded && unit.GetID() == Monster::THOR && !isCurrentMonsterAction;
+    // Determine rendering path.
+    const bool useThorPNG = _rgbaThorLoaded && unit.GetID() == Monster::THOR && !isCurrentMonsterAction;
+    const bool useRGBAOverlay = !isCurrentMonsterAction;
 
     fheroes2::Point drawnPosition;
 
     if ( unit.Modes( SP_STONE | CAP_MIRRORIMAGE ) ) {
+        // Stone/mirror: apply palette modification, then convert to RGBA.
         fheroes2::Sprite modifiedMonsterSprite( monsterSprite );
         const PAL::PaletteType paletteType = unit.Modes( SP_STONE ) ? PAL::PaletteType::GRAY : PAL::PaletteType::MIRROR_IMAGE;
         fheroes2::ApplyPalette( modifiedMonsterSprite, PAL::GetPalette( paletteType ) );
-        drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite, false );
+
+        if ( useRGBAOverlay ) {
+            drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite, true );
+
+            // Convert the modified sprite to RGBA on the fly (not cached since palette-modified).
+            fheroes2::RGBAImage convertedRGBA;
+            fheroes2::ConvertIndexedToRGBA( modifiedMonsterSprite, convertedRGBA );
+            _rgbaOverlays.push_back( { nullptr, drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect(), _currentDepth,
+                                       unit.GetCustomAlpha(), std::move( convertedRGBA ) } );
+        }
+        else {
+            drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite, false );
+        }
     }
     else {
-        // For Thor with RGBA: compute position but skip the palette blit.
-        drawnPosition = _drawTroopSprite( unit, monsterSprite, isThorRGBA );
-    }
+        // All monsters skip the palette blit and render via RGBA overlay.
+        drawnPosition = _drawTroopSprite( unit, monsterSprite, useRGBAOverlay );
 
-    // Record RGBA overlay info for Thor (depth-masked overlay will be generated later).
-    if ( isThorRGBA ) {
-        const int32_t frame = unit.GetFrame();
-        if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) && !_rgbaThorFrames[frame].empty() ) {
-            _rgbaOverlays.push_back(
-                { &_rgbaThorFrames[frame], drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect(), _currentDepth, {} } );
+        if ( useThorPNG ) {
+            // Thor with custom high-res PNG frames.
+            const int32_t frame = unit.GetFrame();
+            if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) && !_rgbaThorFrames[frame].empty() ) {
+                _rgbaOverlays.push_back( { &_rgbaThorFrames[frame], drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect(),
+                                           _currentDepth, unit.GetCustomAlpha(), {} } );
+            }
+        }
+        else if ( useRGBAOverlay ) {
+            // Convert palette sprite to RGBA via cache.
+            const fheroes2::RGBAImage & rgbaSprite = _getOrConvertToRGBA( monsterSprite, unit.GetMonsterSprite(), unit.GetFrame() );
+            _rgbaOverlays.push_back( { &rgbaSprite, drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect(), _currentDepth,
+                                       unit.GetCustomAlpha(), {} } );
         }
     }
 
-    // Generate contour highlight. For Thor RGBA, derive the shape from the RGBA alpha channel at game resolution.
+    // Generate contour highlight.
     const bool needsContour = ( _unitToHighlight == &unit ) || ( _currentUnit == &unit && _spriteInsteadCurrentUnit == nullptr );
     if ( needsContour ) {
         const uint8_t contourColor = ( _unitToHighlight == &unit ) ? GetArmyColorFromPlayerColor( unit.GetArmyColor() ) : _contourColor;
 
-        if ( isThorRGBA && !_rgbaOverlays.empty() && _rgbaOverlays.back().src != nullptr ) {
-            const RGBAOverlayInfo & info = _rgbaOverlays.back();
-            const fheroes2::RGBAImage & rgbaSrc = *info.src;
+        // For RGBA overlays with high-res source (Thor PNGs), derive contour from RGBA alpha.
+        if ( useThorPNG && !_rgbaOverlays.empty() && _rgbaOverlays.back().src != nullptr
+             && _rgbaOverlays.back().src->width() != monsterSprite.width() ) {
+            const fheroes2::RGBAImage & rgbaSrc = *_rgbaOverlays.back().src;
             const int32_t gameW = monsterSprite.width();
             const int32_t gameH = monsterSprite.height();
 
-            // Create an 8-bit mask image from the RGBA alpha channel, scaled to game resolution.
             fheroes2::Image mask( gameW, gameH );
             mask.reset();
             const float scaleX = static_cast<float>( rgbaSrc.width() ) / static_cast<float>( gameW );
@@ -2103,6 +2124,7 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
             fheroes2::Blit( contour, _mainSurface, drawnPosition.x, drawnPosition.y, unit.isReflect() );
         }
         else {
+            // For palette sprites (or same-resolution RGBA), use the palette sprite for contour.
             const fheroes2::Sprite & contour = fheroes2::CreateContour( monsterSprite, contourColor );
             fheroes2::Blit( contour, _mainSurface, drawnPosition.x, drawnPosition.y, unit.isReflect() );
         }
@@ -2224,23 +2246,42 @@ void Battle::Interface::_writeDepth( const fheroes2::Image & sprite, const int32
     }
 }
 
+const fheroes2::RGBAImage & Battle::Interface::_getOrConvertToRGBA( const fheroes2::Sprite & sprite, const int icnId, const int frameIndex )
+{
+    const uint64_t key = ( static_cast<uint64_t>( icnId ) << 32 ) | static_cast<uint32_t>( frameIndex );
+    auto it = _rgbaSpriteCache.find( key );
+    if ( it != _rgbaSpriteCache.end() ) {
+        return it->second;
+    }
+
+    auto & entry = _rgbaSpriteCache[key];
+    fheroes2::ConvertIndexedToRGBA( sprite, entry );
+    return entry;
+}
+
 void Battle::Interface::_generateMaskedRGBAOverlays()
 {
     const int32_t surfW = _mainSurface.width();
     const int32_t surfH = _mainSurface.height();
 
     for ( RGBAOverlayInfo & info : _rgbaOverlays ) {
-        if ( info.src == nullptr || info.src->empty() || info.depth == 0 ) {
+        if ( info.depth == 0 ) {
             continue;
         }
 
-        const fheroes2::RGBAImage & src = *info.src;
-        const int32_t srcW = src.width();
-        const int32_t srcH = src.height();
+        // If src is set, copy from it into masked. If src is null, masked was already populated (e.g., stone/mirror).
+        if ( info.src != nullptr && !info.src->empty() ) {
+            const fheroes2::RGBAImage & src = *info.src;
+            info.masked.resize( src.width(), src.height() );
+            memcpy( info.masked.data(), src.data(), static_cast<size_t>( src.width() ) * src.height() * 4 );
+        }
 
-        // Copy the full-resolution RGBA source into the masked overlay.
-        info.masked.resize( srcW, srcH );
-        memcpy( info.masked.data(), src.data(), static_cast<size_t>( srcW ) * srcH * 4 );
+        if ( info.masked.empty() ) {
+            continue;
+        }
+
+        const int32_t srcW = info.masked.width();
+        const int32_t srcH = info.masked.height();
 
         // Scale factors: RGBA source pixels to game pixels.
         const float scaleX = ( info.gameWidth > 0 ) ? static_cast<float>( srcW ) / static_cast<float>( info.gameWidth ) : 1.0f;

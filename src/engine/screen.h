@@ -264,9 +264,10 @@ namespace fheroes2
         }
 
         // RGBA overlay support for true-color rendering.
-        void addRGBAOverlay( const RGBAImage & overlay, const int32_t x, const int32_t y, const int32_t gameWidth = 0, const bool flip = false )
+        void addRGBAOverlay( const RGBAImage & overlay, const int32_t x, const int32_t y, const int32_t gameWidth = 0, const bool flip = false,
+                             const uint8_t alpha = 255 )
         {
-            _rgbaOverlays.push_back( { &overlay, x, y, gameWidth, flip } );
+            _rgbaOverlays.push_back( { &overlay, x, y, gameWidth, flip, alpha } );
         }
 
         void clearRGBAOverlays()

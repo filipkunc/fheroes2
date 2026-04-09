@@ -1227,6 +1227,22 @@ namespace
             // Temporarily disable logical size so we can render at physical pixel coordinates.
             SDL_RenderSetLogicalSize( _renderer, 0, 0 );
 
+            // Ensure atlas texture is large enough for any overlay (Thor PNGs can be up to ~400x660).
+            static constexpr int32_t ATLAS_SIZE = 1024;
+            if ( _rgbaOverlayTexture == nullptr ) {
+                _rgbaOverlayTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, ATLAS_SIZE, ATLAS_SIZE );
+                if ( _rgbaOverlayTexture != nullptr ) {
+                    SDL_SetTextureBlendMode( _rgbaOverlayTexture, SDL_BLENDMODE_BLEND );
+                    _rgbaOverlayTextureW = ATLAS_SIZE;
+                    _rgbaOverlayTextureH = ATLAS_SIZE;
+                }
+            }
+
+            if ( _rgbaOverlayTexture == nullptr ) {
+                SDL_RenderSetLogicalSize( _renderer, gameW, gameH );
+                return;
+            }
+
             for ( const fheroes2::RGBAOverlay & overlay : overlays ) {
                 if ( overlay.image == nullptr || overlay.image->empty() ) {
                     continue;
@@ -1235,27 +1251,23 @@ namespace
                 const int32_t srcW = overlay.image->width();
                 const int32_t srcH = overlay.image->height();
 
-                // Recreate the texture if the overlay size changed.
-                if ( _rgbaOverlayTexture == nullptr || _rgbaOverlayTextureW != srcW || _rgbaOverlayTextureH != srcH ) {
-                    if ( _rgbaOverlayTexture != nullptr ) {
-                        SDL_DestroyTexture( _rgbaOverlayTexture );
-                    }
-                    _rgbaOverlayTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, srcW, srcH );
-                    if ( _rgbaOverlayTexture == nullptr ) {
-                        continue;
-                    }
-                    SDL_SetTextureBlendMode( _rgbaOverlayTexture, SDL_BLENDMODE_BLEND );
-                    _rgbaOverlayTextureW = srcW;
-                    _rgbaOverlayTextureH = srcH;
+                if ( srcW > ATLAS_SIZE || srcH > ATLAS_SIZE ) {
+                    // Sprite too large for atlas — skip (shouldn't happen in practice).
+                    continue;
                 }
 
-                // Upload RGBA pixel data to the texture.
-                SDL_UpdateTexture( _rgbaOverlayTexture, nullptr, overlay.image->data(), srcW * 4 );
+                // Upload RGBA data into the top-left corner of the atlas texture.
+                SDL_Rect uploadRect = { 0, 0, srcW, srcH };
+                SDL_UpdateTexture( _rgbaOverlayTexture, &uploadRect, overlay.image->data(), srcW * 4 );
 
-                // Compute the desired physical pixel size. If gameWidth is set, scale to match that many game pixels.
+                // Apply per-overlay alpha modulation.
+                SDL_SetTextureAlphaMod( _rgbaOverlayTexture, overlay.alpha );
+
+                // Compute the desired physical pixel size.
                 const int32_t targetGameW = ( overlay.gameWidth > 0 ) ? overlay.gameWidth : srcW;
                 const float overlayScale = ( static_cast<float>( targetGameW ) * scale ) / static_cast<float>( srcW );
 
+                SDL_Rect srcRect = { 0, 0, srcW, srcH };
                 SDL_Rect dstRect;
                 dstRect.x = offsetX + static_cast<int>( static_cast<float>( overlay.x ) * scale );
                 dstRect.y = offsetY + static_cast<int>( static_cast<float>( overlay.y ) * scale );
@@ -1263,7 +1275,7 @@ namespace
                 dstRect.h = static_cast<int>( static_cast<float>( srcH ) * overlayScale );
 
                 const SDL_RendererFlip flipFlag = overlay.flip ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-                SDL_RenderCopyEx( _renderer, _rgbaOverlayTexture, nullptr, &dstRect, 0.0, nullptr, flipFlag );
+                SDL_RenderCopyEx( _renderer, _rgbaOverlayTexture, &srcRect, &dstRect, 0.0, nullptr, flipFlag );
             }
 
             // Render the software cursor as an RGBA texture on top of everything.

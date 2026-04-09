@@ -24,6 +24,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -641,12 +642,17 @@ namespace Battle
             int32_t gameHeight{ 0 };
             bool flip{ false };
             uint16_t depth{ 0 };
+            uint8_t alpha{ 255 };
             fheroes2::RGBAImage masked;
         };
 
         std::vector<RGBAOverlayInfo> _rgbaOverlays;
 
         void _generateMaskedRGBAOverlays();
+
+        // Cache for palette-to-RGBA converted sprites. Key = (icnId << 32) | frameIndex.
+        std::map<uint64_t, fheroes2::RGBAImage> _rgbaSpriteCache;
+        const fheroes2::RGBAImage & _getOrConvertToRGBA( const fheroes2::Sprite & sprite, int icnId, int frameIndex );
 
         // Intents are used to confirm actions in combat performed using touch gestures
         BoardActionIntent _boardActionIntent;

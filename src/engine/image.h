@@ -442,6 +442,10 @@ namespace fheroes2
     // Clear a rectangular region of an RGBAImage (set alpha to 0).
     void ClearRGBARegion( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height );
 
+    // Convert an 8-bit indexed Image to an RGBAImage using the game palette.
+    // Transparent pixels (transform==1) get alpha=0. Shadow pixels (transform>1) also get alpha=0.
+    void ConvertIndexedToRGBA( const Image & indexed, RGBAImage & out );
+
     // Position info for RGBA overlay rendering. Position is in game pixels.
     struct RGBAOverlay
     {
@@ -452,5 +456,6 @@ namespace fheroes2
         // If 0, uses the source image width (1 source pixel = 1 game pixel).
         int32_t gameWidth{ 0 };
         bool flip{ false };
+        uint8_t alpha{ 255 };
     };
 }
