@@ -441,6 +441,28 @@ namespace
 
 namespace fheroes2
 {
+    // Static RGBA mirror members.
+    Image * Image::_rgbaMirrorTarget = nullptr;
+    RGBAImage * Image::_rgbaMirror = nullptr;
+    int32_t Image::_rgbaMirrorOffsetX = 0;
+    int32_t Image::_rgbaMirrorOffsetY = 0;
+    float Image::_rgbaMirrorScale = 1.0f;
+
+    void Image::setRGBAMirror( Image * target, RGBAImage * mirror, const int32_t offsetX, const int32_t offsetY, const float scale )
+    {
+        _rgbaMirrorTarget = target;
+        _rgbaMirror = mirror;
+        _rgbaMirrorOffsetX = offsetX;
+        _rgbaMirrorOffsetY = offsetY;
+        _rgbaMirrorScale = scale;
+    }
+
+    void Image::clearRGBAMirror()
+    {
+        _rgbaMirrorTarget = nullptr;
+        _rgbaMirror = nullptr;
+    }
+
     Image::Image( Image && image ) noexcept
         : _data( std::move( image._data ) )
     {
@@ -700,7 +722,15 @@ namespace fheroes2
     void ImageRestorer::restore()
     {
         _isRestored = true;
+
+        // Suspend the RGBA mirror during restore — the saved content is indexed 8-bit
+        // and should not overwrite the high-res RGBA surface.
+        Image * savedTarget = Image::_rgbaMirrorTarget;
+        Image::_rgbaMirrorTarget = nullptr;
+
         Copy( _copy, 0, 0, _image, _x, _y, _width, _height );
+
+        Image::_rgbaMirrorTarget = savedTarget;
     }
 
     void ImageRestorer::_updateRoi()
@@ -1185,6 +1215,12 @@ namespace fheroes2
                 }
             }
         }
+
+        // Mirror to RGBA surface if this write targets the mirrored Image.
+        if ( Image::_rgbaMirrorTarget == &out && Image::_rgbaMirror != nullptr ) {
+            BlitIndexedToRGBAScaledAlpha( in, *Image::_rgbaMirror, outX - Image::_rgbaMirrorOffsetX, outY - Image::_rgbaMirrorOffsetY, Image::_rgbaMirrorScale,
+                                          alphaValue, flip );
+        }
     }
 
     void ApplyPalette( Image & image, const std::vector<uint8_t> & palette )
@@ -1439,6 +1475,11 @@ namespace fheroes2
                 }
             }
         }
+
+        // Mirror to RGBA surface if this write targets the mirrored Image.
+        if ( Image::_rgbaMirrorTarget == &out && Image::_rgbaMirror != nullptr ) {
+            BlitIndexedToRGBAScaled( in, *Image::_rgbaMirror, outX - Image::_rgbaMirrorOffsetX, outY - Image::_rgbaMirrorOffsetY, Image::_rgbaMirrorScale, flip );
+        }
     }
 
     void Copy( const Image & in, Image & out )
@@ -1516,6 +1557,12 @@ namespace fheroes2
                 memcpy( imageOutY, imageInY, static_cast<size_t>( width ) );
                 memcpy( transformOutY, transformInY, static_cast<size_t>( width ) );
             }
+        }
+
+        // Mirror to RGBA surface if this write targets the mirrored Image.
+        if ( Image::_rgbaMirrorTarget == &out && Image::_rgbaMirror != nullptr ) {
+            BlitIndexedToRGBAScaledRegion( in, inX, inY, width, height, *Image::_rgbaMirror, outX - Image::_rgbaMirrorOffsetX, outY - Image::_rgbaMirrorOffsetY,
+                                           Image::_rgbaMirrorScale );
         }
     }
 
@@ -4080,48 +4127,6 @@ namespace fheroes2
             const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcStartY + row ) * srcW + srcStartX ) * 4;
             uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( dstStartY + row ) * dstW + dstStartX ) * 4;
             memcpy( dstRow, srcRow, static_cast<size_t>( copyW ) * 4 );
-        }
-    }
-
-    void BlitRGBAToIndexedScaled( const RGBAImage & in, Image & out, const int32_t outX, const int32_t outY, const float scale )
-    {
-        if ( in.empty() || out.empty() || scale <= 0.0f ) {
-            return;
-        }
-
-        const int32_t dstW = out.width();
-        const int32_t dstH = out.height();
-        const int32_t srcW = in.width();
-        const int32_t srcH = in.height();
-
-        // Compute the game-resolution area covered by the RGBA surface.
-        const int32_t gameW = static_cast<int32_t>( static_cast<float>( srcW ) / scale );
-        const int32_t gameH = static_cast<int32_t>( static_cast<float>( srcH ) / scale );
-
-        const int32_t endX = std::min( outX + gameW, dstW );
-        const int32_t endY = std::min( outY + gameH, dstH );
-        const int32_t startX = std::max( outX, 0 );
-        const int32_t startY = std::max( outY, 0 );
-
-        if ( startX >= endX || startY >= endY ) {
-            return;
-        }
-
-        uint8_t * dstImage = out.image();
-        const uint8_t * srcData = in.data();
-
-        for ( int32_t y = startY; y < endY; ++y ) {
-            const int32_t srcY = std::min( static_cast<int32_t>( static_cast<float>( y - outY ) * scale ), srcH - 1 );
-            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
-
-            for ( int32_t x = startX; x < endX; ++x ) {
-                const int32_t srcX = std::min( static_cast<int32_t>( static_cast<float>( x - outX ) * scale ), srcW - 1 );
-                const uint8_t * px = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
-
-                if ( px[3] > 128 ) {
-                    dstImage[static_cast<ptrdiff_t>( y ) * dstW + x] = GetColorId( px[0], px[1], px[2] );
-                }
-            }
         }
     }
 

@@ -407,8 +407,9 @@ Battle::Result Battle::Loader( Army & attackingArmy, Army & defendingArmy, const
             arena.FadeArena( clearMessageLog );
         }
 
-        // Clear the RGBA battle overlay so the summary dialog is visible.
+        // Clear the RGBA battle overlay and mirror so the summary dialog renders normally.
         fheroes2::Display::instance().clearRGBAOverlays();
+        fheroes2::Image::clearRGBAMirror();
 
         if ( isHumanBattle
              && arena.DialogBattleSummary( result,

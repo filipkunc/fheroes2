@@ -36,6 +36,8 @@ namespace fheroes2
         RGBA_32BIT = 1
     };
 
+    class RGBAImage; // Forward declaration for RGBA mirror.
+
     // Image always contains an image layer and if image is not a single-layer then also a transform layer.
     // - image layer contains visible pixels which are copy to a destination image
     // - transform layer is used to apply some transformation to an image on which we draw the current one. For example, shadowing
@@ -132,6 +134,17 @@ namespace fheroes2
         {
             _singleLayer = true;
         }
+
+        // RGBA mirror: when set, any Blit/Copy/AlphaBlit targeting _rgbaMirrorTarget also writes to the RGBA surface.
+        // Used by battle interface to forward dialog draws to _mainSurfaceRGBA.
+        static void setRGBAMirror( Image * target, RGBAImage * mirror, int32_t offsetX, int32_t offsetY, float scale );
+        static void clearRGBAMirror();
+
+        static Image * _rgbaMirrorTarget;
+        static RGBAImage * _rgbaMirror;
+        static int32_t _rgbaMirrorOffsetX;
+        static int32_t _rgbaMirrorOffsetY;
+        static float _rgbaMirrorScale;
 
     private:
         void copy( const Image & image );
@@ -475,11 +488,6 @@ namespace fheroes2
 
     // Darken a rectangular region of an RGBAImage by multiplying RGB by factor (0.0-1.0).
     void DimRGBA( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height, float factor );
-
-    // Downsample an RGBAImage and blit it into an indexed Image at the given position.
-    // The RGBA surface (at physical resolution) is downsampled by 'scale' to match game resolution.
-    // Each RGBA pixel is converted to the nearest palette color via GetColorId().
-    void BlitRGBAToIndexedScaled( const RGBAImage & in, Image & out, int32_t outX, int32_t outY, float scale );
 
     // Position info for RGBA overlay rendering. Position is in game pixels.
     struct RGBAOverlay

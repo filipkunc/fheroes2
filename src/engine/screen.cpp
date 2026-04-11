@@ -1744,6 +1744,11 @@ namespace fheroes2
             return;
         }
 
+        // Suspend the RGBA mirror during rendering so cursor draw/restore and
+        // internal Blit/Copy operations don't overwrite the RGBA overlay content.
+        Image * savedMirrorTarget = Image::_rgbaMirrorTarget;
+        Image::_rgbaMirrorTarget = nullptr;
+
         if ( _cursor->isVisible() && _cursor->isSoftwareEmulation() && !_cursor->_image.empty() ) {
             const Sprite & cursorImage = _cursor->_image;
             Rect cursorROI( cursorImage.x(), cursorImage.y(), cursorImage.width(), cursorImage.height() );
@@ -1778,6 +1783,9 @@ namespace fheroes2
         }
 
         _prevRoi = temp;
+
+        // Restore the RGBA mirror.
+        Image::_rgbaMirrorTarget = savedMirrorTarget;
     }
 
     void Display::updateNextRenderRoi( const Rect & roi )
