@@ -449,6 +449,33 @@ namespace fheroes2
     // Transparent pixels (transform==1) get alpha=0. Shadow pixels (transform>1) also get alpha=0.
     void ConvertIndexedToRGBA( const Image & indexed, RGBAImage & out );
 
+    // Blit an 8-bit indexed Image directly to an RGBAImage at a given scale.
+    // Transparent pixels (transform==1) are skipped. Shadow pixels (transform 2-5) darken the destination.
+    // Coordinates are in game-pixel space and are internally scaled by 'scale'.
+    void BlitIndexedToRGBAScaled( const Image & in, RGBAImage & out, int32_t gameX, int32_t gameY, float scale, bool flip = false );
+
+    // Same as above but with a global alpha multiplier (0-255) for semi-transparent rendering.
+    void BlitIndexedToRGBAScaledAlpha( const Image & in, RGBAImage & out, int32_t gameX, int32_t gameY, float scale, uint8_t alpha, bool flip = false );
+
+    // Blit a sub-region of an 8-bit indexed Image to an RGBAImage at a given scale.
+    void BlitIndexedToRGBAScaledRegion( const Image & in, int32_t inX, int32_t inY, int32_t w, int32_t h, RGBAImage & out, int32_t gameX, int32_t gameY, float scale,
+                                        uint8_t alpha = 255, bool flip = false );
+
+    // Blit RGBAImage onto another with proper src_over alpha compositing and a global alpha multiplier.
+    void BlitRGBAAlpha( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, uint8_t alpha, bool flip = false );
+
+    // Scaled version of BlitRGBAAlpha.
+    void BlitRGBAScaledAlpha( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, int32_t dstW, int32_t dstH, uint8_t alpha, bool flip = false );
+
+    // Draw a line on an RGBAImage using Bresenham's algorithm.
+    void DrawLineRGBA( RGBAImage & image, const Point & start, const Point & end, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255 );
+
+    // Copy a rectangular region between RGBAImages.
+    void CopyRGBA( const RGBAImage & in, int32_t inX, int32_t inY, RGBAImage & out, int32_t outX, int32_t outY, int32_t w, int32_t h );
+
+    // Darken a rectangular region of an RGBAImage by multiplying RGB by factor (0.0-1.0).
+    void DimRGBA( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height, float factor );
+
     // Position info for RGBA overlay rendering. Position is in game pixels.
     struct RGBAOverlay
     {

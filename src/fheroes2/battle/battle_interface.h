@@ -176,6 +176,18 @@ namespace Battle
             CAPTAIN_Y_OFFSET = -13
         };
 
+        int getHeroIcnId() const
+        {
+            return _heroIcnId;
+        }
+
+        int getFrame() const
+        {
+            return _currentAnim.getFrame();
+        }
+
+        bool isCaptain() const;
+
     private:
         HeroBase * _heroBase{ nullptr };
         AnimationSequence _currentAnim;
@@ -482,6 +494,7 @@ namespace Battle
         fheroes2::Rect _surfaceInnerArea{ 0, 0, fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT };
         fheroes2::Image _mainSurface;
         fheroes2::Image _battleGround;
+        fheroes2::RGBAImage _battleGroundRGBA;  // Pre-converted background at physical resolution.
         fheroes2::Image _hexagonGrid;
         fheroes2::Image _hexagonShadow;
         fheroes2::Image _hexagonGridShadow;
@@ -623,22 +636,17 @@ namespace Battle
         // Copy a region from _mainSurface to _mainSurfaceRGBA, converting palette indices to RGBA.
         void _updateRGBARegion( int32_t x, int32_t y, int32_t w, int32_t h );
 
+        // Central wrappers that draw to _mainSurface AND sync to _mainSurfaceRGBA.
+        void _blitOnSurface( const fheroes2::Image & in, int32_t outX, int32_t outY, bool flip = false );
+        void _alphaBlitOnSurface( const fheroes2::Image & in, int32_t outX, int32_t outY, uint8_t alpha, bool flip = false );
+        void _alphaBlitOnSurface( const fheroes2::Image & in, int32_t inX, int32_t inY, int32_t outX, int32_t outY, int32_t w, int32_t h, uint8_t alpha,
+                                  bool flip = false );
+        void _copyOnSurface( const fheroes2::Image & in, int32_t inX, int32_t inY, int32_t outX, int32_t outY, int32_t w, int32_t h );
+        void _copyFullSurface( const fheroes2::Image & in );
+
         // RGBA sprite frames for Thor at original PNG resolution.
         std::vector<fheroes2::RGBAImage> _rgbaThorFrames;
         bool _rgbaThorLoaded{ false };
-
-        // Per-frame RGBA blit records for re-painting after palette sync.
-        struct RGBABlitRecord
-        {
-            const fheroes2::RGBAImage * src{ nullptr };
-            int32_t posX{ 0 };
-            int32_t posY{ 0 };
-            int32_t gameWidth{ 0 };
-            int32_t gameHeight{ 0 };
-            bool flip{ false };
-        };
-
-        std::vector<RGBABlitRecord> _rgbaBlits;
 
         // RGBA composite at physical screen resolution for the battle area.
         fheroes2::RGBAImage _mainSurfaceRGBA;

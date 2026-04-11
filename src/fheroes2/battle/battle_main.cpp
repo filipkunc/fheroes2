@@ -50,6 +50,7 @@
 #include "players.h"
 #include "rand.h"
 #include "resource.h"
+#include "screen.h"
 #include "settings.h"
 #include "skill.h"
 #include "spell.h"
@@ -405,6 +406,9 @@ Battle::Result Battle::Loader( Army & attackingArmy, Army & defendingArmy, const
             const bool clearMessageLog = ( result.attacker & ( RESULT_RETREAT | RESULT_SURRENDER ) ) || ( result.defender & ( RESULT_RETREAT | RESULT_SURRENDER ) );
             arena.FadeArena( clearMessageLog );
         }
+
+        // Clear the RGBA battle overlay so the summary dialog is visible.
+        fheroes2::Display::instance().clearRGBAOverlays();
 
         if ( isHumanBattle
              && arena.DialogBattleSummary( result,

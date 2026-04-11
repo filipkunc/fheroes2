@@ -105,6 +105,21 @@ namespace
     // The number of frames the second smoke cloud is delayed by.
     const int32_t bridgeDestroySmokeDelay = 2;
 
+    // RAII helper that clears RGBA overlays on construction so modal dialogs are visible.
+    // The overlay is re-registered automatically on the next RedrawPartialFinish() call.
+    class OverlayGuard
+    {
+    public:
+        OverlayGuard()
+        {
+            fheroes2::Display::instance().clearRGBAOverlays();
+        }
+
+        OverlayGuard( const OverlayGuard & ) = delete;
+        OverlayGuard & operator=( const OverlayGuard & ) = delete;
+        ~OverlayGuard() = default;
+    };
+
     const int32_t offsetForTextBar{ 32 };
 
     const int32_t maxElementsInBattleLog{ 6 };
@@ -196,6 +211,64 @@ namespace
         }
 
         return lines;
+    }
+
+    // Convert a palette color index to 8-bit RGB.
+    void paletteColorToRGB( const uint8_t colorId, uint8_t & r, uint8_t & g, uint8_t & b )
+    {
+        const uint8_t * pal = fheroes2::getGamePalette() + static_cast<ptrdiff_t>( colorId ) * 3;
+        r = static_cast<uint8_t>( pal[0] << 2 );
+        g = static_cast<uint8_t>( pal[1] << 2 );
+        b = static_cast<uint8_t>( pal[2] << 2 );
+    }
+
+    // Scale a game-pixel point to physical-pixel space.
+    fheroes2::Point scalePoint( const fheroes2::Point & pt, const float scale )
+    {
+        return { static_cast<int32_t>( static_cast<float>( pt.x ) * scale ), static_cast<int32_t>( static_cast<float>( pt.y ) * scale ) };
+    }
+
+    void RedrawLightningRGBA( const std::vector<std::pair<LightningPoint, LightningPoint>> & lightning, const uint8_t color, fheroes2::RGBAImage & surface,
+                              const float scale, const fheroes2::Rect & roi = fheroes2::Rect() )
+    {
+        uint8_t r, g, b;
+        paletteColorToRGB( color, r, g, b );
+
+        for ( const auto & [firstPoint, secondPoint] : lightning ) {
+            fheroes2::Point first = scalePoint( firstPoint.point, scale );
+            fheroes2::Point second = scalePoint( secondPoint.point, scale );
+            const bool isHorizontal = std::abs( first.x - second.x ) >= std::abs( first.y - second.y );
+            const float thicknessScale = scale;
+
+            fheroes2::DrawLineRGBA( surface, first, second, r, g, b );
+
+            for ( int32_t thickness = 1; thickness < secondPoint.thickness; ++thickness ) {
+                const bool isUpper = ( ( thickness % 2 ) == 1 );
+                const int32_t offset = isUpper ? static_cast<int32_t>( static_cast<float>( ( thickness + 1 ) / 2 ) * thicknessScale )
+                                               : -static_cast<int32_t>( static_cast<float>( ( thickness + 1 ) / 2 ) * thicknessScale );
+
+                if ( isHorizontal ) {
+                    fheroes2::DrawLineRGBA( surface, { first.x, first.y + offset }, { second.x, second.y + offset }, r, g, b );
+                }
+                else {
+                    fheroes2::DrawLineRGBA( surface, { first.x + offset, first.y }, { second.x + offset, second.y }, r, g, b );
+                }
+            }
+
+            for ( int32_t thickness = secondPoint.thickness; thickness < firstPoint.thickness; ++thickness ) {
+                const bool isUpper = ( ( thickness % 2 ) == 1 );
+                const int32_t offset = isUpper ? static_cast<int32_t>( static_cast<float>( ( thickness + 1 ) / 2 ) * thicknessScale )
+                                               : -static_cast<int32_t>( static_cast<float>( ( thickness + 1 ) / 2 ) * thicknessScale );
+
+                if ( isHorizontal ) {
+                    fheroes2::DrawLineRGBA( surface, { first.x, first.y + offset }, second, r, g, b );
+                }
+                else {
+                    fheroes2::DrawLineRGBA( surface, { first.x + offset, first.y }, second, r, g, b );
+                }
+            }
+        }
+        (void)roi; // ROI clipping not implemented for RGBA path yet.
     }
 
     void RedrawLightning( const std::vector<std::pair<LightningPoint, LightningPoint>> & lightning, const uint8_t color, fheroes2::Image & surface,
@@ -1116,6 +1189,11 @@ void Battle::OpponentSprite::Redraw( fheroes2::Image & dst ) const
     }
 }
 
+bool Battle::OpponentSprite::isCaptain() const
+{
+    return _heroBase != nullptr && _heroBase->isCaptain();
+}
+
 bool Battle::OpponentSprite::updateAnimationState()
 {
     if ( _currentAnim.isLastFrame() ) {
@@ -1206,10 +1284,12 @@ bool Battle::TurnOrder::queueEventProcessing( Interface & interface, std::string
 
             // Process mouse buttons events.
             if ( le.MouseClickLeft( unitRoi ) ) {
+                const OverlayGuard guard;
                 Dialog::ArmyInfo( *unit, Dialog::BUTTONS, unit->isReflect() );
                 return true;
             }
             if ( le.isMouseRightButtonPressed() ) {
+                const OverlayGuard guard;
                 Dialog::ArmyInfo( *unit, Dialog::ZERO, unit->isReflect() );
                 return true;
             }
@@ -1631,13 +1711,7 @@ void Battle::Interface::Redraw()
 
 void Battle::Interface::RedrawPartialStart()
 {
-    _rgbaBlits.clear();
-
     RedrawCover();
-
-    // Convert the background to the high-res RGBA composite surface.
-    _updateRGBARegion( 0, 0, _mainSurface.width(), _mainSurface.height() );
-
     RedrawArmies();
 }
 
@@ -1658,9 +1732,13 @@ void Battle::Interface::redrawPreRender()
             unit = cell->GetUnit();
         }
         _turnOrder.redraw( _currentUnit, _contourColor, unit, _mainSurface, border.GetRect() );
+        // Sync the turn order area to RGBA.
+        const fheroes2::Rect turnRoi = _turnOrder.getRenderingRoi();
+        if ( turnRoi.width > 0 && turnRoi.height > 0 ) {
+            _updateRGBARegion( turnRoi.x - _interfacePosition.x, turnRoi.y - _interfacePosition.y, turnRoi.width, turnRoi.height );
+        }
     }
     else {
-        // If the option is being turned off we need to restore the background and clear the restorer to avoid repeating the same image operation.
         _turnOrder.restore();
         _turnOrder.clear();
     }
@@ -1674,23 +1752,10 @@ void Battle::Interface::redrawPreRender()
             const fheroes2::Text text( std::to_string( cell.GetIndex() ), fheroes2::FontType::smallWhite() );
             text.draw( cell.GetPos().x + 20, cell.GetPos().y + 24, _mainSurface );
         }
+        // Sync debug text to RGBA.
+        _updateRGBARegion( 0, 0, _mainSurface.width(), _mainSurface.height() );
     }
 #endif
-
-    // Sync the full _mainSurface to _mainSurfaceRGBA. This captures all palette draws
-    // (contours, heroes, flags, turn order, troop counts, castle elements, spell effects).
-    _updateRGBARegion( 0, 0, _mainSurface.width(), _mainSurface.height() );
-
-    // Re-paint high-res RGBA sprites (the full sync above overwrote them with palette versions).
-    for ( const RGBABlitRecord & rec : _rgbaBlits ) {
-        if ( rec.src != nullptr && !rec.src->empty() ) {
-            const int32_t physX = static_cast<int32_t>( static_cast<float>( rec.posX ) * _rgbaScale );
-            const int32_t physY = static_cast<int32_t>( static_cast<float>( rec.posY ) * _rgbaScale );
-            const int32_t physW = static_cast<int32_t>( static_cast<float>( rec.gameWidth ) * _rgbaScale );
-            const int32_t physH = static_cast<int32_t>( static_cast<float>( rec.gameHeight ) * _rgbaScale );
-            fheroes2::BlitRGBAScaled( *rec.src, _mainSurfaceRGBA, physX, physY, physW, physH, rec.flip );
-        }
-    }
 
     // Copy to Display for UI elements (status bar, buttons).
     auto & display = fheroes2::Display::instance();
@@ -1892,7 +1957,7 @@ void Battle::Interface::RedrawArmies()
             for ( const Battle::UnitSpellEffectInfo * overlaySprite : troopOverlaySpriteBeforeWall ) {
                 assert( overlaySprite->icnId != ICN::UNKNOWN );
                 const fheroes2::Sprite & spellSprite = fheroes2::AGG::GetICN( overlaySprite->icnId, overlaySprite->icnIndex );
-                fheroes2::Blit( spellSprite, _mainSurface, overlaySprite->position.x, overlaySprite->position.y, overlaySprite->isReflectedImage );
+                _blitOnSurface( spellSprite, overlaySprite->position.x, overlaySprite->position.y, overlaySprite->isReflectedImage );
             }
 
             RedrawCastle( *castle, wallCellId );
@@ -1921,7 +1986,7 @@ void Battle::Interface::RedrawArmies()
             for ( const Battle::UnitSpellEffectInfo * overlaySprite : troopOverlaySpriteAfterWall ) {
                 assert( overlaySprite->icnId != ICN::UNKNOWN );
                 const fheroes2::Sprite & spellSprite = fheroes2::AGG::GetICN( overlaySprite->icnId, overlaySprite->icnIndex );
-                fheroes2::Blit( spellSprite, _mainSurface, overlaySprite->position.x, overlaySprite->position.y, overlaySprite->isReflectedImage );
+                _blitOnSurface( spellSprite, overlaySprite->position.x, overlaySprite->position.y, overlaySprite->isReflectedImage );
             }
         }
         else {
@@ -1992,7 +2057,7 @@ void Battle::Interface::RedrawArmies()
             for ( const Battle::UnitSpellEffectInfo * overlaySprite : troopOverlaySprite ) {
                 assert( overlaySprite->icnId != ICN::UNKNOWN );
                 const fheroes2::Sprite & spellSprite = fheroes2::AGG::GetICN( overlaySprite->icnId, overlaySprite->icnIndex );
-                fheroes2::Blit( spellSprite, _mainSurface, overlaySprite->position.x, overlaySprite->position.y, overlaySprite->isReflectedImage );
+                _blitOnSurface( spellSprite, overlaySprite->position.x, overlaySprite->position.y, overlaySprite->isReflectedImage );
             }
         }
 
@@ -2009,10 +2074,25 @@ void Battle::Interface::RedrawArmies()
 
 void Battle::Interface::RedrawOpponents()
 {
-    if ( _attackingOpponent )
-        _attackingOpponent->Redraw( _mainSurface );
-    if ( _defendingOpponent )
-        _defendingOpponent->Redraw( _mainSurface );
+    if ( _attackingOpponent ) {
+        const fheroes2::Sprite & hero = fheroes2::AGG::GetICN( _attackingOpponent->getHeroIcnId(), _attackingOpponent->getFrame() );
+        fheroes2::Point offset( _attackingOpponent->Offset() );
+        if ( _attackingOpponent->isCaptain() ) {
+            offset.x -= OpponentSprite::CAPTAIN_X_OFFSET;
+            offset.y += OpponentSprite::CAPTAIN_Y_OFFSET;
+        }
+        _blitOnSurface( hero, offset.x + OpponentSprite::LEFT_HERO_X_OFFSET + hero.x(), offset.y + OpponentSprite::LEFT_HERO_Y_OFFSET + hero.y() );
+    }
+    if ( _defendingOpponent ) {
+        const fheroes2::Sprite & hero = fheroes2::AGG::GetICN( _defendingOpponent->getHeroIcnId(), _defendingOpponent->getFrame() );
+        fheroes2::Point offset( _defendingOpponent->Offset() );
+        if ( _defendingOpponent->isCaptain() ) {
+            offset.x += OpponentSprite::CAPTAIN_X_OFFSET;
+            offset.y += OpponentSprite::CAPTAIN_Y_OFFSET;
+        }
+        _blitOnSurface( hero, offset.x + fheroes2::Display::DEFAULT_WIDTH - OpponentSprite::RIGHT_HERO_X_OFFSET - ( hero.x() + hero.width() ),
+                         offset.y + OpponentSprite::RIGHT_HERO_Y_OFFSET + hero.y(), true );
+    }
 
     RedrawOpponentsFlags();
 }
@@ -2042,14 +2122,14 @@ void Battle::Interface::RedrawOpponentsFlags()
     if ( _attackingOpponent ) {
         const int icn = getFlagIcn( arena.getAttackingForce().GetColor() );
         const fheroes2::Sprite & flag = fheroes2::AGG::GetICN( icn, ICN::getAnimatedIcnIndex( icn, 0, animation_flags_frame ) );
-        fheroes2::Blit( flag, _mainSurface, _attackingOpponent->Offset().x + OpponentSprite::LEFT_HERO_X_OFFSET + flag.x(),
+        _blitOnSurface( flag, _attackingOpponent->Offset().x + OpponentSprite::LEFT_HERO_X_OFFSET + flag.x(),
                         _attackingOpponent->Offset().y + OpponentSprite::LEFT_HERO_Y_OFFSET + flag.y() );
     }
 
     if ( _defendingOpponent ) {
         const int icn = getFlagIcn( arena.getDefendingForce().GetColor() );
         const fheroes2::Sprite & flag = fheroes2::AGG::GetICN( icn, ICN::getAnimatedIcnIndex( icn, 0, animation_flags_frame ) );
-        fheroes2::Blit( flag, _mainSurface,
+        _blitOnSurface( flag,
                         _defendingOpponent->Offset().x + fheroes2::Display::DEFAULT_WIDTH - OpponentSprite::RIGHT_HERO_X_OFFSET - ( flag.x() + flag.width() ),
                         _defendingOpponent->Offset().y + OpponentSprite::RIGHT_HERO_Y_OFFSET + flag.y(), true );
     }
@@ -2061,10 +2141,12 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
 
     const fheroes2::Sprite & monsterSprite = isCurrentMonsterAction ? *_spriteInsteadCurrentUnit : fheroes2::AGG::GetICN( unit.GetMonsterSprite(), unit.GetFrame() );
 
-    // Only Thor with custom high-res PNGs uses the RGBA overlay path.
+    // Check if Thor has high-res RGBA frames available.
     const bool isThorRGBA = _rgbaThorLoaded && unit.GetID() == Monster::THOR && !isCurrentMonsterAction;
 
     fheroes2::Point drawnPosition;
+
+    const fheroes2::RGBAImage * thorRGBASrc = nullptr;
 
     if ( unit.Modes( SP_STONE | CAP_MIRRORIMAGE ) ) {
         fheroes2::Sprite modifiedMonsterSprite( monsterSprite );
@@ -2072,23 +2154,32 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
         fheroes2::ApplyPalette( modifiedMonsterSprite, PAL::GetPalette( paletteType ) );
         drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite, false );
     }
-    else {
-        drawnPosition = _drawTroopSprite( unit, monsterSprite, isThorRGBA );
-    }
+    else if ( isThorRGBA ) {
+        // Thor with high-res PNGs: draw indexed sprite ONLY to 8-bit surface for fallback,
+        // then draw the high-res PNG exclusively to RGBA.
+        drawnPosition = _drawTroopSprite( unit, monsterSprite, true );
 
-    // For Thor: composite RGBA directly onto _mainSurfaceRGBA at the right z-order position (painter's algorithm).
-    // Also record the overlay info so it can be re-composited after post-troop updates in redrawPreRender.
-    if ( isThorRGBA ) {
         const int32_t frame = unit.GetFrame();
         if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) && !_rgbaThorFrames[frame].empty() ) {
+            // Draw indexed sprite to 8-bit surface only.
+            fheroes2::AlphaBlit( monsterSprite, _mainSurface, drawnPosition.x, drawnPosition.y, unit.GetCustomAlpha(), unit.isReflect() );
+
+            // Draw high-res PNG to RGBA surface only.
             const int32_t physX = static_cast<int32_t>( static_cast<float>( drawnPosition.x ) * _rgbaScale );
             const int32_t physY = static_cast<int32_t>( static_cast<float>( drawnPosition.y ) * _rgbaScale );
             const int32_t physW = static_cast<int32_t>( static_cast<float>( monsterSprite.width() ) * _rgbaScale );
             const int32_t physH = static_cast<int32_t>( static_cast<float>( monsterSprite.height() ) * _rgbaScale );
             fheroes2::BlitRGBAScaled( _rgbaThorFrames[frame], _mainSurfaceRGBA, physX, physY, physW, physH, unit.isReflect() );
-
-            _rgbaBlits.push_back( { &_rgbaThorFrames[frame], drawnPosition.x, drawnPosition.y, monsterSprite.width(), monsterSprite.height(), unit.isReflect() } );
+            thorRGBASrc = &_rgbaThorFrames[frame];
         }
+        else {
+            // PNG frame not available — fall back to normal indexed path for both surfaces.
+            _alphaBlitOnSurface( monsterSprite, drawnPosition.x, drawnPosition.y, unit.GetCustomAlpha(), unit.isReflect() );
+        }
+    }
+    else {
+        // Normal monsters: draw indexed sprite to both 8-bit and RGBA via wrapper.
+        drawnPosition = _drawTroopSprite( unit, monsterSprite, false );
     }
 
     // Generate contour highlight.
@@ -2096,10 +2187,9 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
     if ( needsContour ) {
         const uint8_t contourColor = ( _unitToHighlight == &unit ) ? GetArmyColorFromPlayerColor( unit.GetArmyColor() ) : _contourColor;
 
-        // For RGBA overlays with high-res source (Thor PNGs), derive contour from RGBA alpha.
-        if ( isThorRGBA && !_rgbaBlits.empty() && _rgbaBlits.back().src != nullptr
-             && _rgbaBlits.back().src->width() != monsterSprite.width() ) {
-            const fheroes2::RGBAImage & rgbaSrc = *_rgbaBlits.back().src;
+        // For Thor with high-res RGBA source, derive contour from the PNG alpha channel.
+        if ( thorRGBASrc != nullptr && thorRGBASrc->width() != monsterSprite.width() ) {
+            const fheroes2::RGBAImage & rgbaSrc = *thorRGBASrc;
             const int32_t gameW = monsterSprite.width();
             const int32_t gameH = monsterSprite.height();
 
@@ -2126,12 +2216,12 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
             }
 
             const fheroes2::Sprite contour = fheroes2::CreateContour( mask, contourColor );
-            fheroes2::Blit( contour, _mainSurface, drawnPosition.x, drawnPosition.y, unit.isReflect() );
+            _blitOnSurface( contour, drawnPosition.x, drawnPosition.y, unit.isReflect() );
         }
         else {
-            // For palette sprites (or same-resolution RGBA), use the palette sprite for contour.
+            // For palette sprites, use the palette sprite for contour.
             const fheroes2::Sprite & contour = fheroes2::CreateContour( monsterSprite, contourColor );
-            fheroes2::Blit( contour, _mainSurface, drawnPosition.x, drawnPosition.y, unit.isReflect() );
+            _blitOnSurface( contour, drawnPosition.x, drawnPosition.y, unit.isReflect() );
         }
 
         if ( _unitToHighlight == &unit ) {
@@ -2198,9 +2288,46 @@ fheroes2::Point Battle::Interface::_drawTroopSprite( const Unit & unit, const fh
         return offset;
     }
 
-    fheroes2::AlphaBlit( troopSprite, _mainSurface, offset.x, offset.y, unit.GetCustomAlpha(), unit.isReflect() );
+    _alphaBlitOnSurface( troopSprite, offset.x, offset.y, unit.GetCustomAlpha(), unit.isReflect() );
 
     return offset;
+}
+
+void Battle::Interface::_blitOnSurface( const fheroes2::Image & in, const int32_t outX, const int32_t outY, const bool flip )
+{
+    // Primary: blit directly to RGBA at physical resolution.
+    fheroes2::BlitIndexedToRGBAScaled( in, _mainSurfaceRGBA, outX, outY, _rgbaScale, flip );
+    // Secondary: keep 8-bit surface in sync for UI/turn order compatibility.
+    fheroes2::Blit( in, _mainSurface, outX, outY, flip );
+}
+
+void Battle::Interface::_alphaBlitOnSurface( const fheroes2::Image & in, const int32_t outX, const int32_t outY, const uint8_t alpha, const bool flip )
+{
+    fheroes2::BlitIndexedToRGBAScaledAlpha( in, _mainSurfaceRGBA, outX, outY, _rgbaScale, alpha, flip );
+    fheroes2::AlphaBlit( in, _mainSurface, outX, outY, alpha, flip );
+}
+
+void Battle::Interface::_alphaBlitOnSurface( const fheroes2::Image & in, const int32_t inX, const int32_t inY, const int32_t outX, const int32_t outY, const int32_t w,
+                                             const int32_t h, const uint8_t alpha, const bool flip )
+{
+    fheroes2::BlitIndexedToRGBAScaledRegion( in, inX, inY, w, h, _mainSurfaceRGBA, outX, outY, _rgbaScale, alpha, flip );
+    fheroes2::AlphaBlit( in, inX, inY, _mainSurface, outX, outY, w, h, alpha, flip );
+}
+
+void Battle::Interface::_copyOnSurface( const fheroes2::Image & in, const int32_t inX, const int32_t inY, const int32_t outX, const int32_t outY, const int32_t w,
+                                        const int32_t h )
+{
+    fheroes2::BlitIndexedToRGBAScaledRegion( in, inX, inY, w, h, _mainSurfaceRGBA, outX, outY, _rgbaScale );
+    fheroes2::Copy( in, inX, inY, _mainSurface, outX, outY, w, h );
+}
+
+void Battle::Interface::_copyFullSurface( const fheroes2::Image & in )
+{
+    // Fast memcpy of pre-converted RGBA background.
+    if ( !_battleGroundRGBA.empty() && !_mainSurfaceRGBA.empty() ) {
+        fheroes2::CopyRGBA( _battleGroundRGBA, 0, 0, _mainSurfaceRGBA, 0, 0, _battleGroundRGBA.width(), _battleGroundRGBA.height() );
+    }
+    fheroes2::Copy( in, _mainSurface );
 }
 
 void Battle::Interface::_updateRGBARegion( const int32_t x, const int32_t y, const int32_t w, const int32_t h )
@@ -2341,14 +2468,13 @@ bool Battle::Interface::_drawTroopSpriteWithMoatMask( const Unit & unit, const f
     // around the mask.
 
     // Top
-    fheroes2::AlphaBlit( sprite, 0, 0, _mainSurface, spriteRect.x, spriteRect.y, spriteRect.width, intersection.y - spriteRect.y, alpha, isReflect );
+    _alphaBlitOnSurface( sprite, 0, 0, spriteRect.x, spriteRect.y, spriteRect.width, intersection.y - spriteRect.y, alpha, isReflect );
 
     // Left
-    fheroes2::AlphaBlit( sprite, 0, intersection.y - spriteRect.y, _mainSurface, spriteRect.x, intersection.y, intersection.x - spriteRect.x, intersection.height, alpha,
-                         isReflect );
+    _alphaBlitOnSurface( sprite, 0, intersection.y - spriteRect.y, spriteRect.x, intersection.y, intersection.x - spriteRect.x, intersection.height, alpha, isReflect );
 
     // Right
-    fheroes2::AlphaBlit( sprite, ( intersection.x + intersection.width ) - spriteRect.x, intersection.y - spriteRect.y, _mainSurface, intersection.x + intersection.width,
+    _alphaBlitOnSurface( sprite, ( intersection.x + intersection.width ) - spriteRect.x, intersection.y - spriteRect.y, intersection.x + intersection.width,
                          intersection.y, ( spriteRect.x + spriteRect.width ) - ( intersection.x + intersection.width ), intersection.height, alpha, isReflect );
 
     return true;
@@ -2374,10 +2500,11 @@ void Battle::Interface::RedrawTroopCount( const Unit & unit )
 
     sx += isReflected ? -xOffset : xOffset;
 
-    fheroes2::Copy( bar, 0, 0, _mainSurface, sx, sy, bar.width(), bar.height() );
+    _copyOnSurface( bar, 0, 0, sx, sy, bar.width(), bar.height() );
 
     const fheroes2::Text text( fheroes2::abbreviateNumber( static_cast<int32_t>( unit.GetCount() ) ), fheroes2::FontType::smallWhite() );
     text.draw( sx + ( bar.width() - text.width() ) / 2, sy + 2, _mainSurface );
+    _updateRGBARegion( sx, sy, bar.width(), bar.height() );
 }
 
 void Battle::Interface::RedrawCover()
@@ -2393,7 +2520,7 @@ void Battle::Interface::RedrawCover()
         }
 
         const fheroes2::Sprite & bridgeImage = fheroes2::AGG::GetICN( ICN::getCastleIcnId( Arena::GetCastle()->GetRace() ), spriteIndex );
-        fheroes2::Blit( bridgeImage, _mainSurface, bridgeImage.x(), bridgeImage.y() );
+        _blitOnSurface( bridgeImage, bridgeImage.x(), bridgeImage.y() );
     }
 
     const Cell * cell = Board::GetCell( _currentCellIndex );
@@ -2582,7 +2709,7 @@ void Battle::Interface::RedrawCover()
             }
 
             if ( isApplicable ) {
-                fheroes2::Blit( _hexagonCursorShadow, _mainSurface, highlightedCell->GetPos().x, highlightedCell->GetPos().y );
+                _blitOnSurface( _hexagonCursorShadow, highlightedCell->GetPos().x, highlightedCell->GetPos().y );
             }
         }
     }
@@ -2667,11 +2794,19 @@ void Battle::Interface::_redrawBattleGround()
         const fheroes2::Sprite & sprite2 = fheroes2::AGG::GetICN( castleBackgroundIcnId, castle->isFortificationBuilt() ? 4 : 3 );
         fheroes2::Blit( sprite2, _battleGround, sprite2.x(), sprite2.y() );
     }
+
+    // Pre-convert the static background to RGBA at physical resolution.
+    if ( !_mainSurfaceRGBA.empty() ) {
+        _battleGroundRGBA.resize( _mainSurfaceRGBA.width(), _mainSurfaceRGBA.height() );
+        // Zero-initialize to fully transparent, then blit the background on top.
+        memset( _battleGroundRGBA.data(), 0, static_cast<size_t>( _battleGroundRGBA.width() ) * _battleGroundRGBA.height() * 4 );
+        fheroes2::BlitIndexedToRGBAScaled( _battleGround, _battleGroundRGBA, 0, 0, _rgbaScale );
+    }
 }
 
 void Battle::Interface::_redrawCoverStatic()
 {
-    fheroes2::Copy( _battleGround, _mainSurface );
+    _copyFullSurface( _battleGround );
 
     if ( _movingUnit != nullptr ) {
         // Do not show movement area while units are in action.
@@ -2722,8 +2857,8 @@ void Battle::Interface::_redrawCoverStatic()
                 assert( pos.isValidForUnit( _highlightUnitMovementArea ) );
 
                 // To separate enemy movement from the current unit we apply the shadow twice.
-                fheroes2::Blit( _hexagonHighlightShadow, _mainSurface, cell.GetPos().x, cell.GetPos().y );
-                fheroes2::Blit( _hexagonHighlightShadow, _mainSurface, cell.GetPos().x, cell.GetPos().y );
+                _blitOnSurface( _hexagonHighlightShadow, cell.GetPos().x, cell.GetPos().y );
+                _blitOnSurface( _hexagonHighlightShadow, cell.GetPos().x, cell.GetPos().y );
 
                 processedCells[cell.GetIndex()] = true;
             }
@@ -2749,7 +2884,7 @@ void Battle::Interface::_redrawCoverStatic()
         if ( pos.GetHead() != nullptr ) {
             assert( pos.isValidForUnit( _currentUnit ) );
 
-            fheroes2::Blit( shadowImage, _mainSurface, cell.GetPos().x, cell.GetPos().y );
+            _blitOnSurface( shadowImage, cell.GetPos().x, cell.GetPos().y );
         }
     }
 }
@@ -2760,14 +2895,14 @@ void Battle::Interface::RedrawCastle( const Castle & castle, const int32_t cellI
 
     if ( Arena::CATAPULT_POS == cellId ) {
         const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( ICN::CATAPULT, catapult_frame );
-        fheroes2::Blit( sprite, _mainSurface, 22 + sprite.x(), 390 + sprite.y() );
+        _blitOnSurface( sprite, 22 + sprite.x(), 390 + sprite.y() );
     }
     else if ( Arena::CASTLE_GATE_POS == cellId ) {
         const Bridge * bridge = Arena::GetBridge();
         assert( bridge != nullptr );
         if ( bridge != nullptr && !bridge->isDestroyed() ) {
             const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( castleIcnId, 4 );
-            fheroes2::Blit( sprite, _mainSurface, sprite.x(), sprite.y() );
+            _blitOnSurface( sprite, sprite.x(), sprite.y() );
         }
     }
     else if ( Arena::CASTLE_FIRST_TOP_WALL_POS == cellId || Arena::CASTLE_SECOND_TOP_WALL_POS == cellId || Arena::CASTLE_THIRD_TOP_WALL_POS == cellId
@@ -2826,7 +2961,7 @@ void Battle::Interface::RedrawCastle( const Castle & castle, const int32_t cellI
         }
 
         const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( castleIcnId, index );
-        fheroes2::Blit( sprite, _mainSurface, sprite.x(), sprite.y() );
+        _blitOnSurface( sprite, sprite.x(), sprite.y() );
     }
     else if ( Arena::CASTLE_TOP_ARCHER_TOWER_POS == cellId ) {
         const Tower * ltower = Arena::GetTower( TowerType::TWR_LEFT );
@@ -2841,7 +2976,7 @@ void Battle::Interface::RedrawCastle( const Castle & castle, const int32_t cellI
         }
 
         const fheroes2::Sprite & towerSprite = fheroes2::AGG::GetICN( castleIcnId, index );
-        fheroes2::Blit( towerSprite, _mainSurface, 443 + towerSprite.x(), 153 + towerSprite.y() );
+        _blitOnSurface( towerSprite, 443 + towerSprite.x(), 153 + towerSprite.y() );
     }
     else if ( Arena::CASTLE_BOTTOM_ARCHER_TOWER_POS == cellId ) {
         const Tower * rtower = Arena::GetTower( TowerType::TWR_RIGHT );
@@ -2856,17 +2991,17 @@ void Battle::Interface::RedrawCastle( const Castle & castle, const int32_t cellI
         }
 
         const fheroes2::Sprite & towerSprite = fheroes2::AGG::GetICN( castleIcnId, index );
-        fheroes2::Blit( towerSprite, _mainSurface, 443 + towerSprite.x(), 405 + towerSprite.y() );
+        _blitOnSurface( towerSprite, 443 + towerSprite.x(), 405 + towerSprite.y() );
     }
     else if ( Arena::CASTLE_TOP_GATE_TOWER_POS == cellId ) {
         const int index = ( Board::GetCell( cellId )->GetObject() == 1 ) ? 19 : 17;
         const fheroes2::Sprite & towerSprite = fheroes2::AGG::GetICN( castleIcnId, index );
-        fheroes2::Blit( towerSprite, _mainSurface, 399 + towerSprite.x(), 237 + towerSprite.y() );
+        _blitOnSurface( towerSprite, 399 + towerSprite.x(), 237 + towerSprite.y() );
     }
     else if ( Arena::CASTLE_BOTTOM_GATE_TOWER_POS == cellId ) {
         const int index = ( Board::GetCell( cellId )->GetObject() == 1 ) ? 19 : 17;
         const fheroes2::Sprite & towerSprite = fheroes2::AGG::GetICN( castleIcnId, index );
-        fheroes2::Blit( towerSprite, _mainSurface, 399 + towerSprite.x(), 321 + towerSprite.y() );
+        _blitOnSurface( towerSprite, 399 + towerSprite.x(), 321 + towerSprite.y() );
     }
 }
 
@@ -2874,7 +3009,7 @@ void Battle::Interface::RedrawCastleMainTower( const Castle & castle )
 {
     const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( ICN::getCastleIcnId( castle.GetRace() ), ( Arena::GetTower( TowerType::TWR_CENTER )->isValid() ? 20 : 26 ) );
 
-    fheroes2::Blit( sprite, _mainSurface, sprite.x(), sprite.y() );
+    _blitOnSurface( sprite, sprite.x(), sprite.y() );
 }
 
 void Battle::Interface::_redrawGroundObjects( const int32_t cellId )
@@ -3018,7 +3153,7 @@ void Battle::Interface::_redrawHighObjects( const int32_t cellId )
 
     const fheroes2::Sprite & objectSprite = fheroes2::AGG::GetICN( objectIcnId, 0 );
     const fheroes2::Rect & pt = cell->GetPos();
-    fheroes2::Blit( objectSprite, _mainSurface, pt.x + pt.width / 2 + objectSprite.x(), pt.y + pt.height + objectSprite.y() + cellYOffset );
+    _blitOnSurface( objectSprite, pt.x + pt.width / 2 + objectSprite.x(), pt.y + pt.height + objectSprite.y() + cellYOffset );
 }
 
 void Battle::Interface::RedrawKilled()
@@ -3358,12 +3493,14 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
         }
         // Switch the auto combat mode on
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_TOGGLE_AUTO_COMBAT ) ) {
+            const OverlayGuard guard;
             if ( fheroes2::showStandardTextMessage( {}, _( "Are you sure you want to enable the auto combat mode?" ), Dialog::YES | Dialog::NO ) == Dialog::YES ) {
                 _startAutoCombat( unit, actions );
             }
         }
         // Resolve the combat in quick combat mode
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_QUICK_COMBAT ) ) {
+            const OverlayGuard guard;
             if ( fheroes2::showStandardTextMessage( {}, _( "Are you sure you want to resolve the battle in the quick combat mode?" ), Dialog::YES | Dialog::NO )
                  == Dialog::YES ) {
                 _quickCombat( actions );
@@ -3371,14 +3508,17 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
         }
         // Cast the spell
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_CAST_SPELL ) ) {
+            const OverlayGuard guard;
             ProcessingHeroDialogResult( 1, actions );
         }
         // Retreat
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_RETREAT ) ) {
+            const OverlayGuard guard;
             ProcessingHeroDialogResult( 2, actions );
         }
         // Surrender
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_SURRENDER ) ) {
+            const OverlayGuard guard;
             ProcessingHeroDialogResult( 3, actions );
         }
     }
@@ -3422,6 +3562,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
                 ballistaMessage.append( Battle::Board::GetMoatInfo() );
             }
 
+            const OverlayGuard guard;
             fheroes2::showStandardTextMessage( _( "Ballista" ), ballistaMessage, le.isMouseRightButtonPressed() ? Dialog::ZERO : Dialog::OK );
         }
     }
@@ -3437,9 +3578,11 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
         msg = _( "Automatic combat modes" );
 
         if ( le.MouseClickLeft( _buttonAuto.area() ) ) {
+            const OverlayGuard guard;
             OpenAutoModeDialog( unit, actions );
         }
         else if ( le.isMouseRightButtonPressed() ) {
+            const OverlayGuard guard;
             fheroes2::showStandardTextMessage( _( "Automatic Combat Modes" ), _( "Choose between proceeding the combat in auto combat mode or in quick combat mode." ),
                                                Dialog::ZERO );
         }
@@ -3450,11 +3593,13 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
         msg = _( "Customize system options" );
 
         if ( le.MouseClickLeft( _buttonSettings.area() ) ) {
+            const OverlayGuard guard;
             _openBattleSettingsDialog();
 
             humanturn_redraw = true;
         }
         else if ( le.isMouseRightButtonPressed() ) {
+            const OverlayGuard guard;
             fheroes2::showStandardTextMessage( _( "System Options" ), _( "Allows you to customize the combat screen." ), Dialog::ZERO );
         }
     }
@@ -3471,6 +3616,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             humanturn_exit = true;
         }
         else if ( le.isMouseRightButtonPressed() ) {
+            const OverlayGuard guard;
             fheroes2::showStandardTextMessage( _( "Skip" ),
                                                _( "Skips the current creature. The current creature ends its turn and does not get to go again until the next round." ),
                                                Dialog::ZERO );
@@ -3488,6 +3634,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             cursor.SetThemes( Cursor::WAR_HERO );
 
             if ( le.MouseClickLeft( attackingOpponentArea ) ) {
+                const OverlayGuard guard;
                 ProcessingHeroDialogResult( arena.DialogBattleHero( *_attackingOpponent->GetHero(), true, status ), actions );
                 humanturn_redraw = true;
             }
@@ -3502,12 +3649,14 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             cursor.SetThemes( Cursor::WAR_INFO );
 
             if ( le.MouseClickLeft( attackingOpponentArea ) ) {
+                const OverlayGuard guard;
                 arena.DialogBattleHero( *_attackingOpponent->GetHero(), true, status );
                 humanturn_redraw = true;
             }
         }
 
         if ( le.isMouseRightButtonPressedInArea( attackingOpponentArea ) ) {
+            const OverlayGuard guard;
             arena.DialogBattleHero( *_attackingOpponent->GetHero(), false, status );
             humanturn_redraw = true;
         }
@@ -3525,6 +3674,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             cursor.SetThemes( Cursor::WAR_HERO );
 
             if ( le.MouseClickLeft( defendingOpponentArea ) ) {
+                const OverlayGuard guard;
                 ProcessingHeroDialogResult( arena.DialogBattleHero( *_defendingOpponent->GetHero(), true, status ), actions );
                 humanturn_redraw = true;
             }
@@ -3540,12 +3690,14 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             cursor.SetThemes( Cursor::WAR_INFO );
 
             if ( le.MouseClickLeft( defendingOpponentArea ) ) {
+                const OverlayGuard guard;
                 arena.DialogBattleHero( *_defendingOpponent->GetHero(), true, status );
                 humanturn_redraw = true;
             }
         }
 
         if ( le.isMouseRightButtonPressedInArea( defendingOpponentArea ) ) {
+            const OverlayGuard guard;
             arena.DialogBattleHero( *_defendingOpponent->GetHero(), false, status );
             humanturn_redraw = true;
         }
@@ -3631,6 +3783,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
                 listlog->SetOpenLog( !listlog->isOpenLog() );
             }
             else if ( le.isMouseRightButtonPressedInArea( status ) ) {
+                const OverlayGuard guard;
                 fheroes2::showStandardTextMessage( _( "Message Bar" ), _( "Shows the results of individual monster's actions." ), Dialog::ZERO );
             }
         }
@@ -3752,6 +3905,7 @@ void Battle::Interface::_openBattleSettingsDialog()
 
 void Battle::Interface::EventShowOptions()
 {
+    const OverlayGuard guard;
     _buttonSettings.drawOnPress();
     _openBattleSettingsDialog();
     _buttonSettings.drawOnRelease();
@@ -3867,6 +4021,7 @@ bool Battle::Interface::MousePressRightBoardAction( const Cell & cell ) const
     };
 
     if ( const Unit * unit = getUnit(); unit != nullptr ) {
+        const OverlayGuard guard;
         Dialog::ArmyInfo( *unit, Dialog::ZERO, unit->isReflect() );
         return true;
     }
@@ -3976,7 +4131,10 @@ void Battle::Interface::MouseLeftClickBoardAction( const int themes, const Cell 
                 break;
             }
 
-            Dialog::ArmyInfo( *unitOnCell, Dialog::BUTTONS, unitOnCell->isReflect() );
+            {
+                const OverlayGuard guard;
+                Dialog::ArmyInfo( *unitOnCell, Dialog::BUTTONS, unitOnCell->isReflect() );
+            }
 
             humanturn_redraw = true;
 
@@ -4161,10 +4319,27 @@ void Battle::Interface::RedrawMissileAnimation( const fheroes2::Point & startPos
                 fheroes2::DrawLine( _mainSurface, startPos, *pnt, 0xBC );
                 fheroes2::DrawLine( _mainSurface, { startPos.x, startPos.y + 1 }, { pnt->x, pnt->y + 1 }, 0xB5 );
                 fheroes2::DrawLine( _mainSurface, { startPos.x, startPos.y + 2 }, { pnt->x, pnt->y + 2 }, 0x77 );
+
+                // RGBA missile beam lines at physical resolution.
+                if ( !_mainSurfaceRGBA.empty() ) {
+                    uint8_t r77, g77, b77, rB5, gB5, bB5, rBC, gBC, bBC;
+                    paletteColorToRGB( 0x77, r77, g77, b77 );
+                    paletteColorToRGB( 0xB5, rB5, gB5, bB5 );
+                    paletteColorToRGB( 0xBC, rBC, gBC, bBC );
+                    const auto sp = scalePoint( startPos, _rgbaScale );
+                    const auto ep = scalePoint( *pnt, _rgbaScale );
+                    const int32_t s1 = static_cast<int32_t>( _rgbaScale );
+                    const int32_t s2 = static_cast<int32_t>( 2.0f * _rgbaScale );
+                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, { sp.x, sp.y - s2 }, { ep.x, ep.y - s2 }, r77, g77, b77 );
+                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, { sp.x, sp.y - s1 }, { ep.x, ep.y - s1 }, rB5, gB5, bB5 );
+                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, sp, ep, rBC, gBC, bBC );
+                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, { sp.x, sp.y + s1 }, { ep.x, ep.y + s1 }, rB5, gB5, bB5 );
+                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, { sp.x, sp.y + s2 }, { ep.x, ep.y + s2 }, r77, g77, b77 );
+                }
             }
             else {
                 // Coordinates in 'pnt' corresponds to the front side of the projectile (arrowhead).
-                fheroes2::Blit( missile, _mainSurface, pnt->x + missileOffset.x, pnt->y + missileOffset.y, reverse );
+                _blitOnSurface( missile, pnt->x + missileOffset.x, pnt->y + missileOffset.y, reverse );
             }
             RedrawPartialFinish();
             ++pnt;
@@ -4454,7 +4629,7 @@ void Battle::Interface::_redrawActionWincesKills( const TargetsInfo & targets, U
         if ( drawLichCloud && lichCloudFrame < lichCloudMaxFrame ) {
             const fheroes2::Sprite & spellSprite = fheroes2::AGG::GetICN( ICN::LICHCLOD, lichCloudFrame );
             const fheroes2::Point & pos = CalculateSpellPosition( *defender, ICN::LICHCLOD, spellSprite );
-            fheroes2::Blit( spellSprite, _mainSurface, pos.x, pos.y, false );
+            _blitOnSurface( spellSprite, pos.x, pos.y, false );
             ++lichCloudFrame;
         }
 
@@ -5453,14 +5628,18 @@ void Battle::Interface::RedrawActionLuck( const Unit & unit )
                 // For different rainbow types use appropriate animation direction.
                 if ( isVerticalRainbow ) {
                     fheroes2::Blit( luckSprite, 0, 0, _mainSurface, drawOffset, 0, luckSprite.width(), drawWidth );
+                    fheroes2::BlitIndexedToRGBAScaledRegion( luckSprite, 0, 0, luckSprite.width(), drawWidth, _mainSurfaceRGBA, drawOffset, 0, _rgbaScale );
                 }
                 else {
                     if ( isRainbowFromRight ) {
                         fheroes2::Blit( luckSprite, rainbowLength - drawWidth, 0, _mainSurface, battleArea.width - drawWidth, drawOffset, drawWidth,
                                         luckSprite.height() );
+                        fheroes2::BlitIndexedToRGBAScaledRegion( luckSprite, rainbowLength - drawWidth, 0, drawWidth, luckSprite.height(), _mainSurfaceRGBA,
+                                                                 battleArea.width - drawWidth, drawOffset, _rgbaScale );
                     }
                     else {
                         fheroes2::Blit( luckSprite, 0, 0, _mainSurface, 0, drawOffset, drawWidth, luckSprite.height() );
+                        fheroes2::BlitIndexedToRGBAScaledRegion( luckSprite, 0, 0, drawWidth, luckSprite.height(), _mainSurfaceRGBA, 0, drawOffset, _rgbaScale );
                     }
                 }
 
@@ -5498,7 +5677,7 @@ void Battle::Interface::RedrawActionLuck( const Unit & unit )
 
                 if ( frameId < frameLimit ) {
                     const fheroes2::Sprite & luckSprite = fheroes2::AGG::GetICN( ICN::CLOUDLUK, frameId );
-                    fheroes2::Blit( luckSprite, _mainSurface, offsetX + luckSprite.x(), offsetY + luckSprite.y() );
+                    _blitOnSurface( luckSprite, offsetX + luckSprite.x(), offsetY + luckSprite.y() );
 
                     ++frameId;
                 }
@@ -5647,7 +5826,7 @@ void Battle::Interface::RedrawActionCatapultPart1( const CastleDefenseStructure 
                 ++catapult_frame;
 
             RedrawPartialStart();
-            fheroes2::Blit( fheroes2::AGG::GetICN( ICN::BOULDER, boulderFrameId ), _mainSurface, pnt->x, pnt->y );
+            _blitOnSurface( fheroes2::AGG::GetICN( ICN::BOULDER, boulderFrameId ), pnt->x, pnt->y );
             RedrawPartialFinish();
             ++pnt;
             ++boulderFrameId;
@@ -5683,10 +5862,10 @@ void Battle::Interface::RedrawActionCatapultPart1( const CastleDefenseStructure 
             // Start animation of the second smoke cloud only for the bridge and after 2 frames of the first smoke cloud.
             if ( isBridgeDestroyed && frame >= bridgeDestroySmokeDelay ) {
                 const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( icn, frame - bridgeDestroySmokeDelay );
-                fheroes2::Blit( sprite, _mainSurface, pt1.x + sprite.x(), pt1.y + sprite.y() );
+                _blitOnSurface( sprite, pt1.x + sprite.x(), pt1.y + sprite.y() );
             }
             const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( icn, frame );
-            fheroes2::Blit( sprite, _mainSurface, pt2.x + sprite.x(), pt2.y + sprite.y() );
+            _blitOnSurface( sprite, pt2.x + sprite.x(), pt2.y + sprite.y() );
             RedrawPartialFinish();
 
             ++frame;
@@ -5730,12 +5909,12 @@ void Battle::Interface::RedrawActionCatapultPart2( const CastleDefenseStructure 
             // Draw animation of the second smoke cloud only for the bridge.
             if ( isBridgeDestroyed ) {
                 const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( icnId, frame - bridgeDestroySmokeDelay );
-                fheroes2::Blit( sprite, _mainSurface, pt2.x + sprite.x(), pt2.y + sprite.y() );
+                _blitOnSurface( sprite, pt2.x + sprite.x(), pt2.y + sprite.y() );
             }
             // Don't draw the smoke cloud after its animation has ended (in case the second smoke cloud is still animating).
             if ( frame <= maxFrame ) {
                 const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( icnId, frame );
-                fheroes2::Blit( sprite, _mainSurface, pt1.x + sprite.x(), pt1.y + sprite.y() );
+                _blitOnSurface( sprite, pt1.x + sprite.x(), pt1.y + sprite.y() );
             }
             RedrawPartialFinish();
 
@@ -6060,6 +6239,12 @@ void Battle::Interface::_redrawLightningOnTargets( const std::vector<fheroes2::P
                                  { roi.x + roiOffset.x, roi.y + roiOffset.y, roi.width, roi.height } );
                 fheroes2::ApplyPalette( _mainSurface, 7 );
 
+                // RGBA: draw lightning and dim the scene.
+                if ( !_mainSurfaceRGBA.empty() ) {
+                    RedrawLightningRGBA( lightningBolt, fheroes2::GetColorId( 0xff, 0xff, 0 ), _mainSurfaceRGBA, _rgbaScale );
+                    fheroes2::DimRGBA( _mainSurfaceRGBA, 0, 0, _mainSurfaceRGBA.width(), _mainSurfaceRGBA.height(), 0.65f );
+                }
+
                 RedrawPartialFinish();
             }
         }
@@ -6080,7 +6265,7 @@ void Battle::Interface::_redrawLightningOnTargets( const std::vector<fheroes2::P
 
             for ( size_t i = 1; i < points.size(); ++i ) {
                 const fheroes2::Point pt = points[i] - fheroes2::Point( spriteWidth / 2, 0 ) + roiOffset;
-                fheroes2::Blit( sprite, _mainSurface, pt.x, pt.y );
+                _blitOnSurface( sprite, pt.x, pt.y );
             }
             RedrawPartialFinish();
 
@@ -6288,7 +6473,7 @@ void Battle::Interface::_redrawRaySpell( const Unit & target, const int spellICN
         if ( Game::validateAnimationDelay( Game::BATTLE_DISRUPTING_DELAY ) ) {
             const uint32_t frame = static_cast<uint32_t>( i * spriteCount / path.size() ); // it's safe to do such as i <= path.size()
             const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( spellICN, frame );
-            fheroes2::Blit( sprite, _mainSurface, path[i].x - sprite.width() / 2, path[i].y - sprite.height() / 2 );
+            _blitOnSurface( sprite, path[i].x - sprite.width() / 2, path[i].y - sprite.height() / 2 );
             RedrawPartialFinish();
             ++i;
         }
@@ -6460,9 +6645,9 @@ void Battle::Interface::_redrawActionColdRingSpell( const int32_t dst, const Tar
             RedrawPartialStart();
 
             const fheroes2::Sprite & sprite1 = fheroes2::AGG::GetICN( icn, frame );
-            fheroes2::Blit( sprite1, _mainSurface, center.x + center.width / 2 + sprite1.x(), center.y + center.height / 2 + sprite1.y() );
+            _blitOnSurface( sprite1, center.x + center.width / 2 + sprite1.x(), center.y + center.height / 2 + sprite1.y() );
             const fheroes2::Sprite & sprite2 = fheroes2::AGG::GetICN( icn, frame );
-            fheroes2::Blit( sprite2, _mainSurface, center.x + center.width / 2 - sprite2.width() - sprite2.x(), center.y + center.height / 2 + sprite2.y(), true );
+            _blitOnSurface( sprite2, center.x + center.width / 2 - sprite2.width() - sprite2.x(), center.y + center.height / 2 + sprite2.y(), true );
             RedrawPartialFinish();
 
             for ( const TargetInfo & target : targets ) {
@@ -6606,7 +6791,7 @@ void Battle::Interface::_redrawActionElementalStormSpell( const TargetsInfo & ta
                     const int offsetX = x * spriteSize;
                     for ( int y = 0; y * spriteSize < _surfaceInnerArea.height; ++y ) {
                         const fheroes2::Sprite & sprite = spriteCache[( idX + y ) % icnCount];
-                        fheroes2::Blit( sprite, _mainSurface, offsetX + sprite.x(), y * spriteSize + sprite.y() );
+                        _blitOnSurface( sprite, offsetX + sprite.x(), y * spriteSize + sprite.y() );
                     }
                 }
             }
@@ -6675,14 +6860,14 @@ void Battle::Interface::_redrawActionArmageddonSpell()
 
         if ( Game::validateAnimationDelay( Game::BATTLE_SPELL_DELAY ) ) {
             fheroes2::ApplyPalette( spriteWhitening, 9 );
-            fheroes2::Copy( spriteWhitening, 0, 0, _mainSurface, area.x, area.y, area.width, area.height );
+            _copyOnSurface( spriteWhitening, 0, 0, area.x, area.y, area.width, area.height );
             RedrawPartialFinish();
 
             alpha += 10;
         }
     }
 
-    fheroes2::Copy( spriteReddish, 0, 0, _mainSurface, area.x, area.y, area.width, area.height );
+    _copyOnSurface( spriteReddish, 0, 0, area.x, area.y, area.width, area.height );
 
     while ( le.HandleEvents( Game::isDelayNeeded( { Game::BATTLE_SPELL_DELAY } ) ) && Mixer::isPlaying( -1 ) ) {
         CheckGlobalEvents( le );
@@ -6691,7 +6876,7 @@ void Battle::Interface::_redrawActionArmageddonSpell()
             const int32_t offsetX = static_cast<int32_t>( Rand::Get( 0, 28 ) ) - 14;
             const int32_t offsetY = static_cast<int32_t>( Rand::Get( 0, 22 ) ) - 11;
 
-            fheroes2::Copy( spriteReddish, std::max<int32_t>( 0, -offsetX ), std::max<int32_t>( 0, -offsetY ), _mainSurface, std::max<int32_t>( 0, offsetX ),
+            _copyOnSurface( spriteReddish, std::max<int32_t>( 0, -offsetX ), std::max<int32_t>( 0, -offsetY ), std::max<int32_t>( 0, offsetX ),
                             std::max<int32_t>( 0, offsetY ), area.width - std::abs( offsetX ), area.height - std::abs( offsetY ) );
 
             RedrawPartialFinish();
@@ -6751,7 +6936,7 @@ void Battle::Interface::redrawActionEarthquakeSpellPart1( const HeroBase & caste
             const int32_t offsetX = static_cast<int32_t>( Rand::Get( 0, 28 ) ) - 14;
             const int32_t offsetY = static_cast<int32_t>( Rand::Get( 0, 22 ) ) - 11;
 
-            fheroes2::Copy( battlefieldImage, std::max<int32_t>( 0, -offsetX ), std::max<int32_t>( 0, -offsetY ), _mainSurface, std::max<int32_t>( 0, offsetX ),
+            _copyOnSurface( battlefieldImage, std::max<int32_t>( 0, -offsetX ), std::max<int32_t>( 0, -offsetY ), std::max<int32_t>( 0, offsetX ),
                             std::max<int32_t>( 0, offsetY ), area.width - std::abs( offsetX ), area.height - std::abs( offsetY ) );
 
             RedrawPartialFinish();
@@ -6789,11 +6974,11 @@ void Battle::Interface::redrawActionEarthquakeSpellPart1( const HeroBase & caste
                 if ( target == CastleDefenseStructure::BRIDGE && frame >= bridgeDestroySmokeDelay ) {
                     // When a bridge is demolished, there is one additional smoke explosion at the point where the bridge falls.
                     const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( icn, frame - bridgeDestroySmokeDelay );
-                    fheroes2::Blit( sprite, _mainSurface, pt2.x + bridgeDestroySmokeOffset.x + sprite.x(), pt2.y + bridgeDestroySmokeOffset.y + sprite.y() );
+                    _blitOnSurface( sprite, pt2.x + bridgeDestroySmokeOffset.x + sprite.x(), pt2.y + bridgeDestroySmokeOffset.y + sprite.y() );
                 }
 
                 const fheroes2::Sprite & spriteCloud = fheroes2::AGG::GetICN( icn, frame );
-                fheroes2::Blit( spriteCloud, _mainSurface, pt2.x + spriteCloud.x(), pt2.y + spriteCloud.y() );
+                _blitOnSurface( spriteCloud, pt2.x + spriteCloud.x(), pt2.y + spriteCloud.y() );
             }
 
             RedrawPartialFinish();
@@ -6836,11 +7021,11 @@ void Battle::Interface::redrawActionEarthquakeSpellPart2( const std::vector<Cast
                 if ( target == CastleDefenseStructure::BRIDGE ) {
                     // When a bridge is demolished, there is one additional smoke explosion at the point where the bridge falls.
                     const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( icn, frame - bridgeDestroySmokeDelay + 1 );
-                    fheroes2::Blit( sprite, _mainSurface, pt2.x + bridgeDestroySmokeOffset.x + sprite.x(), pt2.y + bridgeDestroySmokeOffset.y + sprite.y() );
+                    _blitOnSurface( sprite, pt2.x + bridgeDestroySmokeOffset.x + sprite.x(), pt2.y + bridgeDestroySmokeOffset.y + sprite.y() );
                 }
 
                 const fheroes2::Sprite & spriteCloud = fheroes2::AGG::GetICN( icn, frame );
-                fheroes2::Blit( spriteCloud, _mainSurface, pt2.x + spriteCloud.x(), pt2.y + spriteCloud.y() );
+                _blitOnSurface( spriteCloud, pt2.x + spriteCloud.x(), pt2.y + spriteCloud.y() );
             }
 
             RedrawPartialFinish();
@@ -6915,7 +7100,7 @@ void Battle::Interface::RedrawTargetsWithFrameAnimation( const int32_t dst, cons
             RedrawPartialStart();
 
             const fheroes2::Sprite & sprite = fheroes2::AGG::GetICN( icn, frame );
-            fheroes2::Blit( sprite, _mainSurface, center.x + center.width / 2 + sprite.x(), center.y + center.height / 2 + sprite.y() );
+            _blitOnSurface( sprite, center.x + center.width / 2 + sprite.x(), center.y + center.height / 2 + sprite.y() );
             RedrawPartialFinish();
 
             for ( const TargetInfo & target : targets ) {
@@ -7295,6 +7480,7 @@ void Battle::Interface::InterruptAutoCombatIfRequested( LocalEvent & le )
     // Right now there should be no pending auto combat interruptions.
     assert( _interruptAutoCombatForColor == PlayerColor::NONE );
 
+    const OverlayGuard guard;
     const int interrupt = fheroes2::showStandardTextMessage( {}, _( "Are you sure you want to interrupt the auto combat mode?" ), Dialog::YES | Dialog::NO );
     if ( interrupt == Dialog::YES ) {
         _interruptAutoCombatForColor = color;

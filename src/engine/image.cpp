@@ -3603,4 +3603,517 @@ namespace fheroes2
             dst += 4;
         }
     }
+
+    // Shadow darkening factors for transform values 2-5.
+    // Transform 2 = strongest shadow, transform 5 = weakest.
+    namespace
+    {
+        constexpr float shadowFactor[6] = { 1.0f, 1.0f, 0.25f, 0.40f, 0.55f, 0.70f };
+    }
+
+    void BlitIndexedToRGBAScaled( const Image & in, RGBAImage & out, const int32_t gameX, const int32_t gameY, const float scale, const bool flip )
+    {
+        if ( in.empty() || out.empty() ) {
+            return;
+        }
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t dstW = out.width();
+        const int32_t dstH = out.height();
+
+        const uint8_t * imageData = in.image();
+        const uint8_t * transformData = in.singleLayer() ? nullptr : in.transform();
+        const uint8_t * gamePalette = getGamePalette();
+        uint8_t * dstData = out.data();
+
+        for ( int32_t row = 0; row < srcH; ++row ) {
+            const int32_t physRowStart = static_cast<int32_t>( static_cast<float>( gameY + row ) * scale );
+            const int32_t physRowEnd = std::min( static_cast<int32_t>( static_cast<float>( gameY + row + 1 ) * scale ), dstH );
+            if ( physRowEnd <= 0 || physRowStart >= dstH ) {
+                continue;
+            }
+            const int32_t clampedRowStart = std::max( physRowStart, 0 );
+
+            for ( int32_t col = 0; col < srcW; ++col ) {
+                const int32_t srcCol = flip ? ( srcW - 1 - col ) : col;
+                const ptrdiff_t srcIdx = static_cast<ptrdiff_t>( row ) * srcW + srcCol;
+
+                // Check transform layer.
+                if ( transformData != nullptr && transformData[srcIdx] != 0 ) {
+                    const uint8_t tr = transformData[srcIdx];
+                    if ( tr == 1 ) {
+                        // Fully transparent — skip.
+                        continue;
+                    }
+                    // Shadow pixel (transform 2-5): darken destination.
+                    if ( tr >= 2 && tr <= 5 ) {
+                        const float factor = shadowFactor[tr];
+                        const int32_t physColStart = static_cast<int32_t>( static_cast<float>( gameX + col ) * scale );
+                        const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( gameX + col + 1 ) * scale ), dstW );
+                        if ( physColEnd <= 0 || physColStart >= dstW ) {
+                            continue;
+                        }
+                        const int32_t clampedColStart = std::max( physColStart, 0 );
+
+                        for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
+                            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
+                            for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
+                                uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
+                                if ( dst[3] > 0 ) {
+                                    dst[0] = static_cast<uint8_t>( static_cast<float>( dst[0] ) * factor );
+                                    dst[1] = static_cast<uint8_t>( static_cast<float>( dst[1] ) * factor );
+                                    dst[2] = static_cast<uint8_t>( static_cast<float>( dst[2] ) * factor );
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Opaque pixel — palette lookup and fill scaled block.
+                const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( imageData[srcIdx] ) * 3;
+                const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
+                const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
+                const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
+
+                const int32_t physColStart = static_cast<int32_t>( static_cast<float>( gameX + col ) * scale );
+                const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( gameX + col + 1 ) * scale ), dstW );
+                if ( physColEnd <= 0 || physColStart >= dstW ) {
+                    continue;
+                }
+                const int32_t clampedColStart = std::max( physColStart, 0 );
+
+                for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
+                    uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
+                    for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
+                        uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
+                        dst[0] = r;
+                        dst[1] = g;
+                        dst[2] = b;
+                        dst[3] = 255;
+                    }
+                }
+            }
+        }
+    }
+
+    void BlitIndexedToRGBAScaledAlpha( const Image & in, RGBAImage & out, const int32_t gameX, const int32_t gameY, const float scale, const uint8_t alpha,
+                                       const bool flip )
+    {
+        if ( in.empty() || out.empty() || alpha == 0 ) {
+            return;
+        }
+
+        // Full opacity — delegate to the non-alpha version.
+        if ( alpha == 255 ) {
+            BlitIndexedToRGBAScaled( in, out, gameX, gameY, scale, flip );
+            return;
+        }
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t dstW = out.width();
+        const int32_t dstH = out.height();
+
+        const uint8_t * imageData = in.image();
+        const uint8_t * transformData = in.singleLayer() ? nullptr : in.transform();
+        const uint8_t * gamePalette = getGamePalette();
+        uint8_t * dstData = out.data();
+
+        const float alphaF = static_cast<float>( alpha ) / 255.0f;
+
+        for ( int32_t row = 0; row < srcH; ++row ) {
+            const int32_t physRowStart = static_cast<int32_t>( static_cast<float>( gameY + row ) * scale );
+            const int32_t physRowEnd = std::min( static_cast<int32_t>( static_cast<float>( gameY + row + 1 ) * scale ), dstH );
+            if ( physRowEnd <= 0 || physRowStart >= dstH ) {
+                continue;
+            }
+            const int32_t clampedRowStart = std::max( physRowStart, 0 );
+
+            for ( int32_t col = 0; col < srcW; ++col ) {
+                const int32_t srcCol = flip ? ( srcW - 1 - col ) : col;
+                const ptrdiff_t srcIdx = static_cast<ptrdiff_t>( row ) * srcW + srcCol;
+
+                if ( transformData != nullptr && transformData[srcIdx] != 0 ) {
+                    const uint8_t tr = transformData[srcIdx];
+                    if ( tr == 1 ) {
+                        continue;
+                    }
+                    // Shadow with alpha: reduce shadow strength by alpha.
+                    if ( tr >= 2 && tr <= 5 ) {
+                        const float baseFactor = shadowFactor[tr];
+                        const float factor = 1.0f - ( 1.0f - baseFactor ) * alphaF;
+                        const int32_t physColStart = static_cast<int32_t>( static_cast<float>( gameX + col ) * scale );
+                        const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( gameX + col + 1 ) * scale ), dstW );
+                        if ( physColEnd <= 0 || physColStart >= dstW ) {
+                            continue;
+                        }
+                        const int32_t clampedColStart = std::max( physColStart, 0 );
+
+                        for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
+                            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
+                            for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
+                                uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
+                                if ( dst[3] > 0 ) {
+                                    dst[0] = static_cast<uint8_t>( static_cast<float>( dst[0] ) * factor );
+                                    dst[1] = static_cast<uint8_t>( static_cast<float>( dst[1] ) * factor );
+                                    dst[2] = static_cast<uint8_t>( static_cast<float>( dst[2] ) * factor );
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Opaque pixel — src_over composite with alpha.
+                const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( imageData[srcIdx] ) * 3;
+                const uint8_t srcR = static_cast<uint8_t>( pal[0] << 2 );
+                const uint8_t srcG = static_cast<uint8_t>( pal[1] << 2 );
+                const uint8_t srcB = static_cast<uint8_t>( pal[2] << 2 );
+
+                const int32_t physColStart = static_cast<int32_t>( static_cast<float>( gameX + col ) * scale );
+                const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( gameX + col + 1 ) * scale ), dstW );
+                if ( physColEnd <= 0 || physColStart >= dstW ) {
+                    continue;
+                }
+                const int32_t clampedColStart = std::max( physColStart, 0 );
+
+                for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
+                    uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
+                    for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
+                        uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
+                        dst[0] = static_cast<uint8_t>( static_cast<float>( srcR ) * alphaF + static_cast<float>( dst[0] ) * ( 1.0f - alphaF ) );
+                        dst[1] = static_cast<uint8_t>( static_cast<float>( srcG ) * alphaF + static_cast<float>( dst[1] ) * ( 1.0f - alphaF ) );
+                        dst[2] = static_cast<uint8_t>( static_cast<float>( srcB ) * alphaF + static_cast<float>( dst[2] ) * ( 1.0f - alphaF ) );
+                        dst[3] = std::max( dst[3], alpha );
+                    }
+                }
+            }
+        }
+    }
+
+    void BlitIndexedToRGBAScaledRegion( const Image & in, const int32_t inX, const int32_t inY, const int32_t w, const int32_t h, RGBAImage & out, const int32_t gameX,
+                                        const int32_t gameY, const float scale, const uint8_t alpha, const bool flip )
+    {
+        if ( in.empty() || out.empty() || alpha == 0 || w <= 0 || h <= 0 ) {
+            return;
+        }
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t dstW = out.width();
+        const int32_t dstH = out.height();
+
+        const uint8_t * imageData = in.image();
+        const uint8_t * transformData = in.singleLayer() ? nullptr : in.transform();
+        const uint8_t * gamePalette = getGamePalette();
+        uint8_t * dstData = out.data();
+
+        const float alphaF = static_cast<float>( alpha ) / 255.0f;
+        const bool useAlpha = ( alpha < 255 );
+
+        const int32_t endRow = std::min( inY + h, srcH );
+        const int32_t endCol = std::min( inX + w, srcW );
+
+        for ( int32_t row = std::max( inY, 0 ); row < endRow; ++row ) {
+            const int32_t outRow = gameY + ( row - inY );
+            const int32_t physRowStart = static_cast<int32_t>( static_cast<float>( outRow ) * scale );
+            const int32_t physRowEnd = std::min( static_cast<int32_t>( static_cast<float>( outRow + 1 ) * scale ), dstH );
+            if ( physRowEnd <= 0 || physRowStart >= dstH ) {
+                continue;
+            }
+            const int32_t clampedRowStart = std::max( physRowStart, 0 );
+
+            for ( int32_t col = std::max( inX, 0 ); col < endCol; ++col ) {
+                const int32_t outCol = gameX + ( col - inX );
+                const int32_t srcCol = flip ? ( inX + w - 1 - ( col - inX ) ) : col;
+                const ptrdiff_t srcIdx = static_cast<ptrdiff_t>( row ) * srcW + srcCol;
+
+                if ( transformData != nullptr && transformData[srcIdx] != 0 ) {
+                    // Skip transparent/shadow in region blit for simplicity.
+                    continue;
+                }
+
+                const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( imageData[srcIdx] ) * 3;
+                const uint8_t srcR = static_cast<uint8_t>( pal[0] << 2 );
+                const uint8_t srcG = static_cast<uint8_t>( pal[1] << 2 );
+                const uint8_t srcB = static_cast<uint8_t>( pal[2] << 2 );
+
+                const int32_t physColStart = static_cast<int32_t>( static_cast<float>( outCol ) * scale );
+                const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( outCol + 1 ) * scale ), dstW );
+                if ( physColEnd <= 0 || physColStart >= dstW ) {
+                    continue;
+                }
+                const int32_t clampedColStart = std::max( physColStart, 0 );
+
+                for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
+                    uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
+                    for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
+                        uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
+                        if ( useAlpha ) {
+                            dst[0] = static_cast<uint8_t>( static_cast<float>( srcR ) * alphaF + static_cast<float>( dst[0] ) * ( 1.0f - alphaF ) );
+                            dst[1] = static_cast<uint8_t>( static_cast<float>( srcG ) * alphaF + static_cast<float>( dst[1] ) * ( 1.0f - alphaF ) );
+                            dst[2] = static_cast<uint8_t>( static_cast<float>( srcB ) * alphaF + static_cast<float>( dst[2] ) * ( 1.0f - alphaF ) );
+                            dst[3] = std::max( dst[3], alpha );
+                        }
+                        else {
+                            dst[0] = srcR;
+                            dst[1] = srcG;
+                            dst[2] = srcB;
+                            dst[3] = 255;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    void BlitRGBAAlpha( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const uint8_t alpha, const bool flip )
+    {
+        if ( in.empty() || out.empty() || alpha == 0 ) {
+            return;
+        }
+
+        if ( alpha == 255 ) {
+            BlitRGBA( in, out, outX, outY, flip );
+            return;
+        }
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t dstW = out.width();
+        const int32_t dstH = out.height();
+
+        const int32_t startX = std::max( outX, 0 );
+        const int32_t startY = std::max( outY, 0 );
+        const int32_t endX = std::min( outX + srcW, dstW );
+        const int32_t endY = std::min( outY + srcH, dstH );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        const uint8_t * srcData = in.data();
+        uint8_t * dstData = out.data();
+
+        for ( int32_t y = startY; y < endY; ++y ) {
+            const int32_t srcY = y - outY;
+            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
+            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( y ) * dstW * 4;
+
+            for ( int32_t x = startX; x < endX; ++x ) {
+                const int32_t srcX = flip ? ( srcW - 1 - ( x - outX ) ) : ( x - outX );
+                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+
+                if ( srcPx[3] == 0 ) {
+                    continue;
+                }
+
+                // Effective source alpha = srcPx[3] * (alpha / 255).
+                const uint32_t srcA = ( static_cast<uint32_t>( srcPx[3] ) * alpha ) / 255;
+                if ( srcA == 0 ) {
+                    continue;
+                }
+
+                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                const uint32_t dstA = dstPx[3];
+                const uint32_t invSrcA = 255 - srcA;
+
+                dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invSrcA ) / 255 );
+                dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invSrcA ) / 255 );
+                dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invSrcA ) / 255 );
+                dstPx[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invSrcA ) / 255, static_cast<uint32_t>( 255 ) ) );
+            }
+        }
+    }
+
+    void BlitRGBAScaledAlpha( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const int32_t dstW, const int32_t dstH, const uint8_t alpha,
+                              const bool flip )
+    {
+        if ( in.empty() || out.empty() || dstW <= 0 || dstH <= 0 || alpha == 0 ) {
+            return;
+        }
+
+        if ( alpha == 255 ) {
+            BlitRGBAScaled( in, out, outX, outY, dstW, dstH, flip );
+            return;
+        }
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t outW = out.width();
+        const int32_t outH = out.height();
+
+        const int32_t startX = std::max( outX, 0 );
+        const int32_t startY = std::max( outY, 0 );
+        const int32_t endX = std::min( outX + dstW, outW );
+        const int32_t endY = std::min( outY + dstH, outH );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        const uint8_t * srcData = in.data();
+        uint8_t * dstData = out.data();
+
+        for ( int32_t y = startY; y < endY; ++y ) {
+            const int32_t srcY = ( ( y - outY ) * srcH ) / dstH;
+            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
+            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( y ) * outW * 4;
+
+            for ( int32_t x = startX; x < endX; ++x ) {
+                const int32_t relX = x - outX;
+                const int32_t srcX = ( ( flip ? ( dstW - 1 - relX ) : relX ) * srcW ) / dstW;
+                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+
+                if ( srcPx[3] == 0 ) {
+                    continue;
+                }
+
+                const uint32_t srcA = ( static_cast<uint32_t>( srcPx[3] ) * alpha ) / 255;
+                if ( srcA == 0 ) {
+                    continue;
+                }
+
+                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                const uint32_t dstA = dstPx[3];
+                const uint32_t invSrcA = 255 - srcA;
+
+                dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invSrcA ) / 255 );
+                dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invSrcA ) / 255 );
+                dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invSrcA ) / 255 );
+                dstPx[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invSrcA ) / 255, static_cast<uint32_t>( 255 ) ) );
+            }
+        }
+    }
+
+    void DrawLineRGBA( RGBAImage & image, const Point & start, const Point & end, const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a )
+    {
+        if ( image.empty() || a == 0 ) {
+            return;
+        }
+
+        const int32_t imgW = image.width();
+        const int32_t imgH = image.height();
+        uint8_t * data = image.data();
+
+        int32_t x0 = start.x;
+        int32_t y0 = start.y;
+        const int32_t x1 = end.x;
+        const int32_t y1 = end.y;
+
+        const int32_t dx = std::abs( x1 - x0 );
+        const int32_t dy = -std::abs( y1 - y0 );
+        const int32_t sx = ( x0 < x1 ) ? 1 : -1;
+        const int32_t sy = ( y0 < y1 ) ? 1 : -1;
+        int32_t err = dx + dy;
+
+        while ( true ) {
+            if ( x0 >= 0 && x0 < imgW && y0 >= 0 && y0 < imgH ) {
+                uint8_t * px = data + ( static_cast<ptrdiff_t>( y0 ) * imgW + x0 ) * 4;
+                if ( a == 255 ) {
+                    px[0] = r;
+                    px[1] = g;
+                    px[2] = b;
+                    px[3] = 255;
+                }
+                else {
+                    const uint32_t invA = 255 - a;
+                    px[0] = static_cast<uint8_t>( ( r * a + px[0] * invA ) / 255 );
+                    px[1] = static_cast<uint8_t>( ( g * a + px[1] * invA ) / 255 );
+                    px[2] = static_cast<uint8_t>( ( b * a + px[2] * invA ) / 255 );
+                    px[3] = std::max( px[3], a );
+                }
+            }
+
+            if ( x0 == x1 && y0 == y1 ) {
+                break;
+            }
+
+            const int32_t e2 = 2 * err;
+            if ( e2 >= dy ) {
+                err += dy;
+                x0 += sx;
+            }
+            if ( e2 <= dx ) {
+                err += dx;
+                y0 += sy;
+            }
+        }
+    }
+
+    void CopyRGBA( const RGBAImage & in, const int32_t inX, const int32_t inY, RGBAImage & out, const int32_t outX, const int32_t outY, const int32_t w, const int32_t h )
+    {
+        if ( in.empty() || out.empty() || w <= 0 || h <= 0 ) {
+            return;
+        }
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t dstW = out.width();
+        const int32_t dstH = out.height();
+
+        const int32_t srcStartX = std::max( inX, 0 );
+        const int32_t srcStartY = std::max( inY, 0 );
+        const int32_t srcEndX = std::min( inX + w, srcW );
+        const int32_t srcEndY = std::min( inY + h, srcH );
+
+        if ( srcStartX >= srcEndX || srcStartY >= srcEndY ) {
+            return;
+        }
+
+        const int32_t copyW = std::min( srcEndX - srcStartX, dstW - std::max( outX, 0 ) );
+        const int32_t copyH = std::min( srcEndY - srcStartY, dstH - std::max( outY, 0 ) );
+
+        if ( copyW <= 0 || copyH <= 0 ) {
+            return;
+        }
+
+        const int32_t dstStartX = std::max( outX + ( srcStartX - inX ), 0 );
+        const int32_t dstStartY = std::max( outY + ( srcStartY - inY ), 0 );
+
+        const uint8_t * srcData = in.data();
+        uint8_t * dstData = out.data();
+
+        for ( int32_t row = 0; row < copyH; ++row ) {
+            const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcStartY + row ) * srcW + srcStartX ) * 4;
+            uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( dstStartY + row ) * dstW + dstStartX ) * 4;
+            memcpy( dstRow, srcRow, static_cast<size_t>( copyW ) * 4 );
+        }
+    }
+
+    void DimRGBA( RGBAImage & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height, const float factor )
+    {
+        if ( image.empty() || factor >= 1.0f ) {
+            return;
+        }
+
+        const int32_t imgW = image.width();
+        const int32_t imgH = image.height();
+
+        const int32_t startX = std::max( x, 0 );
+        const int32_t startY = std::max( y, 0 );
+        const int32_t endX = std::min( x + width, imgW );
+        const int32_t endY = std::min( y + height, imgH );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        const float f = std::max( factor, 0.0f );
+        uint8_t * data = image.data();
+
+        for ( int32_t row = startY; row < endY; ++row ) {
+            uint8_t * rowData = data + static_cast<ptrdiff_t>( row ) * imgW * 4;
+            for ( int32_t col = startX; col < endX; ++col ) {
+                uint8_t * px = rowData + static_cast<ptrdiff_t>( col ) * 4;
+                if ( px[3] > 0 ) {
+                    px[0] = static_cast<uint8_t>( static_cast<float>( px[0] ) * f );
+                    px[1] = static_cast<uint8_t>( static_cast<float>( px[1] ) * f );
+                    px[2] = static_cast<uint8_t>( static_cast<float>( px[2] ) * f );
+                }
+            }
+        }
+    }
 }
