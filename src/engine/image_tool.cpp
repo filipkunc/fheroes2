@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <ostream>
@@ -49,6 +50,40 @@
 // Managing compiler warnings for SDL headers
 #if defined( __GNUC__ )
 #pragma GCC diagnostic pop
+#endif
+
+#if !defined( WITH_IMAGE )
+// Use stb_image as a fallback PNG loader when SDL_image is not available (e.g. Android).
+#if defined( __GNUC__ )
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
+#pragma GCC diagnostic ignored "-Wcast-qual"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
+#pragma GCC diagnostic ignored "-Wfloat-conversion"
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma GCC diagnostic ignored "-Wswitch-default"
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+
+#if defined( __clang__ )
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
+#pragma clang diagnostic ignored "-Wcomma"
+#endif
+
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_PNG
+#define STBI_NO_STDIO
+#include "stb_image.h"
+
+#if defined( __clang__ )
+#pragma clang diagnostic pop
+#endif
+
+#if defined( __GNUC__ )
+#pragma GCC diagnostic pop
+#endif
 #endif
 
 #include "agg_file.h"
@@ -181,7 +216,37 @@ namespace fheroes2
 #if defined( WITH_IMAGE )
         loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
 #else
-        loadedSurface.reset( SDL_LoadBMP( System::encLocalToUTF8( path ).c_str() ) );
+        // Try stb_image for PNG files, fall back to SDL_LoadBMP for other formats.
+        if ( isPNGFilePath( path ) ) {
+            FILE * f = fopen( System::encLocalToUTF8( path ).c_str(), "rb" );
+            if ( f ) {
+                fseek( f, 0, SEEK_END );
+                const long fileSize = ftell( f );
+                fseek( f, 0, SEEK_SET );
+
+                if ( fileSize > 0 ) {
+                    std::vector<uint8_t> fileData( static_cast<size_t>( fileSize ) );
+                    if ( fread( fileData.data(), 1, fileData.size(), f ) == fileData.size() ) {
+                        int w = 0;
+                        int h = 0;
+                        int channels = 0;
+                        uint8_t * pixels = stbi_load_from_memory( fileData.data(), static_cast<int>( fileData.size() ), &w, &h, &channels, 4 );
+                        if ( pixels && w > 0 && h > 0 ) {
+                            // Create an SDL_Surface and copy the pixel data into it.
+                            loadedSurface.reset( SDL_CreateRGBSurfaceWithFormat( 0, w, h, 32, SDL_PIXELFORMAT_RGBA32 ) );
+                            if ( loadedSurface ) {
+                                memcpy( loadedSurface->pixels, pixels, static_cast<size_t>( w ) * h * 4 );
+                            }
+                            stbi_image_free( pixels );
+                        }
+                    }
+                }
+                fclose( f );
+            }
+        }
+        else {
+            loadedSurface.reset( SDL_LoadBMP( System::encLocalToUTF8( path ).c_str() ) );
+        }
 #endif
         if ( !loadedSurface ) {
             return false;
@@ -248,6 +313,49 @@ namespace fheroes2
 
     bool LoadRGBA( const std::string & path, RGBAImage & image )
     {
+#if !defined( WITH_IMAGE )
+        // Without SDL_image, use stb_image for PNG files.
+        if ( isPNGFilePath( path ) ) {
+            FILE * f = fopen( System::encLocalToUTF8( path ).c_str(), "rb" );
+            if ( !f ) {
+                return false;
+            }
+
+            fseek( f, 0, SEEK_END );
+            const long fileSize = ftell( f );
+            fseek( f, 0, SEEK_SET );
+
+            if ( fileSize <= 0 ) {
+                fclose( f );
+                return false;
+            }
+
+            std::vector<uint8_t> fileData( static_cast<size_t>( fileSize ) );
+            const size_t bytesRead = fread( fileData.data(), 1, fileData.size(), f );
+            fclose( f );
+
+            if ( bytesRead != fileData.size() ) {
+                return false;
+            }
+
+            int w = 0;
+            int h = 0;
+            int channels = 0;
+            uint8_t * pixels = stbi_load_from_memory( fileData.data(), static_cast<int>( fileData.size() ), &w, &h, &channels, 4 );
+            if ( !pixels || w <= 0 || h <= 0 ) {
+                if ( pixels ) {
+                    stbi_image_free( pixels );
+                }
+                return false;
+            }
+
+            image.resize( w, h );
+            memcpy( image.data(), pixels, static_cast<size_t>( w ) * h * 4 );
+            stbi_image_free( pixels );
+            return true;
+        }
+#endif
+
         std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
 
 #if defined( WITH_IMAGE )

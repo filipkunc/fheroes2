@@ -339,6 +339,9 @@ namespace Battle
 
         void fullRedraw(); // only at the start of the battle
         void Redraw();
+
+        // Bake the RGBA overlay into the Display and clear overlays, so dialogs render correctly.
+        void clearOverlayForDialog() const;
         void RedrawPartialStart();
         void RedrawPartialFinish();
 

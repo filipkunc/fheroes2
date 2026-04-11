@@ -4083,6 +4083,48 @@ namespace fheroes2
         }
     }
 
+    void BlitRGBAToIndexedScaled( const RGBAImage & in, Image & out, const int32_t outX, const int32_t outY, const float scale )
+    {
+        if ( in.empty() || out.empty() || scale <= 0.0f ) {
+            return;
+        }
+
+        const int32_t dstW = out.width();
+        const int32_t dstH = out.height();
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+
+        // Compute the game-resolution area covered by the RGBA surface.
+        const int32_t gameW = static_cast<int32_t>( static_cast<float>( srcW ) / scale );
+        const int32_t gameH = static_cast<int32_t>( static_cast<float>( srcH ) / scale );
+
+        const int32_t endX = std::min( outX + gameW, dstW );
+        const int32_t endY = std::min( outY + gameH, dstH );
+        const int32_t startX = std::max( outX, 0 );
+        const int32_t startY = std::max( outY, 0 );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        uint8_t * dstImage = out.image();
+        const uint8_t * srcData = in.data();
+
+        for ( int32_t y = startY; y < endY; ++y ) {
+            const int32_t srcY = std::min( static_cast<int32_t>( static_cast<float>( y - outY ) * scale ), srcH - 1 );
+            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
+
+            for ( int32_t x = startX; x < endX; ++x ) {
+                const int32_t srcX = std::min( static_cast<int32_t>( static_cast<float>( x - outX ) * scale ), srcW - 1 );
+                const uint8_t * px = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+
+                if ( px[3] > 128 ) {
+                    dstImage[static_cast<ptrdiff_t>( y ) * dstW + x] = GetColorId( px[0], px[1], px[2] );
+                }
+            }
+        }
+    }
+
     void DimRGBA( RGBAImage & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height, const float factor )
     {
         if ( image.empty() || factor >= 1.0f ) {

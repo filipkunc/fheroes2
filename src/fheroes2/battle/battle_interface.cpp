@@ -76,6 +76,7 @@
 #include "race.h"
 #include "rand.h"
 #include "settings.h"
+#include "system.h"
 #include "spell_book.h"
 #include "timing.h"
 #include "tools.h"
@@ -105,20 +106,6 @@ namespace
     // The number of frames the second smoke cloud is delayed by.
     const int32_t bridgeDestroySmokeDelay = 2;
 
-    // RAII helper that clears RGBA overlays on construction so modal dialogs are visible.
-    // The overlay is re-registered automatically on the next RedrawPartialFinish() call.
-    class OverlayGuard
-    {
-    public:
-        OverlayGuard()
-        {
-            fheroes2::Display::instance().clearRGBAOverlays();
-        }
-
-        OverlayGuard( const OverlayGuard & ) = delete;
-        OverlayGuard & operator=( const OverlayGuard & ) = delete;
-        ~OverlayGuard() = default;
-    };
 
     const int32_t offsetForTextBar{ 32 };
 
@@ -1284,12 +1271,12 @@ bool Battle::TurnOrder::queueEventProcessing( Interface & interface, std::string
 
             // Process mouse buttons events.
             if ( le.MouseClickLeft( unitRoi ) ) {
-                const OverlayGuard guard;
+                interface.clearOverlayForDialog();
                 Dialog::ArmyInfo( *unit, Dialog::BUTTONS, unit->isReflect() );
                 return true;
             }
             if ( le.isMouseRightButtonPressed() ) {
-                const OverlayGuard guard;
+                interface.clearOverlayForDialog();
                 Dialog::ArmyInfo( *unit, Dialog::ZERO, unit->isReflect() );
                 return true;
             }
@@ -1583,10 +1570,12 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
     // Load all RGBA Thor animation frames at original PNG resolution.
     _rgbaThorFrames.resize( 56 );
     _rgbaThorLoaded = true;
+    const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
     for ( int i = 0; i < 56; ++i ) {
         char filename[64];
-        snprintf( filename, sizeof( filename ), "files/data/sprites/thor_%03d.png", i );
-        if ( !fheroes2::LoadRGBA( filename, _rgbaThorFrames[i] ) ) {
+        snprintf( filename, sizeof( filename ), "thor_%03d.png", i );
+        std::string fullPath;
+        if ( !Settings::findFile( spritesDir, filename, fullPath ) || !fheroes2::LoadRGBA( fullPath, _rgbaThorFrames[i] ) ) {
             _rgbaThorLoaded = false;
             break;
         }
@@ -1688,6 +1677,18 @@ void Battle::Interface::fullRedraw()
     }
 
     fheroes2::fadeInDisplay( _background->activeArea(), !isDefaultScreenSize );
+}
+
+void Battle::Interface::clearOverlayForDialog() const
+{
+    auto & display = fheroes2::Display::instance();
+
+    // Bake the RGBA overlay content into the Display so the dialog's ImageRestorer
+    // saves the correct battlefield image and the dialog background looks right.
+    fheroes2::BlitRGBAToIndexedScaled( _mainSurfaceRGBA, display, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
+
+    // Clear the overlay so the dialog is visible during interaction.
+    display.clearRGBAOverlays();
 }
 
 void Battle::Interface::Redraw()
@@ -3493,14 +3494,14 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
         }
         // Switch the auto combat mode on
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_TOGGLE_AUTO_COMBAT ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             if ( fheroes2::showStandardTextMessage( {}, _( "Are you sure you want to enable the auto combat mode?" ), Dialog::YES | Dialog::NO ) == Dialog::YES ) {
                 _startAutoCombat( unit, actions );
             }
         }
         // Resolve the combat in quick combat mode
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_QUICK_COMBAT ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             if ( fheroes2::showStandardTextMessage( {}, _( "Are you sure you want to resolve the battle in the quick combat mode?" ), Dialog::YES | Dialog::NO )
                  == Dialog::YES ) {
                 _quickCombat( actions );
@@ -3508,17 +3509,17 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
         }
         // Cast the spell
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_CAST_SPELL ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             ProcessingHeroDialogResult( 1, actions );
         }
         // Retreat
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_RETREAT ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             ProcessingHeroDialogResult( 2, actions );
         }
         // Surrender
         else if ( Game::HotKeyPressEvent( Game::HotKeyEvent::BATTLE_SURRENDER ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             ProcessingHeroDialogResult( 3, actions );
         }
     }
@@ -3562,7 +3563,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
                 ballistaMessage.append( Battle::Board::GetMoatInfo() );
             }
 
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             fheroes2::showStandardTextMessage( _( "Ballista" ), ballistaMessage, le.isMouseRightButtonPressed() ? Dialog::ZERO : Dialog::OK );
         }
     }
@@ -3578,11 +3579,11 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
         msg = _( "Automatic combat modes" );
 
         if ( le.MouseClickLeft( _buttonAuto.area() ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             OpenAutoModeDialog( unit, actions );
         }
         else if ( le.isMouseRightButtonPressed() ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             fheroes2::showStandardTextMessage( _( "Automatic Combat Modes" ), _( "Choose between proceeding the combat in auto combat mode or in quick combat mode." ),
                                                Dialog::ZERO );
         }
@@ -3593,13 +3594,13 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
         msg = _( "Customize system options" );
 
         if ( le.MouseClickLeft( _buttonSettings.area() ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             _openBattleSettingsDialog();
 
             humanturn_redraw = true;
         }
         else if ( le.isMouseRightButtonPressed() ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             fheroes2::showStandardTextMessage( _( "System Options" ), _( "Allows you to customize the combat screen." ), Dialog::ZERO );
         }
     }
@@ -3616,7 +3617,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             humanturn_exit = true;
         }
         else if ( le.isMouseRightButtonPressed() ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             fheroes2::showStandardTextMessage( _( "Skip" ),
                                                _( "Skips the current creature. The current creature ends its turn and does not get to go again until the next round." ),
                                                Dialog::ZERO );
@@ -3634,7 +3635,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             cursor.SetThemes( Cursor::WAR_HERO );
 
             if ( le.MouseClickLeft( attackingOpponentArea ) ) {
-                const OverlayGuard guard;
+                clearOverlayForDialog();
                 ProcessingHeroDialogResult( arena.DialogBattleHero( *_attackingOpponent->GetHero(), true, status ), actions );
                 humanturn_redraw = true;
             }
@@ -3649,14 +3650,14 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             cursor.SetThemes( Cursor::WAR_INFO );
 
             if ( le.MouseClickLeft( attackingOpponentArea ) ) {
-                const OverlayGuard guard;
+                clearOverlayForDialog();
                 arena.DialogBattleHero( *_attackingOpponent->GetHero(), true, status );
                 humanturn_redraw = true;
             }
         }
 
         if ( le.isMouseRightButtonPressedInArea( attackingOpponentArea ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             arena.DialogBattleHero( *_attackingOpponent->GetHero(), false, status );
             humanturn_redraw = true;
         }
@@ -3674,7 +3675,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             cursor.SetThemes( Cursor::WAR_HERO );
 
             if ( le.MouseClickLeft( defendingOpponentArea ) ) {
-                const OverlayGuard guard;
+                clearOverlayForDialog();
                 ProcessingHeroDialogResult( arena.DialogBattleHero( *_defendingOpponent->GetHero(), true, status ), actions );
                 humanturn_redraw = true;
             }
@@ -3690,14 +3691,14 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
             cursor.SetThemes( Cursor::WAR_INFO );
 
             if ( le.MouseClickLeft( defendingOpponentArea ) ) {
-                const OverlayGuard guard;
+                clearOverlayForDialog();
                 arena.DialogBattleHero( *_defendingOpponent->GetHero(), true, status );
                 humanturn_redraw = true;
             }
         }
 
         if ( le.isMouseRightButtonPressedInArea( defendingOpponentArea ) ) {
-            const OverlayGuard guard;
+            clearOverlayForDialog();
             arena.DialogBattleHero( *_defendingOpponent->GetHero(), false, status );
             humanturn_redraw = true;
         }
@@ -3783,7 +3784,7 @@ void Battle::Interface::HumanBattleTurn( const Unit & unit, Actions & actions, s
                 listlog->SetOpenLog( !listlog->isOpenLog() );
             }
             else if ( le.isMouseRightButtonPressedInArea( status ) ) {
-                const OverlayGuard guard;
+                clearOverlayForDialog();
                 fheroes2::showStandardTextMessage( _( "Message Bar" ), _( "Shows the results of individual monster's actions." ), Dialog::ZERO );
             }
         }
@@ -3905,7 +3906,7 @@ void Battle::Interface::_openBattleSettingsDialog()
 
 void Battle::Interface::EventShowOptions()
 {
-    const OverlayGuard guard;
+    clearOverlayForDialog();
     _buttonSettings.drawOnPress();
     _openBattleSettingsDialog();
     _buttonSettings.drawOnRelease();
@@ -4021,7 +4022,7 @@ bool Battle::Interface::MousePressRightBoardAction( const Cell & cell ) const
     };
 
     if ( const Unit * unit = getUnit(); unit != nullptr ) {
-        const OverlayGuard guard;
+        clearOverlayForDialog();
         Dialog::ArmyInfo( *unit, Dialog::ZERO, unit->isReflect() );
         return true;
     }
@@ -4132,7 +4133,7 @@ void Battle::Interface::MouseLeftClickBoardAction( const int themes, const Cell 
             }
 
             {
-                const OverlayGuard guard;
+                clearOverlayForDialog();
                 Dialog::ArmyInfo( *unitOnCell, Dialog::BUTTONS, unitOnCell->isReflect() );
             }
 
@@ -7480,7 +7481,7 @@ void Battle::Interface::InterruptAutoCombatIfRequested( LocalEvent & le )
     // Right now there should be no pending auto combat interruptions.
     assert( _interruptAutoCombatForColor == PlayerColor::NONE );
 
-    const OverlayGuard guard;
+    clearOverlayForDialog();
     const int interrupt = fheroes2::showStandardTextMessage( {}, _( "Are you sure you want to interrupt the auto combat mode?" ), Dialog::YES | Dialog::NO );
     if ( interrupt == Dialog::YES ) {
         _interruptAutoCombatForColor = color;

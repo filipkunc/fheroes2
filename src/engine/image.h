@@ -476,6 +476,11 @@ namespace fheroes2
     // Darken a rectangular region of an RGBAImage by multiplying RGB by factor (0.0-1.0).
     void DimRGBA( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height, float factor );
 
+    // Downsample an RGBAImage and blit it into an indexed Image at the given position.
+    // The RGBA surface (at physical resolution) is downsampled by 'scale' to match game resolution.
+    // Each RGBA pixel is converted to the nearest palette color via GetColorId().
+    void BlitRGBAToIndexedScaled( const RGBAImage & in, Image & out, int32_t outX, int32_t outY, float scale );
+
     // Position info for RGBA overlay rendering. Position is in game pixels.
     struct RGBAOverlay
     {
