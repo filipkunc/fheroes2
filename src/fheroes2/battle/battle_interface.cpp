@@ -1581,9 +1581,9 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
         }
     }
 
-    // Enable RGBA mirror: any Blit/Copy/AlphaBlit targeting the Display will also write to _mainSurfaceRGBA.
-    // This makes dialog content automatically appear in the RGBA overlay.
-    fheroes2::Image::setRGBAMirror( &fheroes2::Display::instance(), &_mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
+    // Enable RGBA mirror: Display::render() will compare Display with _mainSurface and sync any differing
+    // pixels (dialog content) to _mainSurfaceRGBA. This makes dialog content automatically appear in the RGBA overlay.
+    fheroes2::Image::setRGBAMirror( &fheroes2::Display::instance(), &_mainSurface, &_mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
 }
 
 Battle::Interface::~Interface()
@@ -1657,6 +1657,11 @@ void Battle::Interface::fullRedraw()
 
     fheroes2::Display & display = fheroes2::Display::instance();
 
+    // Suspend mirror during the entire fullRedraw — fades modify Display pixels
+    // which the bulk sync would misinterpret as dialog content and overwrite RGBA.
+    fheroes2::Image * savedMirrorTarget = fheroes2::Image::_rgbaMirrorTarget;
+    fheroes2::Image::_rgbaMirrorTarget = nullptr;
+
     // Fade-out game screen only for 640x480 resolution.
     const bool isDefaultScreenSize = display.isDefaultSize();
     if ( isDefaultScreenSize ) {
@@ -1682,6 +1687,9 @@ void Battle::Interface::fullRedraw()
     }
 
     fheroes2::fadeInDisplay( _background->activeArea(), !isDefaultScreenSize );
+
+    // Restore mirror after all fades are complete.
+    fheroes2::Image::_rgbaMirrorTarget = savedMirrorTarget;
 }
 
 void Battle::Interface::Redraw()
@@ -1751,12 +1759,9 @@ void Battle::Interface::redrawPreRender()
     }
 #endif
 
-    // Copy to Display for UI elements (status bar, buttons).
-    // Temporarily disable the RGBA mirror so this indexed copy doesn't overwrite the high-res RGBA content.
+    // Copy to Display for UI elements (status bar, buttons) and as the reference for the RGBA mirror sync.
     auto & display = fheroes2::Display::instance();
-    fheroes2::Image::clearRGBAMirror();
     fheroes2::Copy( _mainSurface, 0, 0, display, _interfacePosition.x, _interfacePosition.y, _mainSurface.width(), _mainSurface.height() );
-    fheroes2::Image::setRGBAMirror( &display, &_mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
 
     // Register the composited RGBA surface for physical-resolution rendering.
     display.clearRGBAOverlays();
@@ -3882,7 +3887,53 @@ void Battle::Interface::FadeArena( const bool clearMessageLog )
     top.resize( srt.width, srt.height );
 
     fheroes2::Copy( display, srt.x, srt.y, top, 0, 0, srt.width, srt.height );
-    fheroes2::FadeDisplayWithPalette( top, srt.getPosition(), 5, 300, 5 );
+
+    // Custom fade that darkens both the 8-bit Display and the RGBA surface simultaneously,
+    // so the overlay always shows the correct faded high-res content.
+    {
+        fheroes2::Image shadow = top;
+        const fheroes2::Rect roi{ srt.x, srt.y, shadow.width(), shadow.height() };
+
+        // Suspend mirror during fade so the 8-bit darkened pixels don't overwrite RGBA via bulk sync.
+        fheroes2::Image * savedMirrorTarget = fheroes2::Image::_rgbaMirrorTarget;
+        fheroes2::Image::_rgbaMirrorTarget = nullptr;
+
+        constexpr int32_t frameCount = 5;
+        constexpr int32_t fadeTimeMs = 300;
+        constexpr int32_t stepDelay = fadeTimeMs / frameCount;
+        // Each palette step darkens by roughly this factor.
+        constexpr float dimFactor = 0.75f;
+
+        LocalEvent & le = LocalEvent::Get();
+        int32_t frameNumber = 0;
+
+        Game::passCustomAnimationDelay( stepDelay );
+        while ( le.HandleEvents( Game::isCustomDelayNeeded( stepDelay ) ) ) {
+            if ( Game::validateCustomAnimationDelay( stepDelay ) ) {
+                if ( frameNumber == frameCount ) {
+                    break;
+                }
+
+                // Darken 8-bit surface.
+                fheroes2::ApplyPalette( shadow, 5 );
+                fheroes2::Copy( shadow, 0, 0, display, roi.x, roi.y, roi.width, roi.height );
+
+                // Darken RGBA surface by the same factor.
+                if ( !_mainSurfaceRGBA.empty() ) {
+                    fheroes2::DimRGBA( _mainSurfaceRGBA, 0, 0, _mainSurfaceRGBA.width(), _mainSurfaceRGBA.height(), dimFactor );
+                }
+
+                display.render( roi );
+                ++frameNumber;
+            }
+        }
+
+        // Sync _mainSurface to match the faded Display so the bulk sync in render()
+        // only triggers for actual dialog pixels, not for the darkened battlefield.
+        fheroes2::Copy( display, _interfacePosition.x, _interfacePosition.y, _mainSurface, 0, 0, _mainSurface.width(), _mainSurface.height() );
+
+        fheroes2::Image::_rgbaMirrorTarget = savedMirrorTarget;
+    }
 
     display.render();
 }

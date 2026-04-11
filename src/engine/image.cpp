@@ -443,14 +443,16 @@ namespace fheroes2
 {
     // Static RGBA mirror members.
     Image * Image::_rgbaMirrorTarget = nullptr;
+    Image * Image::_rgbaMirrorSource = nullptr;
     RGBAImage * Image::_rgbaMirror = nullptr;
     int32_t Image::_rgbaMirrorOffsetX = 0;
     int32_t Image::_rgbaMirrorOffsetY = 0;
     float Image::_rgbaMirrorScale = 1.0f;
 
-    void Image::setRGBAMirror( Image * target, RGBAImage * mirror, const int32_t offsetX, const int32_t offsetY, const float scale )
+    void Image::setRGBAMirror( Image * target, Image * source, RGBAImage * mirror, const int32_t offsetX, const int32_t offsetY, const float scale )
     {
         _rgbaMirrorTarget = target;
+        _rgbaMirrorSource = source;
         _rgbaMirror = mirror;
         _rgbaMirrorOffsetX = offsetX;
         _rgbaMirrorOffsetY = offsetY;
@@ -460,6 +462,7 @@ namespace fheroes2
     void Image::clearRGBAMirror()
     {
         _rgbaMirrorTarget = nullptr;
+        _rgbaMirrorSource = nullptr;
         _rgbaMirror = nullptr;
     }
 
@@ -1216,11 +1219,6 @@ namespace fheroes2
             }
         }
 
-        // Mirror to RGBA surface if this write targets the mirrored Image.
-        if ( Image::_rgbaMirrorTarget == &out && Image::_rgbaMirror != nullptr ) {
-            BlitIndexedToRGBAScaledAlpha( in, *Image::_rgbaMirror, outX - Image::_rgbaMirrorOffsetX, outY - Image::_rgbaMirrorOffsetY, Image::_rgbaMirrorScale,
-                                          alphaValue, flip );
-        }
     }
 
     void ApplyPalette( Image & image, const std::vector<uint8_t> & palette )
@@ -1476,10 +1474,6 @@ namespace fheroes2
             }
         }
 
-        // Mirror to RGBA surface if this write targets the mirrored Image.
-        if ( Image::_rgbaMirrorTarget == &out && Image::_rgbaMirror != nullptr ) {
-            BlitIndexedToRGBAScaled( in, *Image::_rgbaMirror, outX - Image::_rgbaMirrorOffsetX, outY - Image::_rgbaMirrorOffsetY, Image::_rgbaMirrorScale, flip );
-        }
     }
 
     void Copy( const Image & in, Image & out )
@@ -1559,11 +1553,6 @@ namespace fheroes2
             }
         }
 
-        // Mirror to RGBA surface if this write targets the mirrored Image.
-        if ( Image::_rgbaMirrorTarget == &out && Image::_rgbaMirror != nullptr ) {
-            BlitIndexedToRGBAScaledRegion( in, inX, inY, width, height, *Image::_rgbaMirror, outX - Image::_rgbaMirrorOffsetX, outY - Image::_rgbaMirrorOffsetY,
-                                           Image::_rgbaMirrorScale );
-        }
     }
 
     void copyTransformLayer( const Image & in, Image & out )

@@ -135,12 +135,13 @@ namespace fheroes2
             _singleLayer = true;
         }
 
-        // RGBA mirror: when set, any Blit/Copy/AlphaBlit targeting _rgbaMirrorTarget also writes to the RGBA surface.
-        // Used by battle interface to forward dialog draws to _mainSurfaceRGBA.
-        static void setRGBAMirror( Image * target, RGBAImage * mirror, int32_t offsetX, int32_t offsetY, float scale );
+        // RGBA mirror: when active, Display::render() syncs any pixels in the target Image that differ
+        // from the source Image into the RGBA surface. This forwards dialog content to the RGBA overlay.
+        static void setRGBAMirror( Image * target, Image * source, RGBAImage * mirror, int32_t offsetX, int32_t offsetY, float scale );
         static void clearRGBAMirror();
 
-        static Image * _rgbaMirrorTarget;
+        static Image * _rgbaMirrorTarget;  // The Image being drawn to (Display)
+        static Image * _rgbaMirrorSource;  // The reference Image (_mainSurface) — pixels differing from this get synced
         static RGBAImage * _rgbaMirror;
         static int32_t _rgbaMirrorOffsetX;
         static int32_t _rgbaMirrorOffsetY;
