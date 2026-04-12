@@ -6586,7 +6586,7 @@ void Battle::Interface::_redrawActionDeathWaveSpell( const int32_t strength )
     deathWaveCurve.reserve( waveLength );
 
     for ( int32_t posX = 0; posX < waveLength; ++posX ) {
-        deathWaveCurve.push_back( static_cast<int32_t>( std::round( strength * _rgbaScale * ( cos( posX / waveLimit ) / 2 - 0.5 ) ) ) - 1 );
+        deathWaveCurve.push_back( static_cast<int32_t>( std::round( strength * _rgbaScale * ( cosf( posX / waveLimit ) / 2.0f - 0.5f ) ) ) - 1 );
     }
 
     // Take into account that the Death Wave starts outside the battle screen.
