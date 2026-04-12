@@ -255,13 +255,18 @@ namespace Battle
             _opponentColor = opponentColor;
         }
 
-        void redraw( const Unit * current, const uint8_t currentUnitColor, const Unit * underCursor, fheroes2::Image & output, const fheroes2::Rect & dialogRoi );
+        void redraw( const Unit * current, uint8_t currentUnitColor, const Unit * underCursor, const fheroes2::Rect & dialogRoi );
 
         bool queueEventProcessing( Interface & interface, std::string & msg, const fheroes2::Point & offset, const bool highlightUnitMomevementArea ) const;
 
         const fheroes2::Rect & getRenderingRoi() const
         {
             return _renderingRoi;
+        }
+
+        bool isInsideBattleField() const
+        {
+            return _isInsideBattleField;
         }
 
         void restore()
@@ -493,9 +498,8 @@ namespace Battle
 
         fheroes2::Rect _interfacePosition;
         fheroes2::Rect _surfaceInnerArea{ 0, 0, fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT };
-        fheroes2::Image _mainSurface;
-        fheroes2::Image _battleGround;
         fheroes2::RGBAImage _battleGroundRGBA;  // Pre-converted background at physical resolution.
+        fheroes2::Image * _battleGroundBuildTarget{ nullptr };  // Temporary target for _redrawGroundObjects during _redrawBattleGround.
         fheroes2::Image _hexagonGrid;
         fheroes2::Image _hexagonShadow;
         fheroes2::Image _hexagonGridShadow;
@@ -634,16 +638,17 @@ namespace Battle
             }
         };
 
-        // Copy a region from _mainSurface to _mainSurfaceRGBA, converting palette indices to RGBA.
-        void _updateRGBARegion( int32_t x, int32_t y, int32_t w, int32_t h );
+        // Convert a region from an indexed Image to _mainSurfaceRGBA.
+        // (srcX, srcY) is the top-left in the source image; (dstX, dstY) is the top-left in game-pixel space for the RGBA surface.
+        void _syncIndexedRegionToRGBA( const fheroes2::Image & src, int32_t srcX, int32_t srcY, int32_t w, int32_t h, int32_t dstX, int32_t dstY );
 
-        // Central wrappers that draw to _mainSurface AND sync to _mainSurfaceRGBA.
+        // Central wrappers that draw to _mainSurfaceRGBA.
         void _blitOnSurface( const fheroes2::Image & in, int32_t outX, int32_t outY, bool flip = false );
         void _alphaBlitOnSurface( const fheroes2::Image & in, int32_t outX, int32_t outY, uint8_t alpha, bool flip = false );
         void _alphaBlitOnSurface( const fheroes2::Image & in, int32_t inX, int32_t inY, int32_t outX, int32_t outY, int32_t w, int32_t h, uint8_t alpha,
                                   bool flip = false );
         void _copyOnSurface( const fheroes2::Image & in, int32_t inX, int32_t inY, int32_t outX, int32_t outY, int32_t w, int32_t h );
-        void _copyFullSurface( const fheroes2::Image & in );
+        void _copyFullSurface();
 
         // RGBA sprite frames for Thor at original PNG resolution.
         std::vector<fheroes2::RGBAImage> _rgbaThorFrames;

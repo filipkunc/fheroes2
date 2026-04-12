@@ -441,29 +441,22 @@ namespace
 
 namespace fheroes2
 {
-    // Static RGBA mirror members.
-    Image * Image::_rgbaMirrorTarget = nullptr;
-    Image * Image::_rgbaMirrorSource = nullptr;
-    RGBAImage * Image::_rgbaMirror = nullptr;
-    int32_t Image::_rgbaMirrorOffsetX = 0;
-    int32_t Image::_rgbaMirrorOffsetY = 0;
-    float Image::_rgbaMirrorScale = 1.0f;
+    RGBAImage * Image::_dialogFwdTarget = nullptr;
+    int32_t Image::_dialogFwdOffsetX = 0;
+    int32_t Image::_dialogFwdOffsetY = 0;
+    float Image::_dialogFwdScale = 1.0f;
 
-    void Image::setRGBAMirror( Image * target, Image * source, RGBAImage * mirror, const int32_t offsetX, const int32_t offsetY, const float scale )
+    void Image::setDialogForwarding( RGBAImage * target, const int32_t offsetX, const int32_t offsetY, const float scale )
     {
-        _rgbaMirrorTarget = target;
-        _rgbaMirrorSource = source;
-        _rgbaMirror = mirror;
-        _rgbaMirrorOffsetX = offsetX;
-        _rgbaMirrorOffsetY = offsetY;
-        _rgbaMirrorScale = scale;
+        _dialogFwdTarget = target;
+        _dialogFwdOffsetX = offsetX;
+        _dialogFwdOffsetY = offsetY;
+        _dialogFwdScale = scale;
     }
 
-    void Image::clearRGBAMirror()
+    void Image::clearDialogForwarding()
     {
-        _rgbaMirrorTarget = nullptr;
-        _rgbaMirrorSource = nullptr;
-        _rgbaMirror = nullptr;
+        _dialogFwdTarget = nullptr;
     }
 
     Image::Image( Image && image ) noexcept
@@ -725,15 +718,7 @@ namespace fheroes2
     void ImageRestorer::restore()
     {
         _isRestored = true;
-
-        // Suspend the RGBA mirror during restore — the saved content is indexed 8-bit
-        // and should not overwrite the high-res RGBA surface.
-        Image * savedTarget = Image::_rgbaMirrorTarget;
-        Image::_rgbaMirrorTarget = nullptr;
-
         Copy( _copy, 0, 0, _image, _x, _y, _width, _height );
-
-        Image::_rgbaMirrorTarget = savedTarget;
     }
 
     void ImageRestorer::_updateRoi()
@@ -1065,6 +1050,103 @@ namespace fheroes2
         }
     }
 
+    // Blit an indexed source onto an RGBA_32BIT output Image (no scaling, 1:1).
+    // Handles transform layer (transparency/shadow) and optional horizontal flip.
+    void BlitIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const bool flip )
+    {
+        assert( in.format() == ImageFormat::INDEXED_8BIT );
+        assert( out.format() == ImageFormat::RGBA_32BIT );
+
+        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+            return;
+        }
+
+        const int32_t widthIn = in.width();
+        const int32_t widthOut = out.width();
+        const uint8_t * gamePalette = getGamePalette();
+
+        const bool hasTranform = !in.singleLayer();
+        const int32_t inDir = flip ? -1 : 1;
+
+        const uint8_t * imageInY = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX );
+        const uint8_t * transformInY = hasTranform ? ( in.transform() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX ) ) : nullptr;
+
+        uint8_t * outRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
+
+        for ( int32_t row = 0; row < height; ++row ) {
+            const uint8_t * imgIn = imageInY;
+            const uint8_t * trIn = transformInY;
+            uint8_t * outPx = outRow;
+
+            for ( int32_t col = 0; col < width; ++col, imgIn += inDir, outPx += 4 ) {
+                if ( hasTranform ) {
+                    assert( trIn != nullptr );
+                    if ( *trIn == 1 ) {
+                        // Transparent — skip.
+                        trIn += inDir;
+                        continue;
+                    }
+                    if ( *trIn > 1 ) {
+                        // Shadow/transform — darken the existing RGBA pixel.
+                        outPx[0] = static_cast<uint8_t>( outPx[0] >> 1 );
+                        outPx[1] = static_cast<uint8_t>( outPx[1] >> 1 );
+                        outPx[2] = static_cast<uint8_t>( outPx[2] >> 1 );
+                        trIn += inDir;
+                        continue;
+                    }
+                    trIn += inDir;
+                }
+
+                // Copy pixel: convert indexed → RGBA.
+                const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( *imgIn ) * 3 );
+                outPx[0] = static_cast<uint8_t>( pal[0] << 2 );
+                outPx[1] = static_cast<uint8_t>( pal[1] << 2 );
+                outPx[2] = static_cast<uint8_t>( pal[2] << 2 );
+                outPx[3] = 255;
+            }
+
+            imageInY += widthIn;
+            if ( transformInY != nullptr ) {
+                transformInY += widthIn;
+            }
+            outRow += static_cast<ptrdiff_t>( widthOut ) * 4;
+        }
+    }
+
+    // Copy indexed pixels to an RGBA_32BIT output Image (no transform layer, no flip).
+    void CopyIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
+    {
+        assert( in.format() == ImageFormat::INDEXED_8BIT );
+        assert( out.format() == ImageFormat::RGBA_32BIT );
+
+        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+            return;
+        }
+
+        const int32_t widthIn = in.width();
+        const int32_t widthOut = out.width();
+        const uint8_t * gamePalette = getGamePalette();
+
+        const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + inX;
+        uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
+
+        for ( int32_t row = 0; row < height; ++row ) {
+            const uint8_t * src = srcRow;
+            uint8_t * dst = dstRow;
+
+            for ( int32_t col = 0; col < width; ++col, ++src, dst += 4 ) {
+                const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( *src ) * 3 );
+                dst[0] = static_cast<uint8_t>( pal[0] << 2 );
+                dst[1] = static_cast<uint8_t>( pal[1] << 2 );
+                dst[2] = static_cast<uint8_t>( pal[2] << 2 );
+                dst[3] = 255;
+            }
+
+            srcRow += widthIn;
+            dstRow += static_cast<ptrdiff_t>( widthOut ) * 4;
+        }
+    }
+
     void AlphaBlit( const Image & in, Image & out, const uint8_t alphaValue, const bool flip /* = false */ )
     {
         AlphaBlit( in, 0, 0, out, 0, 0, in.width(), in.height(), alphaValue, flip );
@@ -1090,6 +1172,13 @@ namespace fheroes2
             else {
                 AlphaBlitRGBAToIndexed( in, inX, inY, out, outX, outY, width, height, alphaValue, flip );
             }
+            return;
+        }
+
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            // For RGBA output, delegate to Blit which handles indexed→RGBA.
+            // TODO: implement proper alpha blending for indexed→RGBA output.
+            BlitIndexedToRGBAOutput( in, inX, inY, out, outX, outY, width, height, flip );
             return;
         }
 
@@ -1351,6 +1440,11 @@ namespace fheroes2
             return;
         }
 
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            BlitIndexedToRGBAOutput( in, inX, inY, out, outX, outY, width, height, flip );
+            return;
+        }
+
         if ( in.singleLayer() && !flip ) {
             Copy( in, inX, inY, out, outX, outY, width, height );
             return;
@@ -1510,6 +1604,11 @@ namespace fheroes2
 
     void Copy( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
     {
+        if ( in.format() == ImageFormat::INDEXED_8BIT && out.format() == ImageFormat::RGBA_32BIT ) {
+            CopyIndexedToRGBAOutput( in, inX, inY, out, outX, outY, width, height );
+            return;
+        }
+
         if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
             return;
         }
@@ -2366,6 +2465,30 @@ namespace fheroes2
     void Fill( Image & image, int32_t x, int32_t y, int32_t width, int32_t height, const uint8_t colorId )
     {
         if ( !Verify( image, x, y, width, height ) ) {
+            return;
+        }
+
+        if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            // Convert palette index to RGBA and fill.
+            const uint8_t * gamePalette = getGamePalette();
+            const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( colorId ) * 3 );
+            const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
+            const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
+            const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
+
+            const int32_t imgW = image.width();
+            uint8_t * row = image.image() + ( ( static_cast<ptrdiff_t>( y ) * imgW ) + x ) * 4;
+
+            for ( int32_t ry = 0; ry < height; ++ry ) {
+                uint8_t * px = row;
+                for ( int32_t rx = 0; rx < width; ++rx, px += 4 ) {
+                    px[0] = r;
+                    px[1] = g;
+                    px[2] = b;
+                    px[3] = 255;
+                }
+                row += static_cast<ptrdiff_t>( imgW ) * 4;
+            }
             return;
         }
 

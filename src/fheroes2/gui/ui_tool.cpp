@@ -582,6 +582,145 @@ namespace fheroes2
         return out;
     }
 
+    void CreateDeathWaveEffectRGBA( RGBAImage & out, const RGBAImage & in, const int32_t x, const std::vector<int32_t> & deathWaveCurve )
+    {
+        if ( in.empty() ) {
+            return;
+        }
+
+        const int32_t inWidth = in.width();
+        const int32_t waveLength = static_cast<int32_t>( deathWaveCurve.size() );
+
+        if ( x < 0 || ( x - waveLength ) >= inWidth || deathWaveCurve.empty() ) {
+            return;
+        }
+
+        const int32_t inHeight = in.height();
+        const int32_t outWaveWidth = x > waveLength ? ( x > inWidth ? ( waveLength - x + inWidth ) : waveLength ) : x;
+
+        if ( out.width() < outWaveWidth || out.height() < inHeight ) {
+            out.resize( outWaveWidth, inHeight );
+        }
+
+        const int32_t outWidth = out.width();
+        const int32_t offsetX = x < waveLength ? 0 : x - waveLength;
+
+        // 4 bytes per pixel for RGBA.
+        const uint8_t * inData = in.data() + ( static_cast<ptrdiff_t>( offsetX ) * 4 );
+        uint8_t * outData = out.data();
+
+        std::vector<int32_t>::const_iterator pntX = deathWaveCurve.begin() + ( x < waveLength ? waveLength - x : 0 );
+        const std::vector<int32_t>::const_iterator endX = deathWaveCurve.end() - ( x > inWidth ? x - inWidth : 0 );
+
+        const ptrdiff_t inStride = static_cast<ptrdiff_t>( inWidth ) * 4;
+        const ptrdiff_t outStride = static_cast<ptrdiff_t>( outWidth ) * 4;
+
+        for ( ; pntX != endX; ++pntX, outData += 4, inData += 4 ) {
+            if ( ( *pntX >= 0 ) || ( *pntX <= -inHeight ) ) {
+                assert( 0 );
+                continue;
+            }
+
+            const uint8_t * outYEnd = outData + ( static_cast<ptrdiff_t>( inHeight + *pntX ) * outStride );
+            const uint8_t * inY = inData - ( static_cast<ptrdiff_t>( *pntX + 1 ) * inStride );
+
+            uint8_t * outY = outData;
+            for ( ; outY != outYEnd; outY += outStride ) {
+                inY += inStride;
+                memcpy( outY, inY, 4 );
+            }
+
+            for ( int32_t i = 0; i > *pntX; --i ) {
+                memcpy( outY, inY, 4 );
+                outY += outStride;
+                inY -= inStride;
+            }
+        }
+    }
+
+    RGBAImage CreateHolyShoutEffectRGBA( const RGBAImage & in, const int32_t blurRadius, const uint8_t darkredStrength )
+    {
+        if ( in.empty() || blurRadius < 1 ) {
+            return {};
+        }
+
+        const int32_t width = in.width();
+        const int32_t height = in.height();
+
+        // Darkening/reddening coefficients applied after averaging.
+        const double redCoeff = 1.0 - ( darkredStrength / 1120.0 );
+        const double greenBlueCoeff = 1.0 - ( darkredStrength / 320.0 );
+
+        RGBAImage out;
+        out.resize( width, height );
+
+        const uint8_t * inData = in.data();
+        uint8_t * outPtr = out.data();
+
+        const ptrdiff_t pixelStride = static_cast<ptrdiff_t>( width ) * 4;
+
+        // Cross-shaped blur: average horizontal + vertical strips in RGBA space.
+        for ( int32_t y = 0; y < height; ++y ) {
+            const int32_t startY = std::max<int32_t>( y - blurRadius, 0 );
+            const int32_t rangeY = std::min( y + blurRadius + 1, height ) - startY;
+            const uint8_t * rowStart = inData + ( static_cast<ptrdiff_t>( y ) * pixelStride );
+            const uint8_t * colStart = inData + ( static_cast<ptrdiff_t>( startY ) * pixelStride );
+
+            for ( int32_t x = 0; x < width; ++x, outPtr += 4 ) {
+                const int32_t startX = std::max<int32_t>( x - blurRadius, 0 );
+                const int32_t rangeX = std::min( x + blurRadius + 1, width ) - startX;
+
+                uint32_t sumR = 0;
+                uint32_t sumG = 0;
+                uint32_t sumB = 0;
+
+                // Horizontal strip.
+                const uint8_t * hPtr = rowStart + ( static_cast<ptrdiff_t>( startX ) * 4 );
+                for ( int32_t i = 0; i < rangeX; ++i, hPtr += 4 ) {
+                    sumR += hPtr[0];
+                    sumG += hPtr[1];
+                    sumB += hPtr[2];
+                }
+
+                // Vertical strip (excluding center pixel to avoid double-counting).
+                const uint8_t * vPtr = colStart + ( static_cast<ptrdiff_t>( x ) * 4 );
+                const uint8_t * centerPtr = rowStart + ( static_cast<ptrdiff_t>( x ) * 4 );
+                for ( int32_t i = 0; i < rangeY; ++i, vPtr += pixelStride ) {
+                    if ( vPtr != centerPtr ) {
+                        sumR += vPtr[0];
+                        sumG += vPtr[1];
+                        sumB += vPtr[2];
+                    }
+                }
+
+                const uint32_t roiSize = static_cast<uint32_t>( rangeX + rangeY - 1 );
+                outPtr[0] = static_cast<uint8_t>( std::min( 255.0, redCoeff * sumR / roiSize ) );
+                outPtr[1] = static_cast<uint8_t>( std::min( 255.0, greenBlueCoeff * sumG / roiSize ) );
+                outPtr[2] = static_cast<uint8_t>( std::min( 255.0, greenBlueCoeff * sumB / roiSize ) );
+                outPtr[3] = 255;
+            }
+        }
+
+        return out;
+    }
+
+    void WhitenRGBA( RGBAImage & image, const float factor )
+    {
+        if ( image.empty() || factor <= 0.0F ) {
+            return;
+        }
+
+        uint8_t * data = image.data();
+        const int32_t total = image.width() * image.height();
+
+        for ( int32_t i = 0; i < total; ++i ) {
+            data[0] = static_cast<uint8_t>( static_cast<float>( data[0] ) + ( static_cast<float>( 255 - data[0] ) * factor ) );
+            data[1] = static_cast<uint8_t>( static_cast<float>( data[1] ) + ( static_cast<float>( 255 - data[1] ) * factor ) );
+            data[2] = static_cast<uint8_t>( static_cast<float>( data[2] ) + ( static_cast<float>( 255 - data[2] ) * factor ) );
+            data += 4;
+        }
+    }
+
     Sprite createRippleEffect( const Sprite & in, const int32_t amplitudeInPixels, const double phaseAtImageTop, const int32_t periodInPixels )
     {
         if ( in.empty() || in.singleLayer() || amplitudeInPixels == 0 ) {

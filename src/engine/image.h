@@ -135,17 +135,16 @@ namespace fheroes2
             _singleLayer = true;
         }
 
-        // RGBA mirror: when active, Display::render() syncs any pixels in the target Image that differ
-        // from the source Image into the RGBA surface. This forwards dialog content to the RGBA overlay.
-        static void setRGBAMirror( Image * target, Image * source, RGBAImage * mirror, int32_t offsetX, int32_t offsetY, float scale );
-        static void clearRGBAMirror();
+        // Dialog forwarding: during Display::render(), any non-zero pixel on Display in the battle area
+        // gets converted indexed→RGBA and written to the RGBA overlay. Display's battle area is filled
+        // with index 0 each frame, so only dialog content (non-zero) gets forwarded.
+        static void setDialogForwarding( RGBAImage * target, int32_t offsetX, int32_t offsetY, float scale );
+        static void clearDialogForwarding();
 
-        static Image * _rgbaMirrorTarget;  // The Image being drawn to (Display)
-        static Image * _rgbaMirrorSource;  // The reference Image (_mainSurface) — pixels differing from this get synced
-        static RGBAImage * _rgbaMirror;
-        static int32_t _rgbaMirrorOffsetX;
-        static int32_t _rgbaMirrorOffsetY;
-        static float _rgbaMirrorScale;
+        static RGBAImage * _dialogFwdTarget;
+        static int32_t _dialogFwdOffsetX;
+        static int32_t _dialogFwdOffsetY;
+        static float _dialogFwdScale;
 
     private:
         void copy( const Image & image );

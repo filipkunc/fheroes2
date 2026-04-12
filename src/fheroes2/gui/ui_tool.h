@@ -290,8 +290,13 @@ namespace fheroes2
     void colorFade( const std::vector<uint8_t> & palette, const fheroes2::Rect & frameRoi, const uint32_t durationMs, const double fps );
 
     void CreateDeathWaveEffect( Image & out, const Image & in, const int32_t x, const std::vector<int32_t> & deathWaveCurve );
+    void CreateDeathWaveEffectRGBA( RGBAImage & out, const RGBAImage & in, int32_t x, const std::vector<int32_t> & deathWaveCurve );
 
     Image CreateHolyShoutEffect( const Image & in, const int32_t blurRadius, const uint8_t darkredStrength );
+    RGBAImage CreateHolyShoutEffectRGBA( const RGBAImage & in, int32_t blurRadius, uint8_t darkredStrength );
+
+    // Lerp all RGB values toward white by the given factor (0.0 = no change, 1.0 = fully white). Preserves alpha.
+    void WhitenRGBA( RGBAImage & image, float factor );
 
     Sprite createRippleEffect( const Sprite & in, const int32_t amplitudeInPixels, const double phaseAtImageTop, const int32_t periodInPixels );
 

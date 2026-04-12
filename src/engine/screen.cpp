@@ -1744,35 +1744,34 @@ namespace fheroes2
             return;
         }
 
-        // Bulk sync: compare Display with the mirror source image. Any differing pixels
-        // (e.g. dialog content drawn via DrawRect, ApplyTransform, etc.) get forwarded to the RGBA surface.
-        // During normal battle frames Display == _mainSurface so no diffs → no sync → zero overhead.
-        if ( Image::_rgbaMirrorTarget == this && Image::_rgbaMirror != nullptr && Image::_rgbaMirrorSource != nullptr ) {
+        // Dialog forwarding: any non-zero pixel on Display in the battle area is dialog content.
+        // Convert it indexed→RGBA and write to the RGBA target surface.
+        if ( Image::_dialogFwdTarget != nullptr ) {
             const uint8_t * dispImage = image();
-            const uint8_t * srcImage = Image::_rgbaMirrorSource->image();
             const int32_t dispW = width();
-            const int32_t srcW = Image::_rgbaMirrorSource->width();
-            const int32_t srcH = Image::_rgbaMirrorSource->height();
-            const int32_t offX = Image::_rgbaMirrorOffsetX;
-            const int32_t offY = Image::_rgbaMirrorOffsetY;
-            const float scale = Image::_rgbaMirrorScale;
+            const int32_t offX = Image::_dialogFwdOffsetX;
+            const int32_t offY = Image::_dialogFwdOffsetY;
+            const float scale = Image::_dialogFwdScale;
+
+            const int32_t dstW = Image::_dialogFwdTarget->width();
+            const int32_t dstH = Image::_dialogFwdTarget->height();
+            // Derive the scan area from the RGBA target dimensions and scale.
+            const int32_t scanW = static_cast<int32_t>( static_cast<float>( dstW ) / scale );
+            const int32_t scanH = static_cast<int32_t>( static_cast<float>( dstH ) / scale );
 
             const uint8_t * gamePalette = getGamePalette();
-            uint8_t * dstData = Image::_rgbaMirror->data();
-            const int32_t dstW = Image::_rgbaMirror->width();
-            const int32_t dstH = Image::_rgbaMirror->height();
+            uint8_t * dstData = Image::_dialogFwdTarget->data();
 
-            for ( int32_t row = 0; row < srcH; ++row ) {
-                const uint8_t * dispRow = dispImage + static_cast<ptrdiff_t>( offY + row ) * dispW;
-                const uint8_t * srcRow = srcImage + static_cast<ptrdiff_t>( row ) * srcW;
+            for ( int32_t row = 0; row < scanH; ++row ) {
+                const uint8_t * dispRow = dispImage + ( static_cast<ptrdiff_t>( offY + row ) * dispW );
 
-                for ( int32_t col = 0; col < srcW; ++col ) {
+                for ( int32_t col = 0; col < scanW; ++col ) {
                     const uint8_t dispPx = dispRow[offX + col];
-                    if ( dispPx == srcRow[col] ) {
+                    if ( dispPx == 0 ) {
                         continue;
                     }
 
-                    const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( dispPx ) * 3;
+                    const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( dispPx ) * 3 );
                     const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
                     const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
                     const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
@@ -1783,9 +1782,9 @@ namespace fheroes2
                     const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( col + 1 ) * scale ), dstW );
 
                     for ( int32_t dy = physRowStart; dy < physRowEnd; ++dy ) {
-                        uint8_t * dstRow2 = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
+                        uint8_t * dstRow2 = dstData + ( static_cast<ptrdiff_t>( dy ) * dstW * 4 );
                         for ( int32_t dx = physColStart; dx < physColEnd; ++dx ) {
-                            uint8_t * dst = dstRow2 + static_cast<ptrdiff_t>( dx ) * 4;
+                            uint8_t * dst = dstRow2 + ( static_cast<ptrdiff_t>( dx ) * 4 );
                             dst[0] = r;
                             dst[1] = g;
                             dst[2] = b;
