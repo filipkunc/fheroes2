@@ -1,0 +1,36 @@
+{
+  "azure_dragon": {
+    "prefix": "azure_dragon",
+    "frame_count": 54,
+    "base_icn": "DRAGGREE",
+    "bin_file": "DRAGBFRM.BIN",
+    "base_monster": "Green Dragon",
+    "has_custom_sprites": true
+  },
+  "thor": {
+    "prefix": "thor",
+    "frame_count": 56,
+    "base_icn": "TITANBLA",
+    "bin_file": "TITA2FRM.BIN",
+    "base_monster": "Titan (Black)",
+    "has_custom_sprites": true
+  },
+  "blood_dragon": {
+    "prefix": "blood_dragon",
+    "frame_count": 54,
+    "base_icn": "DRAGBONE",
+    "bin_file": "DRABNFRM.BIN",
+    "base_monster": "Bone Dragon",
+    "has_custom_sprites": false,
+    "palette_remap": "blood_dragon"
+  },
+  "avenger": {
+    "prefix": "avenger",
+    "frame_count": 50,
+    "base_icn": "PALADIN2",
+    "bin_file": "PALADFRM.BIN",
+    "base_monster": "Crusader",
+    "has_custom_sprites": false,
+    "palette_remap": "avenger"
+  }
+}
