@@ -123,5 +123,9 @@ fheroes2.wasm.map
 /.cache/
 *.idx
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # Claude Code local settings
 /.claude/
