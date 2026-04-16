@@ -21,11 +21,13 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 namespace fheroes2
 {
     class Image;
     class Sprite;
+    class RGBAImage;
 
     enum class SupportedLanguage : uint8_t;
 
@@ -39,5 +41,21 @@ namespace fheroes2
 
         // This function must be called only at the time of setting up a new language.
         void updateLanguageDependentResources( const SupportedLanguage language, const bool loadOriginalAlphabet );
+
+        // High-resolution RGBA animation frames for custom monsters (Thor, Succubus, ...).
+        // Returns nullptr if no RGBA PNGs were found for the given monster ID.
+        // Lazy-loaded on first call; frames stay resident for the process lifetime.
+        const std::vector<RGBAImage> * GetRGBACustomFrames( const int monsterId );
+
+        // A portrait-ready single image derived from the custom monster's static pose (frame 1),
+        // cropped to the opaque bounding box so the figure fills the overlay rect rather than
+        // rattling around inside transparent margins. Lazy-computed on first call. Returns
+        // nullptr if no RGBA PNGs are available for this monster.
+        const RGBAImage * GetRGBACustomPortrait( const int monsterId );
+
+        // Remove any RGBA overlays from the Display that point into any custom monster's hi-res
+        // frame cache or portrait cache. Call this on dialog close so overlays don't leak,
+        // without touching overlays owned by other subsystems (battle interface, etc.).
+        void ClearAllCustomMonsterRGBAOverlays();
     }
 }

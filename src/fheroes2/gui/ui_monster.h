@@ -28,5 +28,7 @@ namespace fheroes2
 {
     class Image;
 
-    void renderMonsterFrame( const Monster & monster, Image & output, const Point & offset );
+    // Set includePortrait=false when the caller will paint the portrait itself (e.g. via an RGBA
+    // overlay for custom monsters with hi-res PNGs) — skips the palette-quantised MONH blit.
+    void renderMonsterFrame( const Monster & monster, Image & output, const Point & offset, bool includePortrait = true );
 }

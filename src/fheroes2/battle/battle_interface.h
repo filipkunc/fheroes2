@@ -650,9 +650,8 @@ namespace Battle
         void _copyOnSurface( const fheroes2::Image & in, int32_t inX, int32_t inY, int32_t outX, int32_t outY, int32_t w, int32_t h );
         void _copyFullSurface();
 
-        // RGBA sprite frames for Thor at original PNG resolution.
-        std::vector<fheroes2::RGBAImage> _rgbaThorFrames;
-        bool _rgbaThorLoaded{ false };
+        // High-res RGBA animation frames for custom monsters are loaded and cached by
+        // fheroes2::AGG::GetRGBACustomFrames().
 
         // RGBA composite at physical screen resolution for the battle area.
         fheroes2::RGBAImage _mainSurfaceRGBA;

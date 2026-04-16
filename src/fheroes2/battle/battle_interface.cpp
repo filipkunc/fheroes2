@@ -1519,19 +1519,8 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
 
     AudioManager::ResetAudio();
 
-    // Load all RGBA Thor animation frames at original PNG resolution.
-    _rgbaThorFrames.resize( 56 );
-    _rgbaThorLoaded = true;
-    const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
-    for ( int i = 0; i < 56; ++i ) {
-        char filename[64];
-        snprintf( filename, sizeof( filename ), "thor_%03d.png", i );
-        std::string fullPath;
-        if ( !Settings::findFile( spritesDir, filename, fullPath ) || !fheroes2::LoadRGBA( fullPath, _rgbaThorFrames[i] ) ) {
-            _rgbaThorLoaded = false;
-            break;
-        }
-    }
+    // High-res RGBA frames for custom monsters (Thor, Succubus, ...) are loaded lazily by
+    // fheroes2::AGG::GetRGBACustomFrames() and shared between battle and dialog rendering.
 
     // Enable dialog forwarding: any non-zero pixels on Display in the battle area
     // get converted indexed→RGBA and written to _mainSurfaceRGBA during Display::render().
@@ -2094,12 +2083,13 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
 
     const fheroes2::Sprite & monsterSprite = isCurrentMonsterAction ? *_spriteInsteadCurrentUnit : fheroes2::AGG::GetICN( unit.GetMonsterSprite(), unit.GetFrame() );
 
-    // Check if Thor has high-res RGBA frames available.
-    const bool isThorRGBA = _rgbaThorLoaded && unit.GetID() == Monster::THOR && !isCurrentMonsterAction;
+    // Check if this unit has high-res RGBA frames available (Thor, Succubus, etc.).
+    const std::vector<fheroes2::RGBAImage> * rgbaCustomFramesPtr = isCurrentMonsterAction ? nullptr : fheroes2::AGG::GetRGBACustomFrames( unit.GetID() );
+    const bool isCustomRGBA = ( rgbaCustomFramesPtr != nullptr );
 
     fheroes2::Point drawnPosition;
 
-    const fheroes2::RGBAImage * thorRGBASrc = nullptr;
+    const fheroes2::RGBAImage * customRGBASrc = nullptr;
 
     if ( unit.Modes( SP_STONE | CAP_MIRRORIMAGE ) ) {
         fheroes2::Sprite modifiedMonsterSprite( monsterSprite );
@@ -2107,22 +2097,21 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
         fheroes2::ApplyPalette( modifiedMonsterSprite, PAL::GetPalette( paletteType ) );
         drawnPosition = _drawTroopSprite( unit, modifiedMonsterSprite, false );
     }
-    else if ( isThorRGBA ) {
-        // Thor with high-res PNGs: draw the high-res PNG to RGBA, falling back to indexed conversion if unavailable.
+    else if ( isCustomRGBA ) {
+        // Custom monster with high-res PNGs: draw the PNG to RGBA, fall back to indexed if unavailable.
         drawnPosition = _drawTroopSprite( unit, monsterSprite, true );
 
+        const std::vector<fheroes2::RGBAImage> & frames = *rgbaCustomFramesPtr;
         const int32_t frame = unit.GetFrame();
-        if ( frame >= 0 && frame < static_cast<int32_t>( _rgbaThorFrames.size() ) && !_rgbaThorFrames[frame].empty() ) {
-            // Draw high-res PNG to RGBA surface.
+        if ( frame >= 0 && frame < static_cast<int32_t>( frames.size() ) && !frames[frame].empty() ) {
             const int32_t physX = static_cast<int32_t>( static_cast<float>( drawnPosition.x ) * _rgbaScale );
             const int32_t physY = static_cast<int32_t>( static_cast<float>( drawnPosition.y ) * _rgbaScale );
             const int32_t physW = static_cast<int32_t>( static_cast<float>( monsterSprite.width() ) * _rgbaScale );
             const int32_t physH = static_cast<int32_t>( static_cast<float>( monsterSprite.height() ) * _rgbaScale );
-            fheroes2::BlitRGBAScaled( _rgbaThorFrames[frame], _mainSurfaceRGBA, physX, physY, physW, physH, unit.isReflect() );
-            thorRGBASrc = &_rgbaThorFrames[frame];
+            fheroes2::BlitRGBAScaled( frames[frame], _mainSurfaceRGBA, physX, physY, physW, physH, unit.isReflect() );
+            customRGBASrc = &frames[frame];
         }
         else {
-            // PNG frame not available — fall back to indexed-to-RGBA conversion.
             _alphaBlitOnSurface( monsterSprite, drawnPosition.x, drawnPosition.y, unit.GetCustomAlpha(), unit.isReflect() );
         }
     }
@@ -2136,9 +2125,9 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
     if ( needsContour ) {
         const uint8_t contourColor = ( _unitToHighlight == &unit ) ? GetArmyColorFromPlayerColor( unit.GetArmyColor() ) : _contourColor;
 
-        // For Thor with high-res RGBA source, derive contour from the PNG alpha channel.
-        if ( thorRGBASrc != nullptr && thorRGBASrc->width() != monsterSprite.width() ) {
-            const fheroes2::RGBAImage & rgbaSrc = *thorRGBASrc;
+        // For custom monsters (Thor, Succubus, ...) with high-res RGBA source, derive contour from the PNG alpha channel.
+        if ( customRGBASrc != nullptr && customRGBASrc->width() != monsterSprite.width() ) {
+            const fheroes2::RGBAImage & rgbaSrc = *customRGBASrc;
             const int32_t gameW = monsterSprite.width();
             const int32_t gameH = monsterSprite.height();
 
@@ -5514,6 +5503,9 @@ void Battle::Interface::RedrawActionMonsterSpellCastStatus( const Spell & spell,
         break;
     case Spell::CHAINLIGHTNING:
         msg = _n( "The %{attacker}'s lightning strikes the %{target}!", "The %{attacker}' lightning strikes the %{target}!", attackerCount );
+        break;
+    case Spell::HYPNOTIZE:
+        msg = _n( "The %{attacker}'s gaze hypnotizes the %{target}!", "The %{attacker}' gaze hypnotizes the %{target}!", attackerCount );
         break;
     default:
         // Did you add a new monster spell casting ability? Add the logic above!

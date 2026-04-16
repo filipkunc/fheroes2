@@ -99,9 +99,41 @@ namespace
 
         using Dialog::ItemSelectionWindow::ActionListPressRight;
 
+        // Drop any stale custom-monster overlays before redrawing visible rows. Rows that are no
+        // longer visible (after scrolling) won't re-register their overlay, so clearing here is
+        // the correct moment to shed them.
+        void Redraw() override
+        {
+            fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
+            Dialog::ItemSelectionWindow::Redraw();
+        }
+
         void RedrawItem( const int32_t & index, int32_t dstx, int32_t dsty, bool current ) override
         {
             renderItem( getImage( index ), Monster{ index }.GetName(), { dstx, dsty }, 45 / 2, 50, _offsetY / 2, current );
+
+            // For custom monsters with hi-res PNGs, overlay the cropped portrait on top of the
+            // palette-quantised 32x32 icon — quantisation produces dither noise at this ratio
+            // (460→32 downscale). The overlay's SDL texture scale is much cleaner.
+            const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( index );
+            if ( portrait != nullptr && !portrait->empty() ) {
+                // Icon is centred within the 43x43 STRIP background blitted at (dstx+1, dsty).
+                // Place a ~30x30 overlay inside that background, matching the icon's footprint.
+                const int32_t iconBoxSize = 32;
+                const int32_t iconBoxX = dstx + 1 + ( 43 - iconBoxSize ) / 2;
+                const int32_t iconBoxY = dsty + ( 43 - iconBoxSize ) / 2;
+                const int32_t srcW = portrait->width();
+                const int32_t srcH = portrait->height();
+                int32_t overlayW = iconBoxSize;
+                int32_t overlayH = ( static_cast<int64_t>( srcH ) * iconBoxSize ) / srcW;
+                if ( overlayH > iconBoxSize ) {
+                    overlayH = iconBoxSize;
+                    overlayW = ( static_cast<int64_t>( srcW ) * iconBoxSize ) / srcH;
+                }
+                const int32_t overlayX = iconBoxX + ( iconBoxSize - overlayW ) / 2;
+                const int32_t overlayY = iconBoxY + ( iconBoxSize - overlayH );
+                fheroes2::Display::instance().addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+            }
         }
 
         void ActionListPressRight( int32_t & index ) override
@@ -121,6 +153,15 @@ namespace
         virtual fheroes2::Sprite getImage( const int index )
         {
             const Monster mons( index );
+            // For custom monsters we'll overlay the hi-res portrait after the indexed render, so
+            // the palette MONS32 icon would just be covered — return the bare 43x43 background and
+            // let the RGBA overlay provide the monster.
+            if ( fheroes2::AGG::GetRGBACustomPortrait( index ) != nullptr ) {
+                const fheroes2::Sprite & backgroundOriginal = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
+                fheroes2::Sprite image = fheroes2::Crop( backgroundOriginal, 36, 267, 43, 43 );
+                image.setPosition( 0, 0 );
+                return image;
+            }
             const fheroes2::Sprite & monsterSprite = fheroes2::AGG::GetICN( ICN::MONS32, mons.GetSpriteIndex() );
             return renderMonsterOnBackground( monsterSprite );
         }

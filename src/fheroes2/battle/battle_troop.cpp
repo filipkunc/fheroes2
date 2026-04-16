@@ -1133,6 +1133,7 @@ double Battle::Unit::evaluateThreatForUnit( const Unit & defender ) const
             case Spell::BLIND:
             case Spell::PARALYZE:
             case Spell::PETRIFY:
+            case Spell::HYPNOTIZE:
                 // Creature's built-in magic resistance (not 100% immunity but resistance, as, for example, with Dwarves) never works against the built-in magic of
                 // another creature (for example, Unicorn's Blind ability). Only the probability of triggering the built-in magic matters.
                 if ( defender.AllowApplySpell( static_cast<int32_t>( abilityIter->value ), nullptr ) ) {
@@ -1543,13 +1544,15 @@ uint32_t Battle::Unit::GetMagicResist( const Spell & spell, const HeroBase * app
         }
         break;
 
-    case Spell::HYPNOTIZE:
-        assert( applyingHero != nullptr );
-
-        if ( fheroes2::getHypnotizeMonsterHPPoints( spell, applyingHero->GetPower(), applyingHero ) < _hitPoints ) {
+    case Spell::HYPNOTIZE: {
+        // Both hero-cast and creature-cast paths land here.
+        // Creature spells use the default builtin spell power.
+        const uint32_t spellPower = applyingHero ? applyingHero->GetPower() : fheroes2::spellPowerForBuiltinMonsterSpells;
+        if ( fheroes2::getHypnotizeMonsterHPPoints( spell, spellPower, applyingHero ) < _hitPoints ) {
             return 100;
         }
         break;
+    }
 
     default:
         break;

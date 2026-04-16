@@ -269,6 +269,8 @@ Monster Monster::GetDowngrade() const
         return Monster( TITAN );
     case AVENGER:
         return Monster( CRUSADER );
+    case SUCCUBUS:
+        return Monster( CYCLOPS );
     case MINOTAUR_KING:
         return Monster( MINOTAUR );
     case RED_DRAGON:
@@ -306,6 +308,8 @@ Monster Monster::GetUpgrade() const
         return Monster( CRUSADER );
     case CRUSADER:
         return Monster( AVENGER );
+    case CYCLOPS:
+        return Monster( SUCCUBUS );
     case ORC:
         return Monster( ORC_CHIEF );
     case OGRE:
@@ -619,6 +623,15 @@ Monster Monster::FromDwelling( int race, uint64_t dwelling )
         }
         break;
 
+    case DWELLING_UPGRADE12:
+        switch ( race ) {
+        case Race::BARB:
+            return Monster( SUCCUBUS );
+        default:
+            break;
+        }
+        break;
+
     default:
         break;
     }
@@ -837,6 +850,9 @@ uint64_t Monster::GetDwelling() const
     case AVENGER:
         return DWELLING_UPGRADE11;
 
+    case SUCCUBUS:
+        return DWELLING_UPGRADE12;
+
     default:
         break;
     }
@@ -907,6 +923,10 @@ int32_t Monster::ICNMonh() const
     if ( id == AVENGER ) {
         return ICN::MONH_AVENGER;
     }
+    // Succubus uses a generated portrait with red palette transformation
+    if ( id == SUCCUBUS ) {
+        return ICN::MONH_SUCCUBUS;
+    }
     return id >= PEASANT && id <= WATER_ELEMENT ? ICN::MONH0000 + id - PEASANT : ICN::UNKNOWN;
 }
 
@@ -930,6 +950,11 @@ Funds Monster::GetUpgradeCost() const
     // Avenger has a special fixed upgrade cost.
     if ( upgr.id == AVENGER ) {
         return Funds( Cost{ 500, 0, 0, 0, 0, 0, 0 } );
+    }
+
+    // Succubus has a special fixed upgrade cost.
+    if ( upgr.id == SUCCUBUS ) {
+        return Funds( Cost{ 1750, 0, 0, 0, 0, 0, 0 } );
     }
 
     return ( upgr.GetCost() - GetCost() ) * 2;

@@ -45,6 +45,8 @@
 #include "race.h"
 #include "tools.h"
 #include "translations.h"
+#include "image.h"
+#include "screen.h"
 #include "ui_dialog.h"
 #include "ui_monster.h"
 #include "ui_text.h"
@@ -273,26 +275,79 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
     const fheroes2::Text text( std::to_string( troop.GetCount() ), use_mini_sprite ? fheroes2::FontType::smallWhite() : fheroes2::FontType::normalWhite() );
 
     if ( use_mini_sprite ) {
-        const fheroes2::Sprite & mons32 = fheroes2::AGG::GetICN( ICN::MONS32, troop.GetSpriteIndex() );
-        fheroes2::Rect srcrt( 0, 0, mons32.width(), mons32.height() );
+        const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop.GetID() );
+        const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
-        if ( mons32.width() > pos.width ) {
-            srcrt.x = ( mons32.width() - pos.width ) / 2;
-            srcrt.width = pos.width;
+        if ( useCustomPortrait ) {
+            // Skip the MONS32 blit entirely and paint the hi-res portrait via an RGBA overlay.
+            fheroes2::Display & display = fheroes2::Display::instance();
+            display.removeRGBAOverlay( portrait );
+
+            const int32_t srcW = portrait->width();
+            const int32_t srcH = portrait->height();
+            // Leave a couple of pixels at the bottom for the count text and a small margin top.
+            const int32_t boxW = pos.width;
+            const int32_t boxH = pos.height - 2;
+            int32_t overlayW = boxW;
+            int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
+            if ( overlayH > boxH ) {
+                overlayH = boxH;
+                overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
+            }
+            const int32_t overlayX = pos.x + ( boxW - overlayW ) / 2;
+            const int32_t overlayY = pos.y + ( boxH - overlayH );
+            display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
         }
+        else {
+            const fheroes2::Sprite & mons32 = fheroes2::AGG::GetICN( ICN::MONS32, troop.GetSpriteIndex() );
+            fheroes2::Rect srcrt( 0, 0, mons32.width(), mons32.height() );
 
-        if ( mons32.height() > pos.height ) {
-            srcrt.y = ( mons32.height() - pos.height ) / 2;
-            srcrt.height = pos.height;
+            if ( mons32.width() > pos.width ) {
+                srcrt.x = ( mons32.width() - pos.width ) / 2;
+                srcrt.width = pos.width;
+            }
+
+            if ( mons32.height() > pos.height ) {
+                srcrt.y = ( mons32.height() - pos.height ) / 2;
+                srcrt.height = pos.height;
+            }
+
+            fheroes2::Blit( mons32, srcrt.x, srcrt.y, dstsf, pos.x + ( pos.width - mons32.width() ) / 2, pos.y + pos.height - mons32.height() - 1, srcrt.width,
+                            srcrt.height );
         }
-
-        fheroes2::Blit( mons32, srcrt.x, srcrt.y, dstsf, pos.x + ( pos.width - mons32.width() ) / 2, pos.y + pos.height - mons32.height() - 1, srcrt.width,
-                        srcrt.height );
 
         text.draw( pos.x + pos.width - text.width() - 3, pos.y + pos.height - text.height() + 2, dstsf );
     }
     else {
-        fheroes2::renderMonsterFrame( troop, dstsf, pos.getPosition() );
+        // For custom monsters with hi-res PNGs (Thor, Succubus, ...), skip the palette MONH blit
+        // inside renderMonsterFrame and paint the portrait with an RGBA overlay so the army slot
+        // shows the actual character art instead of the noisy palette-quantised downscale.
+        const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop.GetID() );
+        const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
+
+        fheroes2::renderMonsterFrame( troop, dstsf, pos.getPosition(), !useCustomPortrait );
+
+        if ( useCustomPortrait ) {
+            fheroes2::Display & display = fheroes2::Display::instance();
+            // Drop any prior overlay for this monster so repeated redraws don't stack. Armies
+            // typically have unique monster types per slot so one overlay per monster is enough.
+            display.removeRGBAOverlay( portrait );
+
+            const fheroes2::Sprite & monh = fheroes2::AGG::GetICN( troop.ICNMonh(), 0 );
+            const int32_t boxW = monh.width();
+            const int32_t boxH = monh.height();
+            const int32_t srcW = portrait->width();
+            const int32_t srcH = portrait->height();
+            int32_t overlayW = boxW;
+            int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
+            if ( overlayH > boxH ) {
+                overlayH = boxH;
+                overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
+            }
+            const int32_t overlayX = pos.x + monh.x() + ( boxW - overlayW ) / 2;
+            const int32_t overlayY = pos.y + monh.y() + ( boxH - overlayH );
+            display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+        }
 
         text.draw( pos.x + pos.width - text.width() - 3, pos.y + pos.height - text.height() + 1, dstsf );
     }

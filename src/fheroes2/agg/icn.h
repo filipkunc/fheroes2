@@ -1165,6 +1165,15 @@ namespace ICN
         // Avenger's Chapel building sprite (generated from Upg. Cathedral with golden palette)
         TWNKUP5A,
 
+        // Succubus battle sprite (custom PNGs loaded from files/data/sprites/succubus_*.png)
+        SUCCUBUS,
+
+        // Succubus portrait (generated from Gargoyle portrait with red palette)
+        MONH_SUCCUBUS,
+
+        // Succubus Palace building sprite (generated from Cyclops Pyramid TWNBDW_5 with red palette)
+        TWNBUP6A,
+
         // IMPORTANT! Put any new entry just above this one.
         LASTICN
     };

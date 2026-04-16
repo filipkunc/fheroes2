@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -273,6 +274,19 @@ namespace fheroes2
         void clearRGBAOverlays()
         {
             _rgbaOverlays.clear();
+        }
+
+        // Remove any overlay entries whose image pointer matches the given image.
+        // Use this when you need to drop a specific overlay without clearing the ones
+        // other subsystems (battle, dialogs, etc.) have registered.
+        void removeRGBAOverlay( const RGBAImage * image )
+        {
+            if ( image == nullptr ) {
+                return;
+            }
+            _rgbaOverlays.erase( std::remove_if( _rgbaOverlays.begin(), _rgbaOverlays.end(),
+                                                 [image]( const RGBAOverlay & o ) { return o.image == image; } ),
+                                 _rgbaOverlays.end() );
         }
 
         const std::vector<RGBAOverlay> & getRGBAOverlays() const

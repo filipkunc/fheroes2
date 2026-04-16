@@ -156,6 +156,7 @@ namespace
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
         case DWELLING_UPGRADE8:
+        case DWELLING_UPGRADE12:
             return { { 407, 0, 113, 106 } };
         case BUILD_LEFTTURRET:
             return { { 5, 50, 0, 0 } };
@@ -507,6 +508,8 @@ namespace
             return _( "Upg. Bridge" );
         case DWELLING_MONSTER6:
             return _( "Pyramid" );
+        case DWELLING_UPGRADE12:
+            return _( "Succubus Palace" );
         default:
             break;
         }
@@ -701,6 +704,8 @@ namespace
             return _( "5x Upg. Dwelling 6" );
         case DWELLING_UPGRADE11:
             return _( "6x Upg. Dwelling 6" );
+        case DWELLING_UPGRADE12:
+            return _( "7x Upg. Dwelling 6" );
         default:
             break;
         }
@@ -1024,6 +1029,8 @@ namespace fheroes2
                 return DWELLING_UPGRADE4;
             case DWELLING_MONSTER5:
                 return DWELLING_UPGRADE5;
+            case DWELLING_MONSTER6:
+                return DWELLING_UPGRADE12;
             default:
                 break;
             }
@@ -1387,6 +1394,10 @@ namespace fheroes2
             if ( race == Race::KNGT )
                 requirement |= DWELLING_UPGRADE6;
             break;
+        case DWELLING_UPGRADE12:
+            if ( race == Race::BARB )
+                requirement |= DWELLING_MONSTER6;
+            break;
 
         default:
             break;
@@ -1451,6 +1462,8 @@ namespace fheroes2
             return 33; // Hall of Valhalla uses a palette-transformed version of Upg. Cloud Castle sprite
         case DWELLING_UPGRADE11:
             return 34; // Avenger's Chapel uses a palette-transformed version of Upg. Cathedral sprite
+        case DWELLING_UPGRADE12:
+            return 35; // Succubus Palace uses a palette-transformed version of Cyclops Pyramid sprite
         case BUILD_MAGEGUILD1:
         case BUILD_MAGEGUILD2:
         case BUILD_MAGEGUILD3:
@@ -1534,6 +1547,7 @@ namespace fheroes2
             priorities.emplace_back( BUILD_SPEC );
             priorities.emplace_back( BUILD_WEL2 );
             priorities.emplace_back( DWELLING_MONSTER6 );
+            priorities.emplace_back( DWELLING_UPGRADE12 );
             priorities.emplace_back( BUILD_MAGEGUILD1 );
             priorities.emplace_back( BUILD_MAGEGUILD2 );
             priorities.emplace_back( BUILD_MAGEGUILD3 );

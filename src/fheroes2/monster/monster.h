@@ -127,6 +127,7 @@ public:
         BLOOD_DRAGON,
         THOR,
         AVENGER,
+        SUCCUBUS,
 
         // Editor-related monsters.
         RANDOM_MONSTER,

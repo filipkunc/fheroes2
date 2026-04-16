@@ -499,6 +499,10 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
 
     attackedArmyControlInfo.reset();
 
+    // Drop any hi-res RGBA overlays the army bars registered for custom monsters so they don't
+    // linger after this dialog closes.
+    fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
+
     return result;
 }
 

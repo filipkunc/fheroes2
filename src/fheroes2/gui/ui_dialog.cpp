@@ -911,10 +911,44 @@ namespace fheroes2
 
     void MonsterDialogElement::draw( Image & output, const Point & offset ) const
     {
+        // For custom monsters with hi-res PNGs (Thor, Succubus, ...), overlay the actual character
+        // art on top of the portrait region. The palette-quantised downscale in MONH_xxx looks
+        // noisy at portrait sizes, so we bypass it for these monsters. Use the pre-cropped
+        // portrait (frame 1 minus transparent margins) so the figure fills the portrait area
+        // instead of rattling around inside empty space.
+        const RGBAImage * portrait = AGG::GetRGBACustomPortrait( _monster.GetID() );
+        const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
+
         Sprite sprite = AGG::GetICN( ICN::STRIP, 12 );
         sprite._disableTransformLayer();
-        renderMonsterFrame( _monster, sprite, { 6, 6 } );
+        // Skip the palette MONH blit when we're about to paint the overlay on the same region —
+        // avoids doing invisible work that the overlay covers.
+        renderMonsterFrame( _monster, sprite, { 6, 6 }, !useCustomPortrait );
         Copy( sprite, 0, 0, output, offset.x, offset.y, sprite.width(), sprite.height() );
+
+        if ( useCustomPortrait ) {
+            Display & display = Display::instance();
+            // Drop the prior frame of this monster so repeated draws don't stack overlays.
+            display.removeRGBAOverlay( portrait );
+
+            // Fit the cropped portrait inside the indexed MONH region (offset + (6,6) + MONH's
+            // own offset). Scale uniformly to whichever dimension (width or height) is the
+            // binding constraint, then centre it within the portrait box.
+            const Sprite & monh = AGG::GetICN( _monster.ICNMonh(), 0 );
+            const int32_t boxW = monh.width();
+            const int32_t boxH = monh.height();
+            const int32_t srcW = portrait->width();
+            const int32_t srcH = portrait->height();
+            int32_t overlayW = boxW;
+            int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
+            if ( overlayH > boxH ) {
+                overlayH = boxH;
+                overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
+            }
+            const int32_t overlayX = offset.x + 6 + monh.x() + ( boxW - overlayW ) / 2;
+            const int32_t overlayY = offset.y + 6 + monh.y() + ( boxH - overlayH );
+            display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+        }
     }
 
     void MonsterDialogElement::processEvents( const Point & offset ) const

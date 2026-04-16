@@ -28,7 +28,7 @@
 
 namespace fheroes2
 {
-    void renderMonsterFrame( const Monster & monster, Image & output, const Point & offset )
+    void renderMonsterFrame( const Monster & monster, Image & output, const Point & offset, bool includePortrait )
     {
         switch ( monster.GetRace() ) {
         case Race::KNGT:
@@ -54,7 +54,9 @@ namespace fheroes2
             break;
         }
 
-        const fheroes2::Sprite & monsterImage = fheroes2::AGG::GetICN( monster.ICNMonh(), 0 );
-        fheroes2::Blit( monsterImage, output, offset.x + monsterImage.x(), offset.y + monsterImage.y() );
+        if ( includePortrait ) {
+            const fheroes2::Sprite & monsterImage = fheroes2::AGG::GetICN( monster.ICNMonh(), 0 );
+            fheroes2::Blit( monsterImage, output, offset.x + monsterImage.x(), offset.y + monsterImage.y() );
+        }
     }
 }

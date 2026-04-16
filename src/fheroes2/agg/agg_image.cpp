@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <initializer_list>
 #include <map>
 #include <numeric>
@@ -46,6 +47,7 @@
 #include "image.h"
 #include "image_tool.h"
 #include "math_base.h"
+#include "monster.h"
 #include "pal.h"
 #include "rand.h"
 #include "logging.h"
@@ -734,6 +736,82 @@ namespace
         const std::vector<uint8_t> & palette = PAL::GetPalette( paletteType );
         for ( fheroes2::Sprite & sprite : _icnVsSprite[icnId] ) {
             ApplyPalette( sprite, palette );
+        }
+    }
+
+    // Downscale a hi-res RGBA frame into the given indexed sprite at (targetW × targetH), preserving
+    // the sprite's current position/offset. Used to derive portraits and MONS32 icons from a custom
+    // monster's battle PNGs so those views don't fall back to the palette-remapped base art.
+    //
+    // Uses a simple box-average filter across each source block before palette quantisation. This
+    // matters hugely at large downscale ratios (e.g. 460→32): nearest-neighbour sampling picks one
+    // random source pixel per block and neighbouring block samples often land on very different
+    // palette colours, producing dither-noise. Averaging first keeps neighbours stable.
+    void writeIndexedSpriteFromRGBA( const fheroes2::RGBAImage & src, const int32_t targetW, const int32_t targetH, fheroes2::Sprite & out )
+    {
+        if ( src.empty() || targetW <= 0 || targetH <= 0 ) {
+            return;
+        }
+
+        const int32_t srcW = src.width();
+        const int32_t srcH = src.height();
+        const uint8_t * srcData = src.data();
+
+        // Preserve the caller's position/offset on the sprite — size is replaced.
+        const int32_t posX = out.x();
+        const int32_t posY = out.y();
+        out.resize( targetW, targetH );
+        out.reset();
+        out.setPosition( posX, posY );
+
+        uint8_t * outImg = out.image();
+        uint8_t * outTr = out.transform();
+
+        for ( int32_t dy = 0; dy < targetH; ++dy ) {
+            const int32_t sy0 = ( dy * srcH ) / targetH;
+            const int32_t sy1 = std::max( sy0 + 1, ( ( dy + 1 ) * srcH ) / targetH );
+            for ( int32_t dx = 0; dx < targetW; ++dx ) {
+                const int32_t sx0 = ( dx * srcW ) / targetW;
+                const int32_t sx1 = std::max( sx0 + 1, ( ( dx + 1 ) * srcW ) / targetW );
+
+                // Alpha-weighted average across the source block. Only pixels with alpha > 0
+                // contribute to the RGB average; alpha is averaged separately across the full
+                // block so fully transparent edges stay transparent.
+                uint32_t rSum = 0;
+                uint32_t gSum = 0;
+                uint32_t bSum = 0;
+                uint32_t aSum = 0;
+                uint32_t rgbCount = 0;
+                uint32_t totalCount = 0;
+                for ( int32_t sy = sy0; sy < sy1; ++sy ) {
+                    const uint8_t * row = srcData + ( static_cast<ptrdiff_t>( sy ) * srcW + sx0 ) * 4;
+                    for ( int32_t sx = sx0; sx < sx1; ++sx, row += 4 ) {
+                        const uint8_t alpha = row[3];
+                        aSum += alpha;
+                        ++totalCount;
+                        if ( alpha > 0 ) {
+                            rSum += row[0];
+                            gSum += row[1];
+                            bSum += row[2];
+                            ++rgbCount;
+                        }
+                    }
+                }
+
+                const ptrdiff_t outIdx = static_cast<ptrdiff_t>( dy ) * targetW + dx;
+                const uint32_t avgAlpha = totalCount ? aSum / totalCount : 0;
+                if ( avgAlpha < 128 || rgbCount == 0 ) {
+                    outImg[outIdx] = 0;
+                    outTr[outIdx] = 1;
+                }
+                else {
+                    const uint8_t r = static_cast<uint8_t>( rSum / rgbCount );
+                    const uint8_t g = static_cast<uint8_t>( gSum / rgbCount );
+                    const uint8_t b = static_cast<uint8_t>( bSum / rgbCount );
+                    outImg[outIdx] = fheroes2::GetColorId( r, g, b );
+                    outTr[outIdx] = 0;
+                }
+            }
         }
     }
 
@@ -2451,6 +2529,72 @@ namespace
     // Try to load custom monster sprites from PNG files in files/data/sprites/ directory.
     // Uses offsets from the base ICN sprites to position frames correctly on the battle hex.
     // Returns true if all frames were loaded successfully.
+    // Load per-frame offset overrides from {prefix}_offsets.jsonl in the sprites directory.
+    // JSONL format: one JSON object per line, e.g.: {"frame": 45, "offset_x": -37, "offset_y": -119}
+    // Frames not listed use the base ICN offsets. Written by the sprite editor for
+    // frames generated with margin (larger than base ICN dimensions).
+    struct CustomFrameOverride
+    {
+        int32_t offsetX{ 0 };
+        int32_t offsetY{ 0 };
+        int32_t displayWidth{ 0 };  // 0 means "use base ICN width"
+        int32_t displayHeight{ 0 };
+    };
+
+    std::map<int, CustomFrameOverride> loadCustomOffsets( const std::string & spritesDir, const std::string & prefix )
+    {
+        std::map<int, CustomFrameOverride> offsets;
+
+        char fileNameBuffer[128];
+        snprintf( fileNameBuffer, sizeof( fileNameBuffer ), "%s_offsets.jsonl", prefix.c_str() );
+
+        std::string offsetsPath;
+        if ( !Settings::findFile( spritesDir, fileNameBuffer, offsetsPath ) ) {
+            return offsets;
+        }
+
+        std::ifstream file( offsetsPath );
+        if ( !file.is_open() ) {
+            return offsets;
+        }
+
+        // Simple JSONL parser — each line is {"frame": N, "offset_x": X, "offset_y": Y, "display_width": W, "display_height": H}
+        std::string line;
+        while ( std::getline( file, line ) ) {
+            if ( line.empty() ) {
+                continue;
+            }
+
+            // Extract integer values by finding key strings and parsing the numbers after ':'
+            auto extractInt = [&line]( const char * key ) -> int32_t {
+                const size_t pos = line.find( key );
+                if ( pos == std::string::npos ) {
+                    return 0;
+                }
+                const size_t colonPos = line.find( ':', pos + strlen( key ) );
+                if ( colonPos == std::string::npos ) {
+                    return 0;
+                }
+                return static_cast<int32_t>( std::atoi( line.c_str() + colonPos + 1 ) );
+            };
+
+            if ( line.find( "\"frame\"" ) == std::string::npos ) {
+                continue;
+            }
+
+            const int frameIdx = extractInt( "\"frame\"" );
+            CustomFrameOverride entry;
+            entry.offsetX = extractInt( "\"offset_x\"" );
+            entry.offsetY = extractInt( "\"offset_y\"" );
+            entry.displayWidth = extractInt( "\"display_width\"" );
+            entry.displayHeight = extractInt( "\"display_height\"" );
+            offsets[frameIdx] = entry;
+        }
+
+        VERBOSE_LOG( "  Loaded " << offsets.size() << " custom offsets from " << offsetsPath )
+        return offsets;
+    }
+
     bool loadCustomSpritesFromPNG( const std::string & prefix, const int baseIcnId, const size_t frameCount, std::vector<fheroes2::Sprite> & sprites )
     {
         const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
@@ -2471,6 +2615,9 @@ namespace
         loadICN( baseIcnId );
 
         VERBOSE_LOG( "Loading custom sprites from PNG: " << prefix << " (" << frameCount << " frames) first=" << firstFramePath )
+
+        // Load per-frame offset overrides (for frames with margin/larger than base)
+        const auto customOffsets = loadCustomOffsets( spritesDir, prefix );
 
         sprites.resize( frameCount );
 
@@ -2506,19 +2653,47 @@ namespace
                 const fheroes2::Sprite & base = _icnVsSprite[baseIcnId][i];
                 const int32_t loadedW = loadedSprite.width();
                 const int32_t loadedH = loadedSprite.height();
-                const bool needsResize = ( loadedW != base.width() || loadedH != base.height() );
 
-                if ( needsResize ) {
-                    sprites[i].resize( base.width(), base.height() );
-                    sprites[i].reset();
-                    fheroes2::Resize( loadedSprite, 0, 0, loadedW, loadedH,
-                                      sprites[i], 0, 0, base.width(), base.height() );
+                const auto customOffsetIt = customOffsets.find( static_cast<int>( i ) );
+                const bool hasCustomOffset = ( customOffsetIt != customOffsets.end() );
+
+                bool needsResize = false;
+                if ( hasCustomOffset ) {
+                    // Frame has custom offsets. The indexed sprite footprint is the game-pixel
+                    // display size (base + 2×margin); the hi-res PNG is still used by the RGBA
+                    // render path for the actual pixels. Fall back to base dims if the sidecar
+                    // didn't record display size (older tool output).
+                    const int32_t displayW = customOffsetIt->second.displayWidth > 0 ? customOffsetIt->second.displayWidth : base.width();
+                    const int32_t displayH = customOffsetIt->second.displayHeight > 0 ? customOffsetIt->second.displayHeight : base.height();
+                    needsResize = ( loadedW != displayW || loadedH != displayH );
+
+                    if ( needsResize ) {
+                        sprites[i].resize( displayW, displayH );
+                        sprites[i].reset();
+                        fheroes2::Resize( loadedSprite, 0, 0, loadedW, loadedH,
+                                          sprites[i], 0, 0, displayW, displayH );
+                    }
+                    else {
+                        sprites[i] = std::move( loadedSprite );
+                    }
+
+                    sprites[i].setPosition( customOffsetIt->second.offsetX, customOffsetIt->second.offsetY );
                 }
                 else {
-                    sprites[i] = std::move( loadedSprite );
-                }
+                    needsResize = ( loadedW != base.width() || loadedH != base.height() );
 
-                sprites[i].setPosition( base.x(), base.y() );
+                    if ( needsResize ) {
+                        sprites[i].resize( base.width(), base.height() );
+                        sprites[i].reset();
+                        fheroes2::Resize( loadedSprite, 0, 0, loadedW, loadedH,
+                                          sprites[i], 0, 0, base.width(), base.height() );
+                    }
+                    else {
+                        sprites[i] = std::move( loadedSprite );
+                    }
+
+                    sprites[i].setPosition( base.x(), base.y() );
+                }
 
                 // For same-size sprites, copy the base transform layer to preserve shadows.
                 // For resized sprites, keep the transform from Load() (PNG alpha).
@@ -2582,7 +2757,7 @@ namespace
             memcpy( outSprite.transform(), baseSprite.transform(), static_cast<size_t>( baseSprite.width() ) * baseSprite.height() );
         }
 
-        VERBOSE_LOG( "  Loaded custom sprite: " << fileName << " " << loadedW << "x" << loadedH << " -> " << outSprite.width() << "x" << outSprite.height() )
+        //VERBOSE_LOG( "  Loaded custom sprite: " << fileName << " " << loadedW << "x" << loadedH << " -> " << outSprite.width() << "x" << outSprite.height() )
         return true;
     }
 
@@ -2695,7 +2870,8 @@ namespace
             break;
         }
         case ICN::MONH_THOR: {
-            // Thor portrait: try custom PNG first, fall back to palette remap from Titan portrait.
+            // Thor portrait: 1) explicit thor_portrait.png, 2) downscaled battle PNG frame 1,
+            // 3) palette remap of Titan portrait.
             loadICN( ICN::MONH0046 );
             _icnVsSprite[id].resize( 1 );
 
@@ -2706,6 +2882,12 @@ namespace
 
             _icnVsSprite[id].clear();
             CopyICNWithPalette( id, ICN::MONH0046, PAL::PaletteType::THOR );
+
+            const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::THOR );
+            if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() && !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite & portrait = _icnVsSprite[id][0];
+                writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], portrait.width(), portrait.height(), portrait );
+            }
             break;
         }
         case ICN::TWNZUP5A:
@@ -2744,6 +2926,35 @@ namespace
         case ICN::TWNKUP5A:
             // Avenger's Chapel: generated from Upg. Cathedral (TWNKUP_5) with golden palette transform.
             CopyICNWithPalette( id, ICN::TWNKUP_5, PAL::PaletteType::AVENGER_CHAPEL );
+            break;
+        case ICN::SUCCUBUS: {
+            const size_t succubusSpriteCount = 32; // Same as Gargoyle sprite count
+
+            // 1. Try loading custom PNG sprites from files/data/sprites/succubus_NNN.png
+            if ( loadCustomSpritesFromPNG( "succubus", ICN::GARGOYLE, succubusSpriteCount, _icnVsSprite[id] ) ) {
+                break;
+            }
+
+            // 2. Fall back to runtime generation from Gargoyle with red palette transformation.
+            _icnVsSprite[id].clear();
+            CopyICNWithPalette( id, ICN::GARGOYLE, PAL::PaletteType::BLOOD_DRAGON );
+            break;
+        }
+        case ICN::MONH_SUCCUBUS: {
+            // Succubus portrait: start from palette-remapped Gargoyle portrait (fallback + correct
+            // dimensions/offset), then overwrite pixels with a downscaled hi-res frame 1 PNG if
+            // the custom battle PNGs are available. Gargoyle ID 31, so portrait index 30.
+            CopyICNWithPalette( id, ICN::MONH0030, PAL::PaletteType::BLOOD_DRAGON );
+            const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::SUCCUBUS );
+            if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() && !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite & portrait = _icnVsSprite[id][0];
+                writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], portrait.width(), portrait.height(), portrait );
+            }
+            break;
+        }
+        case ICN::TWNBUP6A:
+            // Succubus Palace: generated from Cyclops Pyramid (TWNBDW_5) with red palette transform.
+            CopyICNWithPalette( id, ICN::TWNBDW_5, PAL::PaletteType::BLOOD_CRYPT );
             break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
@@ -3311,6 +3522,13 @@ namespace
                 if ( !loadSingleCustomPNG( "thor_mons32.png", _icnVsSprite[id][titanSpriteIndex], _icnVsSprite[id][thorSpriteIndex] ) ) {
                     _icnVsSprite[id][thorSpriteIndex] = _icnVsSprite[id][titanSpriteIndex];
                     ApplyPalette( _icnVsSprite[id][thorSpriteIndex], PAL::GetPalette( PAL::PaletteType::THOR ) );
+
+                    // If hi-res PNGs exist, downscale frame 1 to 32x32 for a crisper icon.
+                    const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::THOR );
+                    if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
+                        fheroes2::Sprite & icon = _icnVsSprite[id][thorSpriteIndex];
+                        writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
+                    }
                 }
             }
 
@@ -3324,6 +3542,25 @@ namespace
                 }
                 _icnVsSprite[id][avengerSpriteIndex] = _icnVsSprite[id][crusaderSpriteIndex];
                 ApplyPalette( _icnVsSprite[id][avengerSpriteIndex], PAL::GetPalette( PAL::PaletteType::AVENGER ) );
+            }
+
+            // Add Succubus sprite (based on Gargoyle with red palette).
+            // Gargoyle is at monster ID 31, so sprite index 30. Succubus is at monster ID 71, so sprite index 70.
+            if ( _icnVsSprite[id].size() > 30 ) {
+                const size_t gargoyleSpriteIndex = 30;
+                const size_t succubusSpriteIndex = 70;
+                if ( _icnVsSprite[id].size() <= succubusSpriteIndex ) {
+                    _icnVsSprite[id].resize( succubusSpriteIndex + 1 );
+                }
+                _icnVsSprite[id][succubusSpriteIndex] = _icnVsSprite[id][gargoyleSpriteIndex];
+                ApplyPalette( _icnVsSprite[id][succubusSpriteIndex], PAL::GetPalette( PAL::PaletteType::BLOOD_DRAGON ) );
+
+                // If hi-res PNGs exist, downscale frame 1 to 32x32 for a crisper icon.
+                const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::SUCCUBUS );
+                if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
+                    fheroes2::Sprite & icon = _icnVsSprite[id][succubusSpriteIndex];
+                    writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
+                }
             }
 
             break;
@@ -5226,6 +5463,21 @@ namespace
                 }
             }
 
+            // Add Succubus mini sprites (based on Gargoyle with red palette).
+            // Gargoyle is monster ID 31, so MINIMON base index = 30 * 9.
+            constexpr uint32_t gargoyleMiniBaseIndex = 30 * 9;
+            constexpr uint32_t succubusMiniBaseIndex = 70 * 9;
+            if ( _icnVsSprite[ICN::MINIMON].size() > gargoyleMiniBaseIndex + 8 ) {
+                if ( _icnVsSprite[ICN::MINIMON].size() <= succubusMiniBaseIndex + 8 ) {
+                    _icnVsSprite[ICN::MINIMON].resize( succubusMiniBaseIndex + 9 );
+                }
+                const std::vector<uint8_t> & succubusPalette = PAL::GetPalette( PAL::PaletteType::BLOOD_DRAGON );
+                for ( uint32_t i = 0; i < 9; ++i ) {
+                    _icnVsSprite[ICN::MINIMON][succubusMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][gargoyleMiniBaseIndex + i];
+                    ApplyPalette( _icnVsSprite[ICN::MINIMON][succubusMiniBaseIndex + i], succubusPalette );
+                }
+            }
+
             // TODO: optimize image sizes.
             _icnVsSprite[ICN::MINI_MONSTER_IMAGE] = _icnVsSprite[ICN::MINIMON];
             _icnVsSprite[ICN::MINI_MONSTER_SHADOW] = _icnVsSprite[ICN::MINIMON];
@@ -6165,6 +6417,138 @@ namespace fheroes2::AGG
         }
 
         return static_cast<uint32_t>( GetMaximumICNIndex( icnId ) );
+    }
+
+    const std::vector<RGBAImage> * GetRGBACustomFrames( const int monsterId )
+    {
+        // Every custom monster with hi-res PNGs registers here. The frame count must match
+        // the monster's ICN frame count exactly — a single missing file disables the RGBA
+        // path for that monster and callers fall back to the indexed ICN.
+        struct RGBACustomEntry
+        {
+            int monsterId;
+            const char * prefix;
+            int frameCount;
+        };
+        static const RGBACustomEntry registry[] = {
+            { Monster::THOR, "thor", 56 },
+            { Monster::SUCCUBUS, "succubus", 32 },
+        };
+
+        static std::map<int, std::vector<RGBAImage>> cache;
+        static bool initialized = false;
+        if ( !initialized ) {
+            initialized = true;
+            const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
+            for ( const RGBACustomEntry & entry : registry ) {
+                std::vector<RGBAImage> frames( entry.frameCount );
+                bool ok = true;
+                for ( int i = 0; i < entry.frameCount; ++i ) {
+                    char filename[64];
+                    snprintf( filename, sizeof( filename ), "%s_%03d.png", entry.prefix, i );
+                    std::string fullPath;
+                    if ( !Settings::findFile( spritesDir, filename, fullPath ) || !LoadRGBA( fullPath, frames[i] ) ) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if ( ok ) {
+                    cache[entry.monsterId] = std::move( frames );
+                }
+            }
+        }
+
+        const auto it = cache.find( monsterId );
+        return ( it == cache.end() ) ? nullptr : &it->second;
+    }
+
+    const RGBAImage * GetRGBACustomPortrait( const int monsterId )
+    {
+        static std::map<int, RGBAImage> portraits;
+        static std::set<int> attempted;
+
+        if ( attempted.count( monsterId ) == 0 ) {
+            attempted.insert( monsterId );
+
+            const std::vector<RGBAImage> * frames = GetRGBACustomFrames( monsterId );
+            if ( frames == nullptr || frames->size() < 2 || ( *frames )[1].empty() ) {
+                return nullptr;
+            }
+
+            const RGBAImage & src = ( *frames )[1];
+            const int32_t srcW = src.width();
+            const int32_t srcH = src.height();
+            const uint8_t * srcData = src.data();
+
+            // Tight bounding box of opaque pixels.
+            int32_t minX = srcW;
+            int32_t minY = srcH;
+            int32_t maxX = -1;
+            int32_t maxY = -1;
+            for ( int32_t y = 0; y < srcH; ++y ) {
+                for ( int32_t x = 0; x < srcW; ++x ) {
+                    if ( srcData[( static_cast<ptrdiff_t>( y ) * srcW + x ) * 4 + 3] > 0 ) {
+                        if ( x < minX ) {
+                            minX = x;
+                        }
+                        if ( x > maxX ) {
+                            maxX = x;
+                        }
+                        if ( y < minY ) {
+                            minY = y;
+                        }
+                        if ( y > maxY ) {
+                            maxY = y;
+                        }
+                    }
+                }
+            }
+            if ( maxX < 0 ) {
+                return nullptr;
+            }
+
+            // Small margin around the figure — avoids clipping anti-aliased edges.
+            const int32_t margin = 4;
+            minX = std::max( 0, minX - margin );
+            minY = std::max( 0, minY - margin );
+            maxX = std::min( srcW - 1, maxX + margin );
+            maxY = std::min( srcH - 1, maxY + margin );
+
+            const int32_t cropW = maxX - minX + 1;
+            const int32_t cropH = maxY - minY + 1;
+
+            RGBAImage cropped( cropW, cropH );
+            uint8_t * dstData = cropped.data();
+            for ( int32_t y = 0; y < cropH; ++y ) {
+                memcpy( dstData + static_cast<ptrdiff_t>( y ) * cropW * 4,
+                        srcData + ( ( static_cast<ptrdiff_t>( minY + y ) * srcW + minX ) * 4 ),
+                        static_cast<size_t>( cropW ) * 4 );
+            }
+
+            portraits.emplace( monsterId, std::move( cropped ) );
+        }
+
+        const auto it = portraits.find( monsterId );
+        return ( it == portraits.end() ) ? nullptr : &it->second;
+    }
+
+    void ClearAllCustomMonsterRGBAOverlays()
+    {
+        // Force lazy-load so the registry is populated before we iterate.
+        static const int registered[] = { Monster::THOR, Monster::SUCCUBUS };
+        Display & display = Display::instance();
+        for ( const int id : registered ) {
+            const std::vector<RGBAImage> * frames = GetRGBACustomFrames( id );
+            if ( frames != nullptr ) {
+                for ( const RGBAImage & frame : *frames ) {
+                    display.removeRGBAOverlay( &frame );
+                }
+            }
+            const RGBAImage * portrait = GetRGBACustomPortrait( id );
+            if ( portrait != nullptr ) {
+                display.removeRGBAOverlay( portrait );
+            }
+        }
     }
 
     const Image & GetTIL( int tilId, uint32_t index, uint32_t shapeId )

@@ -130,6 +130,7 @@ __pycache__/
 # Sprite editor cached game data (extracted from AGG on first run)
 tools/sprite_editor/resources/*.BIN
 tools/sprite_editor/resources/*.PAL
+files/data/sprites/sheets/*.png
 
 # Claude Code local settings
 /.claude/

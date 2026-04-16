@@ -498,7 +498,27 @@ namespace
         fheroes2::Display & display = fheroes2::Display::instance();
 
         if ( fheroes2::FitToRoi( monsterSprite, inPos, display, outPos, inSize, roi ) ) {
-            if ( troop.isModes( Battle::CAP_MIRRORIMAGE ) ) {
+            // For custom monsters with hi-res RGBA PNGs (Thor, Succubus, ...), render the original
+            // high-quality PNG via an RGBA overlay on top of the indexed dialog, bypassing the
+            // palette-quantised downscaled indexed sprite.
+            const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( troop.GetID() );
+            const int32_t animFrame = monsterAnimation.frameId();
+            const bool canUseRGBA = rgbaFrames != nullptr && animFrame >= 0 && animFrame < static_cast<int32_t>( rgbaFrames->size() )
+                                    && !( *rgbaFrames )[animFrame].empty() && !troop.isModes( Battle::CAP_MIRRORIMAGE );
+
+            if ( canUseRGBA ) {
+                // Drop only our own prior frame to avoid accumulation. A wholesale
+                // clearRGBAOverlays() would also wipe battle's _mainSurfaceRGBA overlay when
+                // this dialog is opened mid-battle — iterating every cached frame and removing
+                // entries that match keeps other subsystems' overlays intact.
+                for ( const fheroes2::RGBAImage & frame : *rgbaFrames ) {
+                    display.removeRGBAOverlay( &frame );
+                }
+                // Add the RGBA overlay at the sprite's game-pixel footprint; the overlay renderer
+                // scales the hi-res PNG down to match the rest of the UI's scale.
+                display.addRGBAOverlay( ( *rgbaFrames )[animFrame], outPos.x, outPos.y, inSize.width, isReflected );
+            }
+            else if ( troop.isModes( Battle::CAP_MIRRORIMAGE ) ) {
                 fheroes2::Sprite outMonsterSprite = monsterSprite;
                 fheroes2::ApplyPalette( outMonsterSprite, PAL::GetPalette( PAL::PaletteType::MIRROR_IMAGE ) );
                 fheroes2::Blit( outMonsterSprite, inPos, display, outPos, inSize, isReflected );
@@ -712,6 +732,14 @@ int Dialog::ArmyInfo( const Troop & troop, int flags, bool isReflected, const in
             }
 
             display.render( restorer.rect() );
+        }
+    }
+
+    // Drop any RGBA overlay we added for a custom hi-res monster so it doesn't linger over the
+    // map/battle interface after the dialog closes.
+    if ( const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( troop.GetID() ) ) {
+        for ( const fheroes2::RGBAImage & frame : *rgbaFrames ) {
+            display.removeRGBAOverlay( &frame );
         }
     }
 
