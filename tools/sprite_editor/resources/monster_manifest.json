@@ -1,36 +1,515 @@
 {
   "azure_dragon": {
     "prefix": "azure_dragon",
-    "frame_count": 54,
     "base_icn": "DRAGGREE",
     "bin_file": "DRAGBFRM.BIN",
+    "display_name": "Azure Dragon",
     "base_monster": "Green Dragon",
+    "faction": "Custom",
+    "frame_count": 54,
     "has_custom_sprites": true
   },
   "thor": {
     "prefix": "thor",
-    "frame_count": 56,
     "base_icn": "TITANBLA",
     "bin_file": "TITA2FRM.BIN",
-    "base_monster": "Titan (Black)",
+    "display_name": "Thor",
+    "base_monster": "Titan",
+    "faction": "Custom",
+    "frame_count": 56,
     "has_custom_sprites": true
   },
   "blood_dragon": {
     "prefix": "blood_dragon",
-    "frame_count": 54,
     "base_icn": "DRAGBONE",
     "bin_file": "DRABNFRM.BIN",
+    "display_name": "Blood Dragon",
     "base_monster": "Bone Dragon",
+    "faction": "Custom",
+    "frame_count": 54,
     "has_custom_sprites": false,
     "palette_remap": "blood_dragon"
   },
   "avenger": {
     "prefix": "avenger",
+    "base_icn": "PALADIN2",
+    "bin_file": "PALADFRM.BIN",
+    "display_name": "Avenger",
+    "base_monster": "Crusader",
+    "faction": "Custom",
     "frame_count": 50,
+    "has_custom_sprites": false,
+    "palette_remap": "avenger"
+  },
+  "peasant": {
+    "prefix": "peasant",
+    "base_icn": "PEASANT",
+    "bin_file": "PEAS_FRM.BIN",
+    "base_monster": "Peasant",
+    "faction": "Castle"
+  },
+  "archer": {
+    "prefix": "archer",
+    "base_icn": "ARCHER",
+    "bin_file": "ARCHRFRM.BIN",
+    "base_monster": "Archer",
+    "faction": "Castle"
+  },
+  "ranger": {
+    "prefix": "ranger",
+    "base_icn": "ARCHER2",
+    "bin_file": "ARCHRFRM.BIN",
+    "base_monster": "Ranger",
+    "faction": "Castle"
+  },
+  "pikeman": {
+    "prefix": "pikeman",
+    "base_icn": "PIKEMAN",
+    "bin_file": "PIKMNFRM.BIN",
+    "base_monster": "Pikeman",
+    "faction": "Castle"
+  },
+  "veteran_pikeman": {
+    "prefix": "veteran_pikeman",
+    "base_icn": "PIKEMAN2",
+    "bin_file": "PIKMNFRM.BIN",
+    "base_monster": "Veteran Pikeman",
+    "faction": "Castle"
+  },
+  "swordsman": {
+    "prefix": "swordsman",
+    "base_icn": "SWORDSMN",
+    "bin_file": "SWRDSFRM.BIN",
+    "base_monster": "Swordsman",
+    "faction": "Castle"
+  },
+  "master_swordsman": {
+    "prefix": "master_swordsman",
+    "base_icn": "SWORDSM2",
+    "bin_file": "SWRDSFRM.BIN",
+    "base_monster": "Master Swordsman",
+    "faction": "Castle"
+  },
+  "cavalry": {
+    "prefix": "cavalry",
+    "base_icn": "CAVALRYR",
+    "bin_file": "CVLRYFRM.BIN",
+    "base_monster": "Cavalry",
+    "faction": "Castle"
+  },
+  "champion": {
+    "prefix": "champion",
+    "base_icn": "CAVALRYB",
+    "bin_file": "CVLR2FRM.BIN",
+    "base_monster": "Champion",
+    "faction": "Castle"
+  },
+  "paladin": {
+    "prefix": "paladin",
+    "base_icn": "PALADIN",
+    "bin_file": "PALADFRM.BIN",
+    "base_monster": "Paladin",
+    "faction": "Castle"
+  },
+  "crusader": {
+    "prefix": "crusader",
     "base_icn": "PALADIN2",
     "bin_file": "PALADFRM.BIN",
     "base_monster": "Crusader",
-    "has_custom_sprites": false,
-    "palette_remap": "avenger"
+    "faction": "Castle"
+  },
+  "goblin": {
+    "prefix": "goblin",
+    "base_icn": "GOBLIN",
+    "bin_file": "GOBLNFRM.BIN",
+    "base_monster": "Goblin",
+    "faction": "Barbarian"
+  },
+  "orc": {
+    "prefix": "orc",
+    "base_icn": "ORC",
+    "bin_file": "ORC__FRM.BIN",
+    "base_monster": "Orc",
+    "faction": "Barbarian"
+  },
+  "orc_chief": {
+    "prefix": "orc_chief",
+    "base_icn": "ORC2",
+    "bin_file": "ORC__FRM.BIN",
+    "base_monster": "Orc Chief",
+    "faction": "Barbarian"
+  },
+  "wolf": {
+    "prefix": "wolf",
+    "base_icn": "WOLF",
+    "bin_file": "WOLF_FRM.BIN",
+    "base_monster": "Wolf",
+    "faction": "Barbarian"
+  },
+  "ogre": {
+    "prefix": "ogre",
+    "base_icn": "OGRE",
+    "bin_file": "OGRE_FRM.BIN",
+    "base_monster": "Ogre",
+    "faction": "Barbarian"
+  },
+  "ogre_lord": {
+    "prefix": "ogre_lord",
+    "base_icn": "OGRE2",
+    "bin_file": "OGRE_FRM.BIN",
+    "base_monster": "Ogre Lord",
+    "faction": "Barbarian"
+  },
+  "troll": {
+    "prefix": "troll",
+    "base_icn": "TROLL",
+    "bin_file": "TROLLFRM.BIN",
+    "base_monster": "Troll",
+    "faction": "Barbarian"
+  },
+  "war_troll": {
+    "prefix": "war_troll",
+    "base_icn": "TROLL2",
+    "bin_file": "TROLLFRM.BIN",
+    "base_monster": "War Troll",
+    "faction": "Barbarian"
+  },
+  "cyclops": {
+    "prefix": "cyclops",
+    "base_icn": "CYCLOPS",
+    "bin_file": "CYCLOFRM.BIN",
+    "base_monster": "Cyclops",
+    "faction": "Barbarian"
+  },
+  "sprite": {
+    "prefix": "sprite",
+    "base_icn": "SPRITE",
+    "bin_file": "SPRITFRM.BIN",
+    "base_monster": "Sprite",
+    "faction": "Sorceress"
+  },
+  "dwarf": {
+    "prefix": "dwarf",
+    "base_icn": "DWARF",
+    "bin_file": "DWARFFRM.BIN",
+    "base_monster": "Dwarf",
+    "faction": "Sorceress"
+  },
+  "battle_dwarf": {
+    "prefix": "battle_dwarf",
+    "base_icn": "DWARF2",
+    "bin_file": "DWARFFRM.BIN",
+    "base_monster": "Battle Dwarf",
+    "faction": "Sorceress"
+  },
+  "elf": {
+    "prefix": "elf",
+    "base_icn": "ELF",
+    "bin_file": "ELF__FRM.BIN",
+    "base_monster": "Elf",
+    "faction": "Sorceress"
+  },
+  "grand_elf": {
+    "prefix": "grand_elf",
+    "base_icn": "ELF2",
+    "bin_file": "ELF__FRM.BIN",
+    "base_monster": "Grand Elf",
+    "faction": "Sorceress"
+  },
+  "druid": {
+    "prefix": "druid",
+    "base_icn": "DRUID",
+    "bin_file": "DRUIDFRM.BIN",
+    "base_monster": "Druid",
+    "faction": "Sorceress"
+  },
+  "greater_druid": {
+    "prefix": "greater_druid",
+    "base_icn": "DRUID2",
+    "bin_file": "DRUIDFRM.BIN",
+    "base_monster": "Greater Druid",
+    "faction": "Sorceress"
+  },
+  "unicorn": {
+    "prefix": "unicorn",
+    "base_icn": "UNICORN",
+    "bin_file": "UNICOFRM.BIN",
+    "base_monster": "Unicorn",
+    "faction": "Sorceress"
+  },
+  "phoenix": {
+    "prefix": "phoenix",
+    "base_icn": "PHOENIX",
+    "bin_file": "PHOENFRM.BIN",
+    "base_monster": "Phoenix",
+    "faction": "Sorceress"
+  },
+  "centaur": {
+    "prefix": "centaur",
+    "base_icn": "CENTAUR",
+    "bin_file": "CENTRFRM.BIN",
+    "base_monster": "Centaur",
+    "faction": "Warlock"
+  },
+  "gargoyle": {
+    "prefix": "gargoyle",
+    "base_icn": "GARGOYLE",
+    "bin_file": "GARGLFRM.BIN",
+    "base_monster": "Gargoyle",
+    "faction": "Warlock"
+  },
+  "griffin": {
+    "prefix": "griffin",
+    "base_icn": "GRIFFIN",
+    "bin_file": "GRIFFFRM.BIN",
+    "base_monster": "Griffin",
+    "faction": "Warlock"
+  },
+  "minotaur": {
+    "prefix": "minotaur",
+    "base_icn": "MINOTAUR",
+    "bin_file": "MINOTFRM.BIN",
+    "base_monster": "Minotaur",
+    "faction": "Warlock"
+  },
+  "minotaur_king": {
+    "prefix": "minotaur_king",
+    "base_icn": "MINOTAU2",
+    "bin_file": "MINOTFRM.BIN",
+    "base_monster": "Minotaur King",
+    "faction": "Warlock"
+  },
+  "hydra": {
+    "prefix": "hydra",
+    "base_icn": "HYDRA",
+    "bin_file": "HYDRAFRM.BIN",
+    "base_monster": "Hydra",
+    "faction": "Warlock"
+  },
+  "green_dragon": {
+    "prefix": "green_dragon",
+    "base_icn": "DRAGGREE",
+    "bin_file": "DRAGGFRM.BIN",
+    "base_monster": "Green Dragon",
+    "faction": "Warlock"
+  },
+  "red_dragon": {
+    "prefix": "red_dragon",
+    "base_icn": "DRAGRED",
+    "bin_file": "DRAGRFRM.BIN",
+    "base_monster": "Red Dragon",
+    "faction": "Warlock"
+  },
+  "black_dragon": {
+    "prefix": "black_dragon",
+    "base_icn": "DRAGBLAK",
+    "bin_file": "DRAGBFRM.BIN",
+    "base_monster": "Black Dragon",
+    "faction": "Warlock"
+  },
+  "halfling": {
+    "prefix": "halfling",
+    "base_icn": "HALFLING",
+    "bin_file": "HALFLFRM.BIN",
+    "base_monster": "Halfling",
+    "faction": "Wizard"
+  },
+  "boar": {
+    "prefix": "boar",
+    "base_icn": "BOAR",
+    "bin_file": "BOAR_FRM.BIN",
+    "base_monster": "Boar",
+    "faction": "Wizard"
+  },
+  "iron_golem": {
+    "prefix": "iron_golem",
+    "base_icn": "GOLEM",
+    "bin_file": "GOLEMFRM.BIN",
+    "base_monster": "Iron Golem",
+    "faction": "Wizard"
+  },
+  "steel_golem": {
+    "prefix": "steel_golem",
+    "base_icn": "GOLEM2",
+    "bin_file": "GOLEMFRM.BIN",
+    "base_monster": "Steel Golem",
+    "faction": "Wizard"
+  },
+  "roc": {
+    "prefix": "roc",
+    "base_icn": "ROC",
+    "bin_file": "ROC__FRM.BIN",
+    "base_monster": "Roc",
+    "faction": "Wizard"
+  },
+  "mage": {
+    "prefix": "mage",
+    "base_icn": "MAGE1",
+    "bin_file": "MAGE1FRM.BIN",
+    "base_monster": "Mage",
+    "faction": "Wizard"
+  },
+  "archmage": {
+    "prefix": "archmage",
+    "base_icn": "MAGE2",
+    "bin_file": "MAGE1FRM.BIN",
+    "base_monster": "Archmage",
+    "faction": "Wizard"
+  },
+  "giant": {
+    "prefix": "giant",
+    "base_icn": "TITANBLU",
+    "bin_file": "TITANFRM.BIN",
+    "base_monster": "Giant",
+    "faction": "Wizard"
+  },
+  "titan": {
+    "prefix": "titan",
+    "base_icn": "TITANBLA",
+    "bin_file": "TITA2FRM.BIN",
+    "base_monster": "Titan",
+    "faction": "Wizard"
+  },
+  "skeleton": {
+    "prefix": "skeleton",
+    "base_icn": "SKELETON",
+    "bin_file": "SKEL_FRM.BIN",
+    "base_monster": "Skeleton",
+    "faction": "Necromancer"
+  },
+  "zombie": {
+    "prefix": "zombie",
+    "base_icn": "ZOMBIE",
+    "bin_file": "ZOMB_FRM.BIN",
+    "base_monster": "Zombie",
+    "faction": "Necromancer"
+  },
+  "mutant_zombie": {
+    "prefix": "mutant_zombie",
+    "base_icn": "ZOMBIE2",
+    "bin_file": "ZOMB_FRM.BIN",
+    "base_monster": "Mutant Zombie",
+    "faction": "Necromancer"
+  },
+  "mummy": {
+    "prefix": "mummy",
+    "base_icn": "MUMMYW",
+    "bin_file": "MUMMYFRM.BIN",
+    "base_monster": "Mummy",
+    "faction": "Necromancer"
+  },
+  "royal_mummy": {
+    "prefix": "royal_mummy",
+    "base_icn": "MUMMY2",
+    "bin_file": "MUMMYFRM.BIN",
+    "base_monster": "Royal Mummy",
+    "faction": "Necromancer"
+  },
+  "vampire": {
+    "prefix": "vampire",
+    "base_icn": "VAMPIRE",
+    "bin_file": "VAMPIFRM.BIN",
+    "base_monster": "Vampire",
+    "faction": "Necromancer"
+  },
+  "vampire_lord": {
+    "prefix": "vampire_lord",
+    "base_icn": "VAMPIRE2",
+    "bin_file": "VAMPIFRM.BIN",
+    "base_monster": "Vampire Lord",
+    "faction": "Necromancer"
+  },
+  "lich": {
+    "prefix": "lich",
+    "base_icn": "LICH",
+    "bin_file": "LICH_FRM.BIN",
+    "base_monster": "Lich",
+    "faction": "Necromancer"
+  },
+  "power_lich": {
+    "prefix": "power_lich",
+    "base_icn": "LICH2",
+    "bin_file": "LICH_FRM.BIN",
+    "base_monster": "Power Lich",
+    "faction": "Necromancer"
+  },
+  "bone_dragon": {
+    "prefix": "bone_dragon",
+    "base_icn": "DRAGBONE",
+    "bin_file": "DRABNFRM.BIN",
+    "base_monster": "Bone Dragon",
+    "faction": "Necromancer"
+  },
+  "rogue": {
+    "prefix": "rogue",
+    "base_icn": "ROGUE",
+    "bin_file": "ROGUEFRM.BIN",
+    "base_monster": "Rogue",
+    "faction": "Neutral"
+  },
+  "nomad": {
+    "prefix": "nomad",
+    "base_icn": "NOMAD",
+    "bin_file": "NOMADFRM.BIN",
+    "base_monster": "Nomad",
+    "faction": "Neutral"
+  },
+  "ghost": {
+    "prefix": "ghost",
+    "base_icn": "GHOST",
+    "bin_file": "GHOSTFRM.BIN",
+    "base_monster": "Ghost",
+    "faction": "Neutral"
+  },
+  "genie": {
+    "prefix": "genie",
+    "base_icn": "GENIE",
+    "bin_file": "GENIEFRM.BIN",
+    "base_monster": "Genie",
+    "faction": "Neutral"
+  },
+  "medusa": {
+    "prefix": "medusa",
+    "base_icn": "MEDUSA",
+    "bin_file": "MEDUSFRM.BIN",
+    "base_monster": "Medusa",
+    "faction": "Neutral"
+  },
+  "earth_element": {
+    "prefix": "earth_element",
+    "base_icn": "EELEM",
+    "bin_file": "FELEMFRM.BIN",
+    "base_monster": "Earth Element",
+    "faction": "Neutral"
+  },
+  "air_element": {
+    "prefix": "air_element",
+    "base_icn": "AELEM",
+    "bin_file": "FELEMFRM.BIN",
+    "base_monster": "Air Element",
+    "faction": "Neutral"
+  },
+  "fire_element": {
+    "prefix": "fire_element",
+    "base_icn": "FELEM",
+    "bin_file": "FELEMFRM.BIN",
+    "base_monster": "Fire Element",
+    "faction": "Neutral"
+  },
+  "water_element": {
+    "prefix": "water_element",
+    "base_icn": "WELEM",
+    "bin_file": "FELEMFRM.BIN",
+    "base_monster": "Water Element",
+    "faction": "Neutral"
+  },
+  "succubus": {
+    "prefix": "succubus",
+    "base_icn": "GARGOYLE",
+    "bin_file": "GARGLFRM.BIN",
+    "display_name": "Succubus",
+    "base_monster": "Gargoyle",
+    "faction": "Custom",
+    "has_custom_sprites": true
   }
 }

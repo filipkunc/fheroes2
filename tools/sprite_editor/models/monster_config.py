@@ -9,12 +9,14 @@ from pathlib import Path
 class MonsterConfig:
     name: str
     prefix: str
-    frame_count: int
     base_icn: str
     bin_file: str
-    base_monster: str
-    has_custom_sprites: bool = True
-    palette_remap: str = ""  # key into REMAP_TABLES if using palette remap
+    base_monster: str = ""
+    display_name: str = ""  # shown in UI; falls back to base_monster for base monsters
+    faction: str = ""
+    frame_count: int = 0  # 0 = auto-detect from ICN
+    has_custom_sprites: bool = False
+    palette_remap: str = ""
 
 
 def load_manifest(manifest_path: Path | None = None) -> dict[str, MonsterConfig]:
@@ -33,11 +35,13 @@ def load_manifest(manifest_path: Path | None = None) -> dict[str, MonsterConfig]
         configs[name] = MonsterConfig(
             name=name,
             prefix=entry["prefix"],
-            frame_count=entry["frame_count"],
+            frame_count=entry.get("frame_count", 0),
             base_icn=entry["base_icn"],
             bin_file=entry["bin_file"],
             base_monster=entry.get("base_monster", ""),
-            has_custom_sprites=entry.get("has_custom_sprites", True),
+            display_name=entry.get("display_name", ""),
+            faction=entry.get("faction", ""),
+            has_custom_sprites=entry.get("has_custom_sprites", False),
             palette_remap=entry.get("palette_remap", ""),
         )
     return configs

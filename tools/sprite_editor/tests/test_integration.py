@@ -36,9 +36,12 @@ class TestManifestIntegrity:
     def test_all_configs_have_required_fields(self):
         for name, cfg in load_manifest().items():
             assert cfg.prefix, f"{name} missing prefix"
-            assert cfg.frame_count > 0, f"{name} has zero frames"
             assert cfg.base_icn, f"{name} missing base_icn"
             assert cfg.bin_file, f"{name} missing bin_file"
+            # frame_count is auto-detected from ICN when 0; only required
+            # for palette_remap monsters (where it's a fixed game value)
+            if cfg.palette_remap:
+                assert cfg.frame_count > 0, f"{name} has zero frames"
 
     def test_known_monsters(self):
         configs = load_manifest()
@@ -172,3 +175,37 @@ class TestAnimationWithBinData:
         for _ in range(5):
             player._advance()
             assert player.is_playing is True, "Player stopped unexpectedly during playback"
+
+
+class TestHexGridPositioning:
+    """Verify hex cell position formula matches engine constants."""
+
+    def test_cell_position_even_row(self):
+        """Even row (row 0): no stagger."""
+        from tools.sprite_editor.widgets.animation_canvas import (
+            HEX_CELL_W, HEX_CELL_H, HEX_ROW_STEP, HEX_CELL_INSET,
+        )
+        assert HEX_CELL_W == 44
+        assert HEX_CELL_H == 52
+        assert HEX_ROW_STEP == 42  # 52 - 10
+        assert HEX_CELL_INSET == 10  # (52 - 32) / 2
+
+    def test_cell_position_odd_row_stagger(self):
+        """Odd rows are staggered by half a cell width (22px)."""
+        from tools.sprite_editor.widgets.animation_canvas import HEX_CELL_W
+        stagger = HEX_CELL_W // 2
+        assert stagger == 22
+
+    def test_sprite_anchor_at_cell_bottom(self):
+        """Sprite Y anchor is at cell bottom + cellYOffset (-9px)."""
+        from tools.sprite_editor.widgets.animation_canvas import (
+            HEX_CELL_H, HEX_CELL_Y_OFFSET,
+        )
+        # Engine formula: draw_y = cell_y + cell_h + sprite.offset_y + cellYOffset
+        # = cell_y + 52 + offset_y - 9 = cell_y + 43 + offset_y
+        assert HEX_CELL_H + HEX_CELL_Y_OFFSET == 43
+
+    def test_hex_polygon_vertex_count(self):
+        from tools.sprite_editor.widgets.animation_canvas import _hex_polygon
+        poly = _hex_polygon(0, 0)
+        assert poly.count() == 6

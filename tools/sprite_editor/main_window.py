@@ -15,12 +15,18 @@ from .models.bin_parser import (
     MonsterAnimInfo, AnimType, ANIM_DISPLAY_NAMES, COMPOSITE_ANIMATIONS,
     load_bin_file, parse_bin,
 )
-from .models.sprite_data import SpriteCollection, load_png_sprites, load_bmp_sprites, apply_offsets_from_base
+from .models.sprite_data import (
+    SpriteCollection, load_png_sprites, load_bmp_sprites,
+    apply_offsets_from_base, set_base_dimensions, load_custom_offsets, save_custom_offsets,
+    FrameOverride,
+)
 from .models.animation import AnimationPlayer
 from .widgets.animation_canvas import AnimationCanvas
 from .widgets.frame_list import FrameListWidget
 from .widgets.properties_panel import PropertiesPanel
 from .widgets.spritesheet_view import SpritesheetView
+from .widgets.monster_list import MonsterListWidget
+from .gemini.gemini_panel import GeminiPanel
 
 
 # Default paths
@@ -54,18 +60,27 @@ class MainWindow(QMainWindow):
         self._setup_menu()
         self._setup_statusbar()
 
-        # Load first monster if sprites exist
+        # Load thumbnails and select first monster
+        self._load_monster_thumbnails()
         if self._monsters:
             first = list(self._monsters.keys())[0]
-            self._monster_combo.setCurrentText(first)
-            self._load_monster(first)
+            self._monster_list.select_monster(first)
 
     def _setup_ui(self):
         # Central canvas
         self._canvas = AnimationCanvas()
         self.setCentralWidget(self._canvas)
 
-        # Left dock: frame list
+        # Left dock: monster list
+        self._monster_list = MonsterListWidget()
+        self._monster_list.set_monsters(self._monsters)
+        self._monster_list.monster_selected.connect(self._load_monster)
+        self._monster_list.custom_created.connect(self._on_custom_created)
+        monster_dock = QDockWidget("Monsters")
+        monster_dock.setWidget(self._monster_list)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, monster_dock)
+
+        # Left dock: frame list (tabified below monsters)
         self._frame_list = FrameListWidget()
         frame_dock = QDockWidget("Frames")
         frame_dock.setWidget(self._frame_list)
@@ -81,6 +96,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, props_dock)
 
         self._properties.offset_changed.connect(self._on_offset_changed)
+        self._canvas.offset_changed.connect(self._on_offset_changed)
 
         # Bottom dock: sprite sheet view
         self._sheet_view = SpritesheetView()
@@ -90,19 +106,22 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, sheet_dock)
         self._sheet_dock = sheet_dock
 
+        # Bottom dock: Gemini generation panel
+        self._gemini_panel = GeminiPanel()
+        gemini_dock = QDockWidget("Gemini Generation")
+        gemini_dock.setWidget(self._gemini_panel)
+        gemini_dock.setVisible(False)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, gemini_dock)
+        self._gemini_dock = gemini_dock
+
+        self._gemini_panel.frames_accepted.connect(self._on_gemini_frames_accepted)
+        self._gemini_panel.sheet_built.connect(self._on_sheet_built)
+        self._gemini_panel.output_received.connect(self._on_sheet_output)
+
     def _setup_toolbar(self):
         toolbar = QToolBar("Main")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
-
-        # Monster selector
-        toolbar.addWidget(QLabel(" Monster: "))
-        self._monster_combo = QComboBox()
-        self._monster_combo.addItems(list(self._monsters.keys()))
-        self._monster_combo.currentTextChanged.connect(self._load_monster)
-        toolbar.addWidget(self._monster_combo)
-
-        toolbar.addSeparator()
 
         # Animation selector
         toolbar.addWidget(QLabel(" Animation: "))
@@ -166,6 +185,11 @@ class MainWindow(QMainWindow):
         self._offsets_cb.toggled.connect(self._canvas.set_show_offsets)
         toolbar.addWidget(self._offsets_cb)
 
+        # Hex grid toggle
+        self._hex_grid_cb = QCheckBox("Hex grid")
+        self._hex_grid_cb.toggled.connect(self._canvas.set_show_hex_grid)
+        toolbar.addWidget(self._hex_grid_cb)
+
     def _setup_menu(self):
         menu = self.menuBar()
 
@@ -199,6 +223,60 @@ class MainWindow(QMainWindow):
         sheet_action.toggled.connect(self._sheet_dock.setVisible)
         view_menu.addAction(sheet_action)
 
+        gemini_action = QAction("&Gemini Panel", self)
+        gemini_action.setCheckable(True)
+        gemini_action.toggled.connect(self._gemini_dock.setVisible)
+        view_menu.addAction(gemini_action)
+
+    def _load_monster_thumbnails(self):
+        """Extract MONS32 thumbnails from AGG and apply to the monster list."""
+        from .tools.icn_extractor import extract_icn
+        from PySide6.QtGui import QPixmap
+
+        mons32 = extract_icn("MONS32", BUILD_DIR, AGG_PATH)
+        if not mons32:
+            return
+
+        # MONS32 frame indices map to MonsterType enum (1-based: frame 0 = PEASANT, etc.)
+        # Build mapping: monster key → MONS32 frame index
+        monster_index = {
+            "peasant": 0, "archer": 1, "ranger": 2, "pikeman": 3, "veteran_pikeman": 4,
+            "swordsman": 5, "master_swordsman": 6, "cavalry": 7, "champion": 8,
+            "paladin": 9, "crusader": 10,
+            "goblin": 11, "orc": 12, "orc_chief": 13, "wolf": 14,
+            "ogre": 15, "ogre_lord": 16, "troll": 17, "war_troll": 18, "cyclops": 19,
+            "sprite": 20, "dwarf": 21, "battle_dwarf": 22, "elf": 23, "grand_elf": 24,
+            "druid": 25, "greater_druid": 26, "unicorn": 27, "phoenix": 28,
+            "centaur": 29, "gargoyle": 30, "griffin": 31, "minotaur": 32, "minotaur_king": 33,
+            "hydra": 34, "green_dragon": 35, "red_dragon": 36, "black_dragon": 37,
+            "halfling": 38, "boar": 39, "iron_golem": 40, "steel_golem": 41,
+            "roc": 42, "mage": 43, "archmage": 44, "giant": 45, "titan": 46,
+            "skeleton": 47, "zombie": 48, "mutant_zombie": 49,
+            "mummy": 50, "royal_mummy": 51, "vampire": 52, "vampire_lord": 53,
+            "lich": 54, "power_lich": 55, "bone_dragon": 56,
+            "rogue": 57, "nomad": 58, "ghost": 59, "genie": 60, "medusa": 61,
+            "earth_element": 62, "air_element": 63, "fire_element": 64, "water_element": 65,
+        }
+
+        # For custom monsters, reuse the base monster's MONS32 frame.
+        # Match by base_icn so new custom entries inherit their thumbnail automatically.
+        icn_to_idx = {}
+        for key, idx in monster_index.items():
+            cfg = self._monsters.get(key)
+            if cfg:
+                icn_to_idx[cfg.base_icn] = idx
+        for name, cfg in self._monsters.items():
+            if name not in monster_index and cfg.base_icn in icn_to_idx:
+                monster_index[name] = icn_to_idx[cfg.base_icn]
+
+        thumbnails = {}
+        for name, idx in monster_index.items():
+            frame = mons32.get_frame(idx)
+            if frame and not frame.is_placeholder:
+                thumbnails[name] = frame.to_qpixmap()
+
+        self._monster_list.set_thumbnails(thumbnails)
+
     def _setup_statusbar(self):
         self._status = QStatusBar()
         self.setStatusBar(self._status)
@@ -218,21 +296,52 @@ class MainWindow(QMainWindow):
         self._base_sprites = None
 
         if config.has_custom_sprites:
-            # Try loading custom PNG sprites
-            if SPRITES_DIR.exists():
-                first_frame = SPRITES_DIR / f"{config.prefix}_000.png"
-                if first_frame.exists():
-                    self._custom_sprites = load_png_sprites(SPRITES_DIR, config.prefix, config.frame_count)
-                    self._status.showMessage(f"Loaded {self._custom_sprites.frame_count} custom frames for {config.prefix}")
-                else:
-                    self._status.showMessage(f"No custom sprites found for {config.prefix} in {SPRITES_DIR}")
+            # Always extract base ICN first — needed for new custom monsters with no PNGs yet
+            self._status.showMessage(f"Extracting {config.base_icn}...")
+            self.repaint()
+            from .tools.icn_extractor import extract_icn
+            base = extract_icn(config.base_icn, BUILD_DIR, AGG_PATH)
+            if base:
+                self._base_sprites = base
+
+            # Try loading custom PNG sprites (if any exist for any frame)
+            has_any_custom = SPRITES_DIR.exists() and any(
+                SPRITES_DIR.glob(f"{config.prefix}_???.png")
+            )
+            if has_any_custom:
+                frame_count = config.frame_count or (base.frame_count if base else 0)
+                self._custom_sprites = load_png_sprites(SPRITES_DIR, config.prefix, frame_count)
+                if base:
+                    apply_offsets_from_base(self._custom_sprites, base)
+                    set_base_dimensions(self._custom_sprites, base)
+                load_custom_offsets(SPRITES_DIR, config.prefix, self._custom_sprites)
+                self._status.showMessage(f"Loaded {self._custom_sprites.frame_count} custom frames for {config.prefix}")
+            elif base:
+                # No custom PNGs yet — use base sprites as the starting view
+                self._custom_sprites = base
+                self._status.showMessage(
+                    f"No custom sprites yet for {config.prefix} — showing base {config.base_icn}. "
+                    f"Select frames and use Gemini to generate."
+                )
+            else:
+                self._status.showMessage(f"Could not load {config.prefix}")
         elif config.palette_remap:
             # Palette-remapped monster: extract base ICN and apply remap
             self._status.showMessage(f"Extracting {config.base_icn} for palette remap...")
             self.repaint()
             self._load_palette_remapped(config)
         else:
-            self._status.showMessage(f"No sprites available for {config.prefix}")
+            # Base-only monster: extract ICN directly from AGG
+            self._status.showMessage(f"Extracting {config.base_icn}...")
+            self.repaint()
+            from .tools.icn_extractor import extract_icn
+            base = extract_icn(config.base_icn, BUILD_DIR, AGG_PATH)
+            if base:
+                self._base_sprites = base
+                self._custom_sprites = base  # show as the main view
+                self._status.showMessage(f"Loaded {base.frame_count} frames for {config.base_monster}")
+            else:
+                self._status.showMessage(f"Could not extract {config.base_icn} from AGG")
 
         # Load BIN animation data
         self._anim_info = self._try_load_bin(config.bin_file)
@@ -436,15 +545,44 @@ class MainWindow(QMainWindow):
         """Multi-selection changed."""
         self._properties.set_selection_count(len(indices))
 
+        # Update Gemini panel with selected frames from both sources
+        prefix = self._current_config.prefix if self._current_config else ""
+        custom_frames = []
+        base_frames = []
+        if self._custom_sprites:
+            custom_frames = [self._custom_sprites.get_frame(i) for i in indices
+                             if self._custom_sprites.get_frame(i) is not None]
+        if self._base_sprites:
+            base_frames = [self._base_sprites.get_frame(i) for i in indices
+                           if self._base_sprites.get_frame(i) is not None]
+        self._gemini_panel.set_selected_frames(custom_frames, base_frames, indices, prefix)
+
     def _on_offset_changed(self, frame_index: int, offset_x: int, offset_y: int):
-        """User changed offset in properties panel."""
+        """Offset changed via spinbox or canvas drag — update memory, sync UI, persist."""
         sprites = self._custom_sprites or self._base_sprites
-        if sprites:
-            frame = sprites.get_frame(frame_index)
-            if frame:
-                frame.offset_x = offset_x
-                frame.offset_y = offset_y
-                self._canvas.update()
+        if not sprites:
+            return
+        frame = sprites.get_frame(frame_index)
+        if not frame:
+            return
+        frame.offset_x = offset_x
+        frame.offset_y = offset_y
+        self._canvas.update()
+        # Sync spinboxes (no-op when the change came from them; _updating guards re-emit)
+        self._properties.set_frame(frame)
+
+        # Persist for custom monsters so the engine picks up the new offsets
+        if self._current_config and self._current_config.has_custom_sprites:
+            override = FrameOverride(
+                offset_x=offset_x,
+                offset_y=offset_y,
+                display_width=frame.base_width,
+                display_height=frame.base_height,
+            )
+            save_custom_offsets(SPRITES_DIR, self._current_config.prefix, {frame_index: override})
+            self._status.showMessage(
+                f"Saved offset for {self._current_config.prefix} frame {frame_index}: ({offset_x}, {offset_y})"
+            )
 
     def _toggle_play(self, checked: bool):
         if checked:
@@ -531,6 +669,60 @@ class MainWindow(QMainWindow):
                                 f"Could not extract {self._current_config.base_icn}.\n"
                                 f"Check that build tools exist in {BUILD_DIR}\n"
                                 f"and AGG file exists at {AGG_PATH}")
+
+    def _on_gemini_frames_accepted(self, frame_indices: list[int], images: list):
+        """Gemini frames were accepted and saved — reload the monster to see changes."""
+        if self._current_config:
+            self._status.showMessage(f"Accepted {len(frame_indices)} frames — reloading...")
+            self._load_monster(self._current_config.name)
+
+    def _on_custom_created(self, new_config, prompt: str):
+        """Handle new custom monster creation."""
+        import json
+
+        # Add to in-memory config
+        self._monsters[new_config.name] = new_config
+
+        # Save to manifest
+        manifest_path = Path(__file__).parent / "resources" / "monster_manifest.json"
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        manifest[new_config.name] = {
+            "prefix": new_config.prefix,
+            "base_icn": new_config.base_icn,
+            "bin_file": new_config.bin_file,
+            "display_name": new_config.display_name,
+            "base_monster": new_config.base_monster,
+            "faction": "Custom",
+            "has_custom_sprites": True,
+        }
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+
+        # Refresh monster list
+        self._monster_list.set_monsters(self._monsters)
+        self._load_monster_thumbnails()
+
+        # Select the new monster and load it
+        self._monster_list.select_monster(new_config.name)
+
+        # Set up Gemini panel with the prompt
+        if prompt:
+            self._gemini_panel._prompt_edit.setPlainText(prompt)
+
+        # Open Gemini panel
+        self._gemini_dock.setVisible(True)
+
+        self._status.showMessage(f"Created custom monster '{new_config.base_monster}' from {new_config.base_icn}")
+
+    def _on_sheet_built(self, image, cells, label):
+        """Show built input sheet in the Sprite Sheet panel."""
+        self._sheet_view.set_sheet(image, cells, f"Input: {label}")
+        self._sheet_dock.setVisible(True)
+
+    def _on_sheet_output(self, image, cells, label):
+        """Show Gemini output sheet in the Sprite Sheet panel."""
+        self._sheet_view.set_sheet(image, cells, f"Output: {label}")
 
     def keyPressEvent(self, event):
         key = event.key()

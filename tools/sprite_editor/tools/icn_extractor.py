@@ -1,10 +1,12 @@
-"""Extract base ICN sprites using the build/icn2img tool."""
+"""Extract base ICN sprites and BIN files from AGG archives."""
 
 import subprocess
 import tempfile
 from pathlib import Path
 
-from ..models.sprite_data import SpriteCollection, load_bmp_sprites
+from ..models.sprite_data import SpriteCollection, SpriteFrame
+from .icn_parser import parse_icn
+from .palette_remap import load_palette
 
 
 # Default paths
@@ -12,37 +14,41 @@ DEFAULT_BUILD_DIR = Path(__file__).parent.parent.parent.parent / "build"
 DEFAULT_AGG_PATH = Path.home() / "Games" / "Heroic" / "HoMM 2 Gold" / "DATA" / "HEROES2.AGG"
 
 
-def _find_sprite_subdir(output_dir: Path, icn_name: str) -> Path | None:
-    """Find the subdirectory created by icn2img containing numbered PNGs."""
-    # icn2img creates e.g. output_dir/draggree/ with 000.png, 001.png, ...
-    candidate = output_dir / icn_name.lower()
-    if candidate.is_dir():
-        return candidate
-    # Fallback: any subdir containing numbered PNGs
-    for p in output_dir.iterdir():
-        if p.is_dir() and list(p.glob("[0-9]*.png")):
-            return p
-    # Maybe files are directly in output_dir
-    if list(output_dir.glob("[0-9]*.png")) or list(output_dir.glob("[0-9]*.bmp")):
-        return output_dir
-    return None
-
-
 def _find_file(root: Path, name: str) -> Path | None:
     """Find a file by name (case-insensitive) recursively under root."""
-    # Try exact match first
     direct = root / name
     if direct.exists():
         return direct
-    # Try lowercase
     direct = root / name.lower()
     if direct.exists():
         return direct
-    # Search recursively
     for p in root.rglob("*"):
         if p.name.lower() == name.lower():
             return p
     return None
+
+
+def _extract_agg(build_dir: Path, agg_path: Path) -> Path | None:
+    """Extract AGG archive to a temp directory. Returns the temp path or None."""
+    extractor = build_dir / "extractor"
+    if not extractor.exists():
+        print(f"Extractor not found: {extractor}")
+        return None
+    if not agg_path.exists():
+        print(f"AGG file not found: {agg_path}")
+        return None
+
+    tmp = Path(tempfile.mkdtemp(prefix="sprite_editor_"))
+    try:
+        subprocess.run(
+            [str(extractor), str(tmp), str(agg_path)],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        print(f"Extractor failed: {e}")
+        return None
+
+    return tmp
 
 
 def extract_icn(
@@ -50,26 +56,21 @@ def extract_icn(
     build_dir: Path = DEFAULT_BUILD_DIR,
     agg_path: Path = DEFAULT_AGG_PATH,
 ) -> SpriteCollection | None:
-    """Extract ICN sprites from AGG using icn2img.
+    """Extract ICN sprites from AGG with proper per-pixel transparency.
 
-    First extracts the ICN and PAL files from AGG using extractor,
-    then converts ICN to individual BMP/PNG files using icn2img.
+    Uses the Python ICN parser to decode the binary ICN format directly,
+    producing RGBA sprites with correct alpha from the transform layer.
+    No more gray background — transparent pixels have alpha=0.
 
     Returns a SpriteCollection or None on failure.
     """
-    extractor = build_dir / "extractor"
-    icn2img = build_dir / "icn2img"
-
-    if not extractor.exists() or not icn2img.exists():
-        print(f"Build tools not found in {build_dir}")
-        return None
-
-    if not agg_path.exists():
-        print(f"AGG file not found: {agg_path}")
-        return None
-
     with tempfile.TemporaryDirectory(prefix="sprite_editor_") as tmpdir:
         tmp = Path(tmpdir)
+
+        extractor = build_dir / "extractor"
+        if not extractor.exists() or not agg_path.exists():
+            print(f"Build tools not found: extractor={extractor.exists()}, agg={agg_path.exists()}")
+            return None
 
         try:
             subprocess.run(
@@ -90,30 +91,18 @@ def extract_icn(
             print("KB.PAL not found after extraction")
             return None
 
-        # Convert ICN to individual PNG sprites
-        output_dir = tmp / "sprites"
-        output_dir.mkdir()
+        # Parse ICN directly with proper transparency
+        icn_data = icn_file.read_bytes()
+        palette = load_palette(pal_file)
+        frames = parse_icn(icn_data, palette)
 
-        try:
-            result = subprocess.run(
-                [str(icn2img), str(output_dir), str(pal_file), str(icn_file)],
-                capture_output=True, text=True, timeout=30,
-            )
-            if result.returncode != 0:
-                print(f"icn2img failed: {result.stderr}")
-                return None
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-            print(f"icn2img failed: {e}")
+        if not frames:
+            print(f"Failed to parse ICN: {icn_name}")
             return None
 
-        # icn2img creates a subdirectory named after the ICN (e.g. "draggree/")
-        # containing numbered PNG files (000.png, 001.png, ...)
-        sprite_subdir = _find_sprite_subdir(output_dir, icn_name)
-        if not sprite_subdir:
-            print(f"No sprite output directory found after icn2img")
-            return None
-
-        return load_bmp_sprites(sprite_subdir)
+        collection = SpriteCollection(prefix="base")
+        collection.frames = frames
+        return collection
 
 
 def extract_bin(
