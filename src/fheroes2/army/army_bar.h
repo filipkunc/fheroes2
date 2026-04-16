@@ -42,6 +42,10 @@ public:
 
     ArmyBar( Army *, const bool miniSprites, const bool readOnly, const bool isEditMode = false, const bool saveLastTroop = true );
 
+    // Drops any hi-res RGBA overlays the bar registered for custom monsters so they don't leak
+    // onto whatever UI sits behind this bar once it goes out of scope.
+    ~ArmyBar() override;
+
     void RedrawBackground( const fheroes2::Rect &, fheroes2::Image & ) override;
     void RedrawItem( ArmyTroop &, const fheroes2::Rect &, bool, fheroes2::Image & ) override;
 

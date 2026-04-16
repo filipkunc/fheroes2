@@ -1547,7 +1547,7 @@ uint32_t Battle::Unit::GetMagicResist( const Spell & spell, const HeroBase * app
     case Spell::HYPNOTIZE: {
         // Both hero-cast and creature-cast paths land here.
         // Creature spells use the default builtin spell power.
-        const uint32_t spellPower = applyingHero ? applyingHero->GetPower() : fheroes2::spellPowerForBuiltinMonsterSpells;
+        const uint32_t spellPower = applyingHero ? applyingHero->GetPower() : fheroes2::spellPowerForMonsterHypnotize;
         if ( fheroes2::getHypnotizeMonsterHPPoints( spell, spellPower, applyingHero ) < _hitPoints ) {
             return 100;
         }

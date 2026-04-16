@@ -437,7 +437,7 @@ namespace
         monsterData[Monster::AVENGER].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::IMMUNE_TO_CERTAIN_SPELL, 100, Spell::MASSCURSE );
 
         monsterData[Monster::SUCCUBUS].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::FLYING );
-        monsterData[Monster::SUCCUBUS].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::SPELL_CASTER, 25, Spell::HYPNOTIZE );
+        monsterData[Monster::SUCCUBUS].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::SPELL_CASTER, 50, Spell::HYPNOTIZE );
         monsterData[Monster::SUCCUBUS].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::MAGIC_RESISTANCE, 25, 0 );
 
         monsterData[Monster::WOLF].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_HEX_SIZE );

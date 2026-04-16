@@ -1260,6 +1260,12 @@ void Battle::TurnOrder::_redrawUnit( const fheroes2::Rect & pos, const Battle::U
     const fheroes2::Sprite & backgroundOriginal = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
     fheroes2::Copy( backgroundOriginal, 37, 268, output, pos.x + 1, pos.y + 1, pos.width - 2, pos.height - 2 );
 
+    // For custom monsters with hi-res PNGs (Thor, Succubus, ...), skip the indexed MONS32 blit —
+    // Battle::Interface::addCustomMonsterTurnOrderOverlays() paints the portrait as an RGBA
+    // overlay AFTER the central overlay reset. Mirror-image units keep the palette path so the
+    // mirror-palette effect works.
+    const bool useCustomPortrait = !unit.Modes( Battle::CAP_MIRRORIMAGE ) && fheroes2::AGG::GetRGBACustomPortrait( unit.GetID() ) != nullptr;
+
     // Draw a monster's sprite.
     const fheroes2::Sprite & monsterSprite = fheroes2::AGG::GetICN( ICN::MONS32, unit.GetSpriteIndex() );
     const int32_t monsterSpriteHeight = monsterSprite.height();
@@ -1270,7 +1276,7 @@ void Battle::TurnOrder::_redrawUnit( const fheroes2::Rect & pos, const Battle::U
         fheroes2::Blit( mirroredMonster, output, pos.x + ( pos.width - monsterSprite.width() ) / 2,
                         pos.y + pos.height - monsterSpriteHeight - ( monsterSpriteHeight + 3 < pos.height ? 3 : 0 ), revert );
     }
-    else {
+    else if ( !useCustomPortrait ) {
         fheroes2::Blit( monsterSprite, output, pos.x + ( pos.width - monsterSprite.width() ) / 2,
                         pos.y + pos.height - monsterSpriteHeight - ( monsterSpriteHeight + 3 < pos.height ? 3 : 0 ), revert );
     }
@@ -1284,6 +1290,35 @@ void Battle::TurnOrder::_redrawUnit( const fheroes2::Rect & pos, const Battle::U
         fheroes2::ApplyPalette( output, pos.x, pos.y, output, pos.x, pos.y, turnOrderMonsterIconSize, turnOrderMonsterIconSize,
                                 PAL::GetPalette( PAL::PaletteType::GRAY ) );
         fheroes2::ApplyPalette( output, pos.x, pos.y, output, pos.x, pos.y, turnOrderMonsterIconSize, turnOrderMonsterIconSize, 3 );
+    }
+}
+
+void Battle::TurnOrder::addCustomMonsterOverlays() const
+{
+    fheroes2::Display & display = fheroes2::Display::instance();
+    for ( const UnitPos & entry : _rects ) {
+        const Unit * unit = entry.first;
+        if ( unit == nullptr || !unit->isValid() || unit->Modes( Battle::CAP_MIRRORIMAGE ) ) {
+            continue;
+        }
+        const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( unit->GetID() );
+        if ( portrait == nullptr || portrait->empty() ) {
+            continue;
+        }
+        const fheroes2::Rect & pos = entry.second;
+        const int32_t srcW = portrait->width();
+        const int32_t srcH = portrait->height();
+        const int32_t boxW = pos.width - 2;
+        const int32_t boxH = pos.height - 2;
+        int32_t overlayW = boxW;
+        int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
+        if ( overlayH > boxH ) {
+            overlayH = boxH;
+            overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
+        }
+        const int32_t overlayX = pos.x + 1 + ( boxW - overlayW ) / 2;
+        const int32_t overlayY = pos.y + 1 + ( boxH - overlayH );
+        display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
     }
 }
 
@@ -1706,6 +1741,12 @@ void Battle::Interface::redrawPreRender()
     // Register the RGBA surface as an overlay for physical-resolution rendering.
     display.clearRGBAOverlays();
     display.addRGBAOverlay( _mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width );
+
+    // Layer hi-res portraits for custom monsters (Thor, Succubus, ...) in the turn order on top
+    // of the main surface. Must come AFTER the clearRGBAOverlays above, otherwise it wipes them.
+    if ( Settings::Get().BattleShowTurnOrder() ) {
+        _turnOrder.addCustomMonsterOverlays();
+    }
 
     RedrawInterface();
 }

@@ -36,7 +36,7 @@ The game uses an indexed 256-color palette loaded from `KB.PAL` (extracted from 
 - Palettes are defined as `PaletteType` enum in `src/engine/pal.h`
 
 ## Custom Monsters
-This branch adds custom monsters: Azure Dragon (Warlock), Blood Dragon (Necromancer), Thor (Wizard), Avenger (Knight).
+This branch adds custom monsters: Azure Dragon (Warlock), Blood Dragon (Necromancer), Thor (Wizard), Avenger (Knight), Succubus (Barbarian).
 - Monster enum defined in `src/fheroes2/monster/monster.h`
 - Stats and abilities in `src/fheroes2/monster/monster_info.cpp`
 - Battle sprites generated via palette transforms from base monsters in `src/fheroes2/agg/agg_image.cpp`
@@ -47,7 +47,7 @@ This branch adds custom monsters: Azure Dragon (Warlock), Blood Dragon (Necroman
 3. Add stats (4 parallel arrays: ICN, BIN, sounds, battle stats) + general stats + abilities in `monster_info.cpp`
 4. Wire upgrade/downgrade, FromDwelling, GetDwelling, ICNMonh, GetUpgradeCost in `monster.cpp`
 5. Add ICN entries in `icn.h`
-6. Add palette type in `pal.h` and palette table in `pal.cpp`
+6. Add palette type in `pal.h` and palette table in `pal.cpp` (reuse BLOOD_DRAGON / BLOOD_CRYPT if the target is red — no need to duplicate the tables)
 7. Add sprite generation in `agg_image.cpp`: battle sprite (ICN case), portrait (MONH case), building sprite, MONS32 entry, MINIMON entry
 8. Add to `AnimationReference` whitelist in `battle_animation.cpp` (line ~97)
 9. Castle integration in `castle.cpp`:
@@ -70,6 +70,42 @@ This branch adds custom monsters: Azure Dragon (Warlock), Blood Dragon (Necroman
 14. Add battle damage handling if new ability type (in `battle_troop.cpp`)
 15. Add ability description text in `monster_info.cpp` `getMonsterAbilityText()`
 
+### Adding a new spell-caster creature (e.g. HYPNOTIZE):
+If a monster casts a spell that isn't yet used by any creature, three switch statements have `assert(0)` defaults that crash in debug. Add the spell case to each:
+- `getMonsterBaseStrength` in `monster_info.cpp` — power-rating of the spell
+- `evaluateThreatForUnit` in `battle_troop.cpp` — AI damage threat contribution
+- `RedrawActionMonsterSpellCastStatus` in `battle_interface.cpp` — status bar message
+
+Creature-cast spells that depend on hero spell power (`HYPNOTIZE`, damage spells) also need a null-`applyingHero` fallback in `Unit::GetMagicResist` (`spellPowerForBuiltinMonsterSpells` / a per-spell constant like `spellPowerForMonsterHypnotize`).
+
+## Hi-res RGBA sprite pipeline (Thor, Succubus)
+
+Monster battle sprites generated from the sprite editor tool live as large PNGs under `files/data/sprites/{prefix}_NNN.png` and a sidecar `{prefix}_offsets.jsonl` with per-frame `offset_x/offset_y/display_width/display_height`. Registration lives in `AGG::GetRGBACustomFrames` in `agg_image.cpp`:
+```cpp
+static const RGBACustomEntry registry[] = {
+    { Monster::THOR, "thor", 56 },
+    { Monster::SUCCUBUS, "succubus", 32 },
+};
+```
+Add a line per new monster with hi-res PNGs. Frame 0 must exist (a 1×1 transparent placeholder is fine) — the loader probes it to detect "are these sprites available at all".
+
+The hi-res rendering bypasses palette quantisation by drawing PNG frames via `Display::addRGBAOverlay` on top of the indexed buffer. Consumers that already wire this up:
+- Battle main sprite (`RedrawTroopSprite`)
+- Battle turn order (`TurnOrder::addCustomMonsterOverlays`, called from `redrawPreRender` *after* the main-surface re-registration — otherwise `clearRGBAOverlays` wipes the overlays)
+- Army info dialog (`DrawMonster` in `dialog_armyinfo.cpp`)
+- Set Count / Monster Selector dialogs via `MonsterDialogElement::draw` (uses `AGG::GetRGBACustomPortrait` — bbox-cropped frame 1, not the full PNG, so the figure fills the portrait rect)
+- Select Monster list (`SelectEnumMonster::Redraw` + `RedrawItem`)
+- Army bar in both mini-sprite and full-portrait branches
+- Adventure-map status panel (compact `drawMiniMonsters` path)
+
+Overlay cleanup:
+- `AGG::ClearAllCustomMonsterRGBAOverlays()` removes only overlays pointing into custom-monster caches; safe to call without wiping battle's `_mainSurfaceRGBA` overlay.
+- `Display::removeRGBAOverlay(image)` surgically removes overlays matching a single image pointer (for per-draw redraw cycles that would otherwise accumulate).
+- `ArmyBar::~ArmyBar()` calls `ClearAllCustomMonsterRGBAOverlays()` so any dialog containing an ArmyBar auto-cleans on close. Other dialogs (`ArmyInfo`, `SelectCount`, `selectMonster`) explicitly call it at their exit points.
+- `renderMonsterFrame` takes `includePortrait = true` default — callers that will paint the portrait via RGBA overlay should pass `false` to skip the now-invisible palette MONH blit.
+
+Indexed-fallback path (`agg_image.cpp::writeIndexedSpriteFromRGBA`) uses **alpha-weighted box filter** averaging before `GetColorId` palette quantisation — preserves dramatically more detail than the engine's default nearest-neighbour `Resize` at large downscale ratios.
+
 ## Build
 - Build directory: `/home/fkunc/Projects/fheroes2/build/`
 - Tools (extractor, icn2img, pal2img) are in the build directory
@@ -85,5 +121,16 @@ This branch adds custom monsters: Azure Dragon (Warlock), Blood Dragon (Necroman
   JAVA_HOME=~/.sdkman/candidates/java/17.0.13-tem ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
   ```
 - APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
-- Install: `adb install <apk>` (may need `adb uninstall org.fheroes2` first if signing key differs)
+- Install: `adb install -r <apk>` (may need `adb uninstall org.fheroes2` first if signing key differs)
 - Phone device ID: RZCX50PCXYA (Samsung)
+
+### Android asset sync
+
+`android/app/src/main/assets/files/` is a real copy, not a symlink. When you change anything under `files/data/sprites/` on the desktop (new monster PNGs, updated offsets JSONL, etc.), sync it before building the APK:
+
+```
+rsync -av --delete files/data/sprites/ android/app/src/main/assets/files/data/sprites/
+rm -rf android/app/src/main/assets/files/data/sprites/sheets  # editor working files
+```
+
+Gradle's incremental detector doesn't reliably pick up asset changes from an rsync, so run `./gradlew clean assembleDebug` (not just `assembleDebug`) after syncing or the APK silently ships the old assets.

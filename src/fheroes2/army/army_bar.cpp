@@ -188,6 +188,11 @@ namespace
     }
 }
 
+ArmyBar::~ArmyBar()
+{
+    fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
+}
+
 ArmyBar::ArmyBar( Army * ptr, const bool miniSprites, const bool readOnly, const bool isEditMode /* false */, const bool saveLastTroop /* true */ )
     : spcursor( fheroes2::AGG::GetICN( ICN::STRIP, 1 ) )
     , use_mini_sprite( miniSprites )
@@ -333,9 +338,14 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
             // typically have unique monster types per slot so one overlay per monster is enough.
             display.removeRGBAOverlay( portrait );
 
-            const fheroes2::Sprite & monh = fheroes2::AGG::GetICN( troop.ICNMonh(), 0 );
-            const int32_t boxW = monh.width();
-            const int32_t boxH = monh.height();
+            // Fit within the slot itself rather than relying on MONH's internal x/y anchor, which
+            // varies per monster and isn't a reliable "where the portrait goes inside the STRIP
+            // frame" rect. Leave small padding so the decorative STRIP frame isn't covered.
+            const int32_t padX = 6;
+            const int32_t padTop = 4;
+            const int32_t padBottom = 10; // room for count text at bottom
+            const int32_t boxW = std::max( 1, pos.width - 2 * padX );
+            const int32_t boxH = std::max( 1, pos.height - padTop - padBottom );
             const int32_t srcW = portrait->width();
             const int32_t srcH = portrait->height();
             int32_t overlayW = boxW;
@@ -344,8 +354,8 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
                 overlayH = boxH;
                 overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
             }
-            const int32_t overlayX = pos.x + monh.x() + ( boxW - overlayW ) / 2;
-            const int32_t overlayY = pos.y + monh.y() + ( boxH - overlayH );
+            const int32_t overlayX = pos.x + padX + ( boxW - overlayW ) / 2;
+            const int32_t overlayY = pos.y + padTop + ( boxH - overlayH );
             display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
         }
 

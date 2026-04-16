@@ -31,6 +31,7 @@
 #include "game.h"
 #include "icn.h"
 #include "image.h"
+#include "screen.h"
 #include "ui_text.h"
 
 void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_t cy, const int32_t width, uint32_t first, uint32_t count, const bool isCompact,
@@ -61,6 +62,15 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
     }
     if ( !isRightToLeftRender ) {
         cx += width;
+    }
+
+    // For the compact adventure-map status panel, wipe previously-registered hi-res custom
+    // monster overlays before drawing. This path redraws every frame so re-adding below is cheap;
+    // the clear handles the case where the focused hero/castle changed and the previously-shown
+    // monsters are no longer in the army. Non-compact callers (quickinfo popups, kingdom views)
+    // render inside dialogs with their own cleanup paths, so we don't touch their overlays.
+    if ( isCompact ) {
+        fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
     }
 
     const size_t slots = troops.Size();
@@ -102,6 +112,13 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
 
         const int32_t posX = isRightToLeftRender ? ( cx + static_cast<int32_t>( chunk * ( count - 1 ) ) ) : ( cx - static_cast<int32_t>( chunk * count ) );
 
+        // For custom monsters with hi-res PNGs (Thor, Succubus, ...), paint the portrait as an
+        // RGBA overlay instead of the palette-quantised MONS32 so the tiny 32px icon doesn't
+        // render as dither noise. Overlay is positioned to match where the MONS32 blit would
+        // have landed.
+        const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop->GetID() );
+        const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
+
         // This is the drawing of army troops in compact form in the small info window beneath resources
         if ( isCompact ) {
             const int32_t offsetY = ( monster.height() < 37 ) ? 37 - monster.height() : 0;
@@ -109,7 +126,26 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
             if ( offset < 0 ) {
                 offset = 0;
             }
-            fheroes2::Blit( monster, output, posX + offset, cy + offsetY + monster.y() );
+            const int32_t blitX = posX + offset;
+            const int32_t blitY = cy + offsetY + monster.y();
+            if ( useCustomPortrait ) {
+                const int32_t srcW = portrait->width();
+                const int32_t srcH = portrait->height();
+                const int32_t boxW = monster.width();
+                const int32_t boxH = monster.height();
+                int32_t overlayW = boxW;
+                int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
+                if ( overlayH > boxH ) {
+                    overlayH = boxH;
+                    overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
+                }
+                const int32_t overlayX = blitX + ( boxW - overlayW ) / 2;
+                const int32_t overlayY = blitY + ( boxH - overlayH );
+                fheroes2::Display::instance().addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+            }
+            else {
+                fheroes2::Blit( monster, output, blitX, blitY );
+            }
             text.draw( posX - text.width() - offset + static_cast<int32_t>( chunk ), cy + 23, output );
         }
         else {

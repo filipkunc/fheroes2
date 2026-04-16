@@ -281,6 +281,11 @@ namespace Battle
             _restorer.reset();
         }
 
+        // Re-registers hi-res RGBA overlays for custom monsters in the turn order. Call this from
+        // the parent interface AFTER clearRGBAOverlays()+addMainSurface overlay, otherwise the
+        // central overlay reset would immediately drop our turn-order overlays.
+        void addCustomMonsterOverlays() const;
+
     private:
         using UnitPos = std::pair<const Unit *, fheroes2::Rect>;
 
