@@ -30,10 +30,36 @@ from .gemini.gemini_panel import GeminiPanel
 
 
 # Default paths
+import os
+
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 SPRITES_DIR = PROJECT_ROOT / "files" / "data" / "sprites"
-BUILD_DIR = PROJECT_ROOT / "build"
-AGG_PATH = Path.home() / "Games" / "Heroic" / "HoMM 2 Gold" / "DATA" / "HEROES2.AGG"
+
+
+def _find_build_dir(root: Path) -> Path:
+    # MSBuild/CMake on Windows: build/Release; make on Linux/macOS: build
+    for candidate in (root / "build" / "Release", root / "build"):
+        if candidate.is_dir():
+            return candidate
+    return root / "build"
+
+
+def _find_agg_path() -> Path:
+    env = os.environ.get("FHEROES2_AGG")
+    if env:
+        return Path(env)
+    candidates = [
+        PROJECT_ROOT.parent / "fheroes2_gog" / "DATA" / "HEROES2.AGG",
+        Path.home() / "Games" / "Heroic" / "HoMM 2 Gold" / "DATA" / "HEROES2.AGG",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return candidates[-1]
+
+
+BUILD_DIR = _find_build_dir(PROJECT_ROOT)
+AGG_PATH = _find_agg_path()
 
 
 class MainWindow(QMainWindow):
@@ -275,7 +301,73 @@ class MainWindow(QMainWindow):
             if frame and not frame.is_placeholder:
                 thumbnails[name] = frame.to_qpixmap()
 
+        # Override the inherited base thumbnail with custom art where available:
+        #   - has_custom_sprites=True → use a bbox-cropped frame from the PNG
+        #     sequence (matches GetRGBACustomPortrait in agg_image.cpp)
+        #   - palette_remap → apply the same remap table used at runtime so the
+        #     mini-sprite matches what the engine actually draws
+        from .tools.palette_remap import REMAP_TABLES, apply_palette_remap_fast, load_palette
+        from .models.sprite_data import SpriteFrame
+
+        palette = None
+        needs_palette = any(
+            cfg.palette_remap and cfg.palette_remap in REMAP_TABLES
+            for cfg in self._monsters.values()
+        )
+        if needs_palette:
+            pal_path = self._find_pal_file()
+            if pal_path:
+                palette = load_palette(pal_path)
+
+        for name, cfg in self._monsters.items():
+            if cfg.has_custom_sprites:
+                png_thumb = self._build_custom_png_thumbnail(cfg.prefix)
+                if png_thumb is not None:
+                    thumbnails[name] = png_thumb
+            elif cfg.palette_remap and palette is not None:
+                remap_table = REMAP_TABLES.get(cfg.palette_remap)
+                base_idx = icn_to_idx.get(cfg.base_icn)
+                if remap_table and base_idx is not None:
+                    base_frame = mons32.get_frame(base_idx)
+                    if base_frame and not base_frame.is_placeholder:
+                        new_img = apply_palette_remap_fast(base_frame.image, palette, remap_table)
+                        thumbnails[name] = SpriteFrame(index=base_idx, image=new_img).to_qpixmap()
+
         self._monster_list.set_thumbnails(thumbnails)
+
+    def _build_custom_png_thumbnail(self, prefix: str):
+        """Build a thumbnail pixmap from a custom monster's PNG sprite sequence.
+
+        Prefers frame 1 (the idle pose GetRGBACustomPortrait uses), falling back
+        to the first non-placeholder PNG. The image is cropped to its opaque
+        bbox so the figure fills the thumbnail rect after scaling.
+        """
+        from PIL import Image
+        from .models.sprite_data import SpriteFrame
+
+        if not SPRITES_DIR.exists():
+            return None
+
+        preferred = SPRITES_DIR / f"{prefix}_001.png"
+        candidates = [preferred] if preferred.exists() else []
+        candidates.extend(
+            p for p in sorted(SPRITES_DIR.glob(f"{prefix}_???.png")) if p != preferred
+        )
+
+        for png in candidates:
+            try:
+                img = Image.open(png).convert("RGBA")
+            except Exception:
+                continue
+            if img.width <= 1 or img.height <= 1:
+                continue
+            bbox = img.getbbox()
+            if bbox:
+                img = img.crop(bbox)
+            if img.width <= 0 or img.height <= 0:
+                continue
+            return SpriteFrame(index=0, image=img).to_qpixmap()
+        return None
 
     def _setup_statusbar(self):
         self._status = QStatusBar()
@@ -443,7 +535,8 @@ class MainWindow(QMainWindow):
 
         # Extract from AGG
         import subprocess, tempfile
-        extractor = BUILD_DIR / "extractor"
+        from .tools.icn_extractor import resolve_extractor
+        extractor = resolve_extractor(BUILD_DIR)
         if not extractor.exists() or not AGG_PATH.exists():
             return None
 

@@ -127,6 +127,9 @@ fheroes2.wasm.map
 __pycache__/
 *.pyc
 
+# Python virtual environments
+.venv/
+
 # Sprite editor cached game data (extracted from AGG on first run)
 tools/sprite_editor/resources/*.BIN
 tools/sprite_editor/resources/*.PAL

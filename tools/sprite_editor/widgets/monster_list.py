@@ -134,7 +134,7 @@ class MonsterListWidget(QWidget):
                 scaled = pixmap.scaled(
                     THUMB_SIZE, THUMB_SIZE,
                     Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.FastTransformation,
+                    Qt.TransformationMode.SmoothTransformation,
                 )
                 item.setIcon(QIcon(scaled))
 

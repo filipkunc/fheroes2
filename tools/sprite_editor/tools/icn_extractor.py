@@ -1,5 +1,6 @@
 """Extract base ICN sprites and BIN files from AGG archives."""
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -9,9 +10,41 @@ from .icn_parser import parse_icn
 from .palette_remap import load_palette
 
 
+_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+
+
+def _default_build_dir() -> Path:
+    for candidate in (_PROJECT_ROOT / "build" / "Release", _PROJECT_ROOT / "build"):
+        if candidate.is_dir():
+            return candidate
+    return _PROJECT_ROOT / "build"
+
+
+def _default_agg_path() -> Path:
+    env = os.environ.get("FHEROES2_AGG")
+    if env:
+        return Path(env)
+    for p in (
+        _PROJECT_ROOT.parent / "fheroes2_gog" / "DATA" / "HEROES2.AGG",
+        Path.home() / "Games" / "Heroic" / "HoMM 2 Gold" / "DATA" / "HEROES2.AGG",
+    ):
+        if p.exists():
+            return p
+    return Path.home() / "Games" / "Heroic" / "HoMM 2 Gold" / "DATA" / "HEROES2.AGG"
+
+
+def resolve_extractor(build_dir: Path) -> Path:
+    """Return the extractor binary path, preferring .exe on Windows."""
+    for name in ("extractor.exe", "extractor"):
+        candidate = build_dir / name
+        if candidate.exists():
+            return candidate
+    return build_dir / "extractor"
+
+
 # Default paths
-DEFAULT_BUILD_DIR = Path(__file__).parent.parent.parent.parent / "build"
-DEFAULT_AGG_PATH = Path.home() / "Games" / "Heroic" / "HoMM 2 Gold" / "DATA" / "HEROES2.AGG"
+DEFAULT_BUILD_DIR = _default_build_dir()
+DEFAULT_AGG_PATH = _default_agg_path()
 
 
 def _find_file(root: Path, name: str) -> Path | None:
@@ -30,7 +63,7 @@ def _find_file(root: Path, name: str) -> Path | None:
 
 def _extract_agg(build_dir: Path, agg_path: Path) -> Path | None:
     """Extract AGG archive to a temp directory. Returns the temp path or None."""
-    extractor = build_dir / "extractor"
+    extractor = resolve_extractor(build_dir)
     if not extractor.exists():
         print(f"Extractor not found: {extractor}")
         return None
@@ -67,7 +100,7 @@ def extract_icn(
     with tempfile.TemporaryDirectory(prefix="sprite_editor_") as tmpdir:
         tmp = Path(tmpdir)
 
-        extractor = build_dir / "extractor"
+        extractor = resolve_extractor(build_dir)
         if not extractor.exists() or not agg_path.exists():
             print(f"Build tools not found: extractor={extractor.exists()}, agg={agg_path.exists()}")
             return None
@@ -114,7 +147,7 @@ def extract_bin(
 
     Returns raw bytes or None on failure.
     """
-    extractor = build_dir / "extractor"
+    extractor = resolve_extractor(build_dir)
 
     if not extractor.exists() or not agg_path.exists():
         return None

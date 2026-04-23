@@ -185,14 +185,17 @@ class AnimationCanvas(QWidget):
     def _draw_sprite_simple(self, painter: QPainter, frame: SpriteFrame, cx: int, cy: int, zoom: int):
         """Draw sprite centered in panel with checkerboard (original mode).
 
-        Uses display_width/display_height (base ICN dimensions) for positioning,
-        but renders the hi-res image scaled to that footprint for quality.
+        Uses the same battle-engine positioning as the hex-grid view so sprites
+        with large ICN offsets (hi-res custom monsters often have offset_y≈-100)
+        stay on-screen. Placing the implicit hex-cell center at panel center
+        mirrors GetRGBACustomFrames / BlitRGBAScaled in the game.
         """
-        # Display size = base ICN dimensions × zoom (matches game's BlitRGBAScaled)
-        display_w = frame.display_width * zoom
-        display_h = frame.display_height * zoom
-        draw_x = cx - display_w // 2 + frame.offset_x * zoom
-        draw_y = cy - display_h // 2 + frame.offset_y * zoom
+        z = zoom
+        cell_h = HEX_CELL_H * z
+        display_w = frame.display_width * z
+        display_h = frame.display_height * z
+        draw_x = cx + frame.offset_x * z
+        draw_y = cy + cell_h // 2 + (frame.offset_y + HEX_CELL_Y_OFFSET) * z
 
         # Checkerboard
         checker_rect = QRect(draw_x, draw_y, display_w, display_h)
