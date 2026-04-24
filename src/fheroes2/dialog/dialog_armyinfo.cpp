@@ -507,14 +507,15 @@ namespace
                                     && !( *rgbaFrames )[animFrame].empty() && !troop.isModes( Battle::CAP_MIRRORIMAGE );
 
             if ( canUseRGBA ) {
-                // The sprite animation cycles through frames each call; consecutive frames are
-                // different RGBAImage src pointers so the (src, dst, gameX, gameY) dedupe in
-                // registerRGBABufferPaint doesn't catch them. Wipe any paint at this sprite's
-                // position on the active dialog RGBA before re-registering, so frames don't
-                // accumulate as stacked paints.
+                // The sprite animation cycles through frames each call; consecutive frames have
+                // different src pointers AND different outPos/inSize (the unit walks across the
+                // preview area). Clear the whole monster ROI before re-registering so paints
+                // from previous frames don't linger at their prior positions — a rect-scoped
+                // clear around just the current frame's footprint would leave the trailing
+                // frames visible, giving the portrait a stacked / smeared look.
                 const fheroes2::Image::DialogForwardingFrame * active = fheroes2::Image::getActiveDialogForwarding();
                 if ( active != nullptr && active->target != nullptr ) {
-                    display.removeRGBABufferPaintsInRect( active->target, outPos.x, outPos.y, inSize.width, inSize.height );
+                    display.removeRGBABufferPaintsInRect( active->target, roi.x, roi.y, roi.width, roi.height );
                 }
                 // Hi-res PNG direct-paints into the dialog's RGBA surface via the helper —
                 // Phase 2 installed the DialogSurfaceGuard forwarding frame in Dialog::ArmyInfo
