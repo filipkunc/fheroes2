@@ -64,11 +64,23 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
         cx += width;
     }
 
-    // For the compact adventure-map status panel, wipe previously-registered hi-res custom
-    // monster overlays before drawing. This path redraws every frame so re-adding below is cheap;
-    // the clear handles the case where the focused hero/castle changed and the previously-shown
-    // monsters are no longer in the army. Non-compact callers (quickinfo popups, kingdom views)
-    // render inside dialogs with their own cleanup paths, so we don't touch their overlays.
+    // Wipe any hi-res portrait paints left in this row's rect by a previous call — the troop
+    // list may have changed (focus switched to a hero without the custom monster, the unit was
+    // dismissed, etc.) and persistent buffer paints would otherwise ghost the stale portrait on
+    // top of whatever now occupies the slot. We clear against the currently active forwarding
+    // target, which is the surface renderHiResMonsterPortrait will register into below.
+    const fheroes2::Image::DialogForwardingFrame * activeForFrame = fheroes2::Image::getActiveDialogForwarding();
+    if ( activeForFrame != nullptr && activeForFrame->target != nullptr ) {
+        // Height is generous — covers the vertical range portraits can land at in either layout.
+        const int32_t clearH = isCompact ? 45 : 60;
+        const int32_t clearY = isCompact ? cy : ( cy - 30 );
+        fheroes2::Display::instance().removeRGBABufferPaintsInRect( activeForFrame->target, cx - width, clearY, width * 2, clearH );
+    }
+
+    // Legacy fallback: the compact path historically wiped all custom-monster overlays per
+    // frame. With Phase 3b+ this has no effect for the adventure-map status panel (everything
+    // now goes through renderHiResMonsterPortrait → buffer paints), but keep the call so stale
+    // addRGBAOverlay registrations from any not-yet-migrated caller still get cleaned up.
     if ( isCompact ) {
         fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
     }
@@ -150,14 +162,32 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
             text.draw( posX - text.width() - offset + static_cast<int32_t>( chunk ), cy + 23, output );
         }
         else {
-            // Non-compact path is used by quickinfo popups, which do not currently push their
-            // own RGBA forwarding. Routing through renderHiResMonsterPortrait here would leak
-            // fallback-path addRGBAOverlay registrations when the popup closes. Until the
-            // quickinfo host is migrated (deferred follow-up), keep the indexed MONS32 blit.
-            // Dachshund's MONS32 entry was overwritten with a quantised hi-res PNG during
-            // load (see agg_image.cpp), so custom monsters still look reasonable in this path.
+            // Non-compact path (quickinfo popups, kingdom overview lists, battle casualty
+            // dialog). Post-Phase 3b there is always an outer forwarding target on the stack —
+            // the adventure-map screenRGBA at minimum, or a dialog / battle surface nested on
+            // top — so renderHiResMonsterPortrait takes the direct-paint path, never the
+            // addRGBAOverlay fallback that was the leak concern before Phase 3b.
             const int32_t offsetY = 28 - monster.height() + monster.y();
-            fheroes2::Blit( monster, output, posX - monster.width() / 2 + monster.x() + 2, cy + offsetY );
+            const int32_t blitX = posX - monster.width() / 2 + monster.x() + 2;
+            const int32_t blitY = cy + offsetY;
+            if ( useCustomPortrait ) {
+                const int32_t srcW = portrait->width();
+                const int32_t srcH = portrait->height();
+                const int32_t boxW = monster.width();
+                const int32_t boxH = monster.height();
+                int32_t overlayW = boxW;
+                int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
+                if ( overlayH > boxH ) {
+                    overlayH = boxH;
+                    overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
+                }
+                const int32_t overlayX = blitX + ( boxW - overlayW ) / 2;
+                const int32_t overlayY = blitY + ( boxH - overlayH );
+                fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+            }
+            else {
+                fheroes2::Blit( monster, output, blitX, blitY );
+            }
             text.draw( posX - text.width() / 2, cy + 29, output );
         }
 

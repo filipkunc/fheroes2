@@ -1275,11 +1275,27 @@ namespace
             const int32_t offsetX = ( outputW - viewportW ) / 2;
             const int32_t offsetY = ( outputH - viewportH ) / 2;
 
+            // Composite only the deepest-depth overlays currently registered. A parent scope's
+            // full-screen root (e.g. adventure map) registers at a shallower depth; once a child
+            // scope (battle, modal dialog) registers its own deeper overlays, we skip the parent
+            // so the palette UI it drew outside its own RGBA surface (battle status bar, dialog
+            // frame shadow, etc.) is not obscured by stale shallow-scope RGBA content.
+            int32_t maxDepth = 0;
+            for ( const fheroes2::RGBAOverlay & overlay : overlays ) {
+                if ( overlay.image != nullptr && !overlay.image->empty() && overlay.depth > maxDepth ) {
+                    maxDepth = overlay.depth;
+                }
+            }
+
             // Temporarily disable logical size so we can render at physical pixel coordinates.
             SDL_RenderSetLogicalSize( _renderer, 0, 0 );
 
             for ( const fheroes2::RGBAOverlay & overlay : overlays ) {
                 if ( overlay.image == nullptr || overlay.image->empty() ) {
+                    continue;
+                }
+                if ( overlay.depth < maxDepth ) {
+                    // Parent-scope overlay shadowed by a deeper scope.
                     continue;
                 }
 

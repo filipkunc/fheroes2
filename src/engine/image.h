@@ -191,6 +191,11 @@ namespace fheroes2
 
         static const DialogForwardingFrame * getActiveDialogForwarding();
 
+        // Size of the forwarding stack. Used by Display::addRGBAOverlay to tag overlays with the
+        // scope they were registered in — render() then composites only the deepest-depth
+        // overlays, so a nested scope (battle on top of adventure map) shadows the parent.
+        static int32_t getDialogFwdDepth();
+
         // These mirror the top of the forwarding stack and are read directly by
         // Display::render()'s indexed→RGBA loop. They are kept in sync by push/pop/set/clear.
         // _dialogFwdSuspendDepth gates the forwarding pass — when > 0, render() skips it even
@@ -555,5 +560,10 @@ namespace fheroes2
         int32_t gameWidth{ 0 };
         bool flip{ false };
         uint8_t alpha{ 255 };
+        // Forwarding-stack depth at registration. render() composites only the deepest-depth
+        // overlays currently in the list, so a nested scope (battle on top of adventure map)
+        // automatically shadows the parent scope's full-screen overlay without compile-time
+        // coupling between the two.
+        int32_t depth{ 0 };
     };
 }

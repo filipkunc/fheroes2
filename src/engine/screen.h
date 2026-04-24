@@ -265,10 +265,14 @@ namespace fheroes2
         }
 
         // RGBA overlay support for true-color rendering.
+        //
+        // Each overlay is tagged with the current forwarding-stack depth so that when a deeper
+        // scope (e.g. a battle nested inside the adventure map) registers its own overlays, the
+        // shallower scope's overlays automatically stop compositing. See _renderRGBAOverlays.
         void addRGBAOverlay( const RGBAImage & overlay, const int32_t x, const int32_t y, const int32_t gameWidth = 0, const bool flip = false,
                              const uint8_t alpha = 255 )
         {
-            _rgbaOverlays.push_back( { &overlay, x, y, gameWidth, flip, alpha } );
+            _rgbaOverlays.push_back( { &overlay, x, y, gameWidth, flip, alpha, Image::getDialogFwdDepth() } );
         }
 
         void clearRGBAOverlays()
@@ -374,6 +378,25 @@ namespace fheroes2
             }
             _rgbaBufferPaints.erase( std::remove_if( _rgbaBufferPaints.begin(), _rgbaBufferPaints.end(),
                                                     [dst]( const RGBABufferPaint & p ) { return p.dst == dst; } ),
+                                    _rgbaBufferPaints.end() );
+        }
+
+        // Remove paints targeting `dst` whose game-space coordinate falls within the given rect.
+        // Use this from a widget that redraws periodically with a variable troop list (status
+        // panel on focus change, casualty dialog, quickinfo popup): before registering this
+        // frame's portraits, wipe any leftovers from the previous frame's troops so a dismissed
+        // custom monster doesn't keep ghosting over whatever now occupies its slot.
+        void removeRGBABufferPaintsInRect( const RGBAImage * dst, const int32_t gameX, const int32_t gameY, const int32_t gameW, const int32_t gameH )
+        {
+            if ( dst == nullptr || gameW <= 0 || gameH <= 0 ) {
+                return;
+            }
+            const int32_t x1 = gameX + gameW;
+            const int32_t y1 = gameY + gameH;
+            _rgbaBufferPaints.erase( std::remove_if( _rgbaBufferPaints.begin(), _rgbaBufferPaints.end(),
+                                                    [dst, gameX, gameY, x1, y1]( const RGBABufferPaint & p ) {
+                                                        return p.dst == dst && p.gameX >= gameX && p.gameX < x1 && p.gameY >= gameY && p.gameY < y1;
+                                                    } ),
                                     _rgbaBufferPaints.end() );
         }
 

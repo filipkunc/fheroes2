@@ -495,6 +495,11 @@ namespace fheroes2
         return stack.empty() ? nullptr : &stack.back();
     }
 
+    int32_t Image::getDialogFwdDepth()
+    {
+        return static_cast<int32_t>( getDialogFwdStack().size() );
+    }
+
     void Image::setDialogForwarding( RGBAImage * target, const int32_t offsetX, const int32_t offsetY, const float scale )
     {
         // Legacy API: replaces the current top of stack (or pushes when empty). Battle's
