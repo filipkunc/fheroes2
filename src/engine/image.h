@@ -181,14 +181,25 @@ namespace fheroes2
         static void setDialogForwarding( RGBAImage * target, int32_t offsetX, int32_t offsetY, float scale );
         static void clearDialogForwarding();
 
+        // Temporarily disable the forwarding pass without touching the stack — the top frame
+        // stays registered and resumes automatically when the matching resume fires. Use this
+        // when the palette buffer is about to be written with pixels that must NOT forward into
+        // the active RGBA surface (typically during fade transitions that darken the palette).
+        // Nested suspend/resume pairs compose via an internal depth counter.
+        static void suspendDialogForwarding();
+        static void resumeDialogForwarding();
+
         static const DialogForwardingFrame * getActiveDialogForwarding();
 
         // These mirror the top of the forwarding stack and are read directly by
         // Display::render()'s indexed→RGBA loop. They are kept in sync by push/pop/set/clear.
+        // _dialogFwdSuspendDepth gates the forwarding pass — when > 0, render() skips it even
+        // if _dialogFwdTarget is non-null, so the stack stays intact across transient suspensions.
         static RGBAImage * _dialogFwdTarget;
         static int32_t _dialogFwdOffsetX;
         static int32_t _dialogFwdOffsetY;
         static float _dialogFwdScale;
+        static int32_t _dialogFwdSuspendDepth;
 
     private:
         void copy( const Image & image );

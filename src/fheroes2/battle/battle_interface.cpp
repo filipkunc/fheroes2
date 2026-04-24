@@ -1559,14 +1559,24 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
 
     // Enable dialog forwarding: any non-zero pixels on Display in the battle area
     // get converted indexed→RGBA and written to _mainSurfaceRGBA during Display::render().
-    fheroes2::Image::setDialogForwarding( &_mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
+    //
+    // Push nests battle's frame on top of whatever the parent scope registered (typically the
+    // AdventureMap screen-RGBA). The matching pop in the dtor restores the parent frame so the
+    // adventure map's forwarding keeps working when we return from combat.
+    fheroes2::Image::pushDialogForwarding( &_mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
 }
 
 Battle::Interface::~Interface()
 {
-    fheroes2::Image::clearDialogForwarding();
-    fheroes2::Display::instance().clearRGBAOverlays();
-    fheroes2::Display::instance().setRGBACompositLayer( nullptr, 0, 0 );
+    // Pop battle's frame off the forwarding stack so the parent scope's frame (AdventureMap) is
+    // active again. Remove ONLY battle's own overlays and buffer paints — the parent's root
+    // overlay stays registered so its RGBA surface keeps compositing to screen.
+    fheroes2::Image::popDialogForwarding();
+    fheroes2::Display & display = fheroes2::Display::instance();
+    display.removeRGBAOverlay( &_mainSurfaceRGBA );
+    display.removeRGBABufferPaintsForTarget( &_mainSurfaceRGBA );
+    fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
+    display.setRGBACompositLayer( nullptr, 0, 0 );
 
     AudioManager::ResetAudio();
 
@@ -1651,8 +1661,10 @@ void Battle::Interface::fullRedraw()
     // We do not render battlefield display image to properly fade-in it.
     redrawPreRender();
 
-    // Suspend dialog forwarding during the fade so alpha-blended display pixels don't corrupt RGBA.
-    fheroes2::Image::clearDialogForwarding();
+    // Suspend dialog forwarding during the fade so alpha-blended display pixels don't corrupt
+    // the RGBA buffer. Suspend preserves the stack — battle's frame (and any parent frame such
+    // as the adventure map's screen-RGBA) stays registered and automatically resumes below.
+    fheroes2::Image::suspendDialogForwarding();
 
     // Fade-in battlefield.
     if ( !isDefaultScreenSize ) {
@@ -1663,7 +1675,7 @@ void Battle::Interface::fullRedraw()
     fheroes2::fadeInDisplay( _background->activeArea(), !isDefaultScreenSize );
 
     // Re-enable dialog forwarding after the fade completes.
-    fheroes2::Image::setDialogForwarding( &_mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
+    fheroes2::Image::resumeDialogForwarding();
 }
 
 void Battle::Interface::Redraw()
@@ -1738,12 +1750,16 @@ void Battle::Interface::redrawPreRender()
     fheroes2::Fill( display, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width, _mainSurfaceRGBA.empty() ? _surfaceInnerArea.height
                     : static_cast<int32_t>( static_cast<float>( _mainSurfaceRGBA.height() ) / _rgbaScale ), 0 );
 
-    // Register the RGBA surface as an overlay for physical-resolution rendering.
-    display.clearRGBAOverlays();
+    // Register the RGBA surface as an overlay for physical-resolution rendering. Remove only
+    // battle-owned overlays before re-adding so a parent screen (AdventureMap) keeps its root
+    // overlay registered across every partial render cycle.
+    display.removeRGBAOverlay( &_mainSurfaceRGBA );
+    fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
     display.addRGBAOverlay( _mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width );
 
     // Layer hi-res portraits for custom monsters (Thor, Succubus, ...) in the turn order on top
-    // of the main surface. Must come AFTER the clearRGBAOverlays above, otherwise it wipes them.
+    // of the main surface. Must come AFTER the removeRGBAOverlay+ClearAllCustomMonsterRGBAOverlays
+    // above, otherwise the re-registration is immediately dropped.
     if ( Settings::Get().BattleShowTurnOrder() ) {
         _turnOrder.addCustomMonsterOverlays();
     }
@@ -3910,8 +3926,9 @@ void Battle::Interface::FadeArena( const bool clearMessageLog )
 
     fheroes2::Copy( display, srt.x, srt.y, top, 0, 0, srt.width, srt.height );
 
-    // Suspend dialog forwarding during the fade so darkened display pixels don't overwrite the dimmed RGBA scene.
-    fheroes2::Image::clearDialogForwarding();
+    // Suspend dialog forwarding during the fade so darkened display pixels don't overwrite the
+    // dimmed RGBA scene. Suspend keeps battle's frame (and any parent frame) on the stack.
+    fheroes2::Image::suspendDialogForwarding();
 
     // Custom fade that darkens the RGBA surface.
     {
@@ -3944,7 +3961,7 @@ void Battle::Interface::FadeArena( const bool clearMessageLog )
     }
 
     // Re-enable dialog forwarding for the battle summary dialog.
-    fheroes2::Image::setDialogForwarding( &_mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
+    fheroes2::Image::resumeDialogForwarding();
 
     display.render();
 }

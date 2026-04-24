@@ -69,47 +69,46 @@ the compact path direct-paints into it with no further changes to the caller.
 Per-frame `ClearAllCustomMonsterRGBAOverlays()` on the compact branch is kept
 as-is; it's a sledgehammer but is not breaking anything.
 
-#### 🚧 Deferred — screen-wide RGBA install on `AdventureMap`
+#### ✅ Done — Phase 3b screen-wide RGBA on `AdventureMap` + battle cooperation
 
-The full plan was: install a screen-sized `RGBAImage` on `AdventureMap`, push
-forwarding across the whole adventure-map session, and let every palette write
-forward into it.
+The adventure-map session now owns a full-screen `RGBAImage` for its whole
+lifetime. `AdventureMap::StartGame` allocates `screenRGBA` sized to the
+display, snapshots the current palette into it, registers it as the root
+overlay, pushes a forwarding frame onto the stack, and installs an
+`AdventureMapForwardingGuard` RAII that pops the frame and removes the
+overlay / buffer-paint registrations on any exit path.
 
-Blocker: `Battle::Interface` is entered **from inside** the adventure-map
-session (not from a caller above it). On entry, the battle ctor calls
-`Display::clearRGBAOverlays()` and `Image::setDialogForwarding()` (which
-*replaces* the stack top rather than pushing) — both of which would wipe any
-adventure-map RGBA state we installed before the battle. On exit, the battle
-dtor calls `clearDialogForwarding()` and `clearRGBAOverlays()` again. End
-result: whatever we install on the adventure-map side gets wiped by every
-combat.
+Battle cooperation (new):
 
-Making this work end-to-end requires cooperation from `battle_interface.cpp`
-— roughly:
-- Convert the ctor/dtor `setDialogForwarding` / `clearDialogForwarding` pair
-  to `pushDialogForwarding` / `popDialogForwarding` so the adventure-map
-  frame underneath survives.
-- Convert the two mid-battle `clearDialogForwarding` / `setDialogForwarding`
-  "suspend-during-fade" pairs to something that doesn't touch the stack
-  below battle's own frame (likely a `suspendForwarding()` /
-  `resumeForwarding()` pair that flips `_dialogFwdTarget` to `nullptr`
-  without popping).
-- Replace `Display::clearRGBAOverlays()` in the battle entry/exit with
-  `removeRGBAOverlay(&_mainSurfaceRGBA)` so the adventure-map overlay stays
-  registered across the battle.
+- `Battle::Interface` ctor/dtor use `pushDialogForwarding` /
+  `popDialogForwarding` instead of the legacy `set` / `clear`, so battle
+  nests on top of the adventure-map frame and restores it cleanly on exit.
+- The two in-battle "suspend during fade" pairs (`fullRedraw` fade-in,
+  `fadeBattlefield` dim-to-summary) use new `suspendDialogForwarding` /
+  `resumeDialogForwarding` primitives that gate the forwarding loop via a
+  depth counter without touching the stack. The adventure-map frame stays
+  registered throughout.
+- `redrawPreRender` and the battle dtor surgically `removeRGBAOverlay(
+  &_mainSurfaceRGBA )` + `removeRGBABufferPaintsForTarget( &_mainSurfaceRGBA
+  )` + `ClearAllCustomMonsterRGBAOverlays()` instead of the old
+  `clearRGBAOverlays()` sledgehammer, preserving the adventure-map root
+  overlay across the entire combat.
 
-That's a cohesive follow-up refactor and deserves its own pass. Track as
-**Phase 3b**. Notes that still apply when it's picked up:
+Net effect: entering / exiting combat from the adventure map now leaves the
+screen-RGBA intact. Every adventure-map palette write forwards into
+`screenRGBA`, and hi-res custom-monster portraits (status panel and anything
+else routed through `renderHiResMonsterPortrait`) direct-paint into the same
+surface — correctly Z-ordered with respect to modals that nest on top via
+their own forwarding frames.
 
-- Adventure map scrolls — every scroll step redraws the map palette, which
-  forwards into the RGBA. That's fine.
-- Animations (flags, monster frame cycles) forward automatically.
-- Hero-on-tile mini portraits in the status panel have been reported missing
-  after certain transitions — validate the fix here.
-- Non-compact `drawMiniMonsters` (quickinfo popups) currently keeps the
-  indexed MONS32 blit. Migrating it to `renderHiResMonsterPortrait` needs
-  `dialog_quickinfo.cpp` to push its own forwarding frame first, otherwise
-  the fallback `addRGBAOverlay` registration leaks when the popup closes.
+#### ⏳ Remaining follow-ups
+
+- Non-compact `drawMiniMonsters` (quickinfo popups) still uses the indexed
+  MONS32 blit. Migration needs `dialog_quickinfo.cpp` to push its own
+  forwarding frame first, otherwise the fallback `addRGBAOverlay`
+  registration would leak when the popup closes.
+- Validate the hero-on-tile status-panel portrait bug ("missing after
+  certain transitions") is actually fixed now.
 
 ### ✅ Done — Phase 4 ArmyBar hosts
 

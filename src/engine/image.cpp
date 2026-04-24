@@ -445,6 +445,7 @@ namespace fheroes2
     int32_t Image::_dialogFwdOffsetX = 0;
     int32_t Image::_dialogFwdOffsetY = 0;
     float Image::_dialogFwdScale = 1.0f;
+    int32_t Image::_dialogFwdSuspendDepth = 0;
 
     namespace
     {
@@ -513,6 +514,18 @@ namespace fheroes2
         // Legacy API: fully clears the stack. Matches the old "no forwarding" state.
         getDialogFwdStack().clear();
         syncDialogFwdCache();
+    }
+
+    void Image::suspendDialogForwarding()
+    {
+        ++_dialogFwdSuspendDepth;
+    }
+
+    void Image::resumeDialogForwarding()
+    {
+        if ( _dialogFwdSuspendDepth > 0 ) {
+            --_dialogFwdSuspendDepth;
+        }
     }
 
     Image::Image( Image && image ) noexcept

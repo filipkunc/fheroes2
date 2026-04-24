@@ -1745,8 +1745,10 @@ namespace fheroes2
         }
 
         // Dialog forwarding: any non-zero pixel on Display in the battle area is dialog content.
-        // Convert it indexed→RGBA and write to the RGBA target surface.
-        if ( Image::_dialogFwdTarget != nullptr ) {
+        // Convert it indexed→RGBA and write to the RGBA target surface. Skip while suspended
+        // (e.g. mid-battle fade transitions) — the top frame stays on the stack and resumes
+        // automatically at the matching resume call.
+        if ( Image::_dialogFwdTarget != nullptr && Image::_dialogFwdSuspendDepth == 0 ) {
             const uint8_t * dispImage = image();
             const int32_t dispW = width();
             const int32_t offX = Image::_dialogFwdOffsetX;

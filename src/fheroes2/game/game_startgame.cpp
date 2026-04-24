@@ -748,6 +748,34 @@ fheroes2::GameMode Interface::AdventureMap::StartGame()
     _iconsPanel.hideIcons( ICON_ANY );
     _statusPanel.Reset();
 
+    // Screen-level RGBA composition for the whole adventure-map session. One full-screen RGBA
+    // surface is registered as the root overlay and a forwarding frame pushed onto the stack —
+    // every palette write during redraw() forwards into the surface, and hi-res custom-monster
+    // portraits (status panel, hero/castle icons, army bars from dialogs on top) direct-paint
+    // into this surface or into their own nested surface when a modal pushes its own frame.
+    //
+    // When battle runs nested within HumanTurn, Battle::Interface pushes its own frame on top
+    // of ours. During fade transitions inside battle, it uses suspendDialogForwarding /
+    // resumeDialogForwarding (stack-preserving) instead of the legacy clear/set. On battle exit
+    // it pops its frame, leaving ours intact. The battle also surgically removes only its own
+    // overlays, preserving our root.
+    fheroes2::Display & display = fheroes2::Display::instance();
+    fheroes2::RGBAImage screenRGBA( display.width(), display.height() );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, 0, 0, display.width(), display.height(), screenRGBA, 0, 0, 1.0f );
+    display.addRGBAOverlay( screenRGBA, 0, 0, display.width() );
+    fheroes2::Image::pushDialogForwarding( &screenRGBA, 0, 0, 1.0f );
+
+    struct AdventureMapForwardingGuard
+    {
+        fheroes2::RGBAImage * rgba;
+        ~AdventureMapForwardingGuard()
+        {
+            fheroes2::Image::popDialogForwarding();
+            fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
+            fheroes2::Display::instance().removeRGBAOverlay( rgba );
+        }
+    } forwardingGuard{ &screenRGBA };
+
     // Prepare for render the whole game interface with adventure map filled with fog as it was not uncovered by 'updateMapFogDirections()'.
     redraw( REDRAW_GAMEAREA | REDRAW_RADAR | REDRAW_ICONS | REDRAW_BUTTONS | REDRAW_STATUS | REDRAW_BORDER );
 
