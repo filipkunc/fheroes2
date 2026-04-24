@@ -327,10 +327,12 @@ void Heroes::MeetingDialog( Heroes & otherHero )
     // and direct-paint into this surface, correctly Z-ordered above the swap-window background
     // and surviving partial redraws (army count splits, slot drag/swap, etc.).
     const fheroes2::Rect meetingRect( cur_pt.x, cur_pt.y, backSprite.width(), backSprite.height() );
-    fheroes2::RGBAImage meetingRGBA( meetingRect.width, meetingRect.height );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, meetingRect.x, meetingRect.y, meetingRect.width, meetingRect.height, meetingRGBA, 0, 0, 1.0f );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage meetingRGBA( static_cast<int32_t>( static_cast<float>( meetingRect.width ) * rgbaScale ),
+                                     static_cast<int32_t>( static_cast<float>( meetingRect.height ) * rgbaScale ) );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, meetingRect.x, meetingRect.y, meetingRect.width, meetingRect.height, meetingRGBA, 0, 0, rgbaScale );
     display.addRGBAOverlay( meetingRGBA, meetingRect.x, meetingRect.y, meetingRect.width );
-    fheroes2::Image::pushDialogForwarding( &meetingRGBA, meetingRect.x, meetingRect.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &meetingRGBA, meetingRect.x, meetingRect.y, rgbaScale );
 
     struct MeetingForwardingGuard
     {

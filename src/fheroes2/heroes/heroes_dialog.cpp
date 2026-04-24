@@ -115,11 +115,13 @@ int Heroes::OpenDialog( const bool readonly, const bool fade, const bool disable
     // ArmyBar route through renderHiResMonsterPortrait, which detects the active forwarding
     // frame and queues a post-forwarding direct-paint into this surface — their hi-res pixels
     // survive the palette→RGBA loop and render inside the dialog at full resolution.
-    fheroes2::RGBAImage dialogRGBA( dialogWithShadowRoi.width, dialogWithShadowRoi.height );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogWithShadowRoi.width ) * rgbaScale ),
+                                    static_cast<int32_t>( static_cast<float>( dialogWithShadowRoi.height ) * rgbaScale ) );
     fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width, dialogWithShadowRoi.height, dialogRGBA, 0,
-                                             0, 1.0f );
+                                             0, rgbaScale );
     display.addRGBAOverlay( dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width );
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, rgbaScale );
 
     struct HeroDialogForwardingGuard
     {

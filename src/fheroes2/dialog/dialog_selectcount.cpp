@@ -109,11 +109,13 @@ bool Dialog::SelectCount( std::string header, const int32_t min, const int32_t m
     // The dialog's own MonsterDialogElement overlay is added BELOW so it renders
     // above the masking buffer — hi-res monster art stays visible at full fidelity.
     const fheroes2::Rect dialogFullRect = box.GetFullRect();
-    fheroes2::RGBAImage dialogRGBA( dialogFullRect.width, dialogFullRect.height );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFullRect.x, dialogFullRect.y, dialogFullRect.width, dialogFullRect.height, dialogRGBA, 0, 0, 1.0f );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogFullRect.width ) * rgbaScale ),
+                                    static_cast<int32_t>( static_cast<float>( dialogFullRect.height ) * rgbaScale ) );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFullRect.x, dialogFullRect.y, dialogFullRect.width, dialogFullRect.height, dialogRGBA, 0, 0, rgbaScale );
     display.addRGBAOverlay( dialogRGBA, dialogFullRect.x, dialogFullRect.y, dialogFullRect.width );
 
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFullRect.x, dialogFullRect.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFullRect.x, dialogFullRect.y, rgbaScale );
 
     // RAII guard so any future early return out of this function still pops the forwarding
     // frame and drops dialogRGBA's overlay / buffer-paint registrations before the RGBAImage

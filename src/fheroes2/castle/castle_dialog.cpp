@@ -332,11 +332,13 @@ Castle::CastleDialogReturnValue Castle::OpenDialog( const bool openConstructionW
     // sibling OpenDialog for a different castle and must not leave a stale forwarding frame on the
     // stack. The RAII guard below covers the remaining exit paths — the mid-event-loop early
     // return from the mage guild handler and the final return at end of function.
-    fheroes2::RGBAImage dialogRGBA( dialogWithShadowRoi.width, dialogWithShadowRoi.height );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogWithShadowRoi.width ) * rgbaScale ),
+                                    static_cast<int32_t>( static_cast<float>( dialogWithShadowRoi.height ) * rgbaScale ) );
     fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width, dialogWithShadowRoi.height, dialogRGBA,
-                                             0, 0, 1.0f );
+                                             0, 0, rgbaScale );
     display.addRGBAOverlay( dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width );
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, rgbaScale );
 
     struct CastleDialogForwardingGuard
     {

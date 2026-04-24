@@ -190,10 +190,12 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     // sub-modal, changing a count, etc.) without being wiped by the palette conversion.
     fheroes2::Display & display = fheroes2::Display::instance();
     const fheroes2::Rect battleOnlyRect = frameborder.totalArea();
-    fheroes2::RGBAImage setupRGBA( battleOnlyRect.width, battleOnlyRect.height );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, battleOnlyRect.x, battleOnlyRect.y, battleOnlyRect.width, battleOnlyRect.height, setupRGBA, 0, 0, 1.0f );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage setupRGBA( static_cast<int32_t>( static_cast<float>( battleOnlyRect.width ) * rgbaScale ),
+                                   static_cast<int32_t>( static_cast<float>( battleOnlyRect.height ) * rgbaScale ) );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, battleOnlyRect.x, battleOnlyRect.y, battleOnlyRect.width, battleOnlyRect.height, setupRGBA, 0, 0, rgbaScale );
     display.addRGBAOverlay( setupRGBA, battleOnlyRect.x, battleOnlyRect.y, battleOnlyRect.width );
-    fheroes2::Image::pushDialogForwarding( &setupRGBA, battleOnlyRect.x, battleOnlyRect.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &setupRGBA, battleOnlyRect.x, battleOnlyRect.y, rgbaScale );
 
     struct BattleOnlyForwardingGuard
     {

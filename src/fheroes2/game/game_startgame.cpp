@@ -760,10 +760,12 @@ fheroes2::GameMode Interface::AdventureMap::StartGame()
     // it pops its frame, leaving ours intact. The battle also surgically removes only its own
     // overlays, preserving our root.
     fheroes2::Display & display = fheroes2::Display::instance();
-    fheroes2::RGBAImage screenRGBA( display.width(), display.height() );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, 0, 0, display.width(), display.height(), screenRGBA, 0, 0, 1.0f );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage screenRGBA( static_cast<int32_t>( static_cast<float>( display.width() ) * rgbaScale ),
+                                    static_cast<int32_t>( static_cast<float>( display.height() ) * rgbaScale ) );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, 0, 0, display.width(), display.height(), screenRGBA, 0, 0, rgbaScale );
     display.addRGBAOverlay( screenRGBA, 0, 0, display.width() );
-    fheroes2::Image::pushDialogForwarding( &screenRGBA, 0, 0, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &screenRGBA, 0, 0, rgbaScale );
 
     struct AdventureMapForwardingGuard
     {

@@ -500,10 +500,12 @@ bool Battle::Arena::DialogBattleSummary( const Result & res, const std::vector<A
     // up, and our forwarding surface carries the dialog's own palette content without any
     // stale buffer paints from battle underneath.
     const fheroes2::Rect summaryTotal = background.totalArea();
-    fheroes2::RGBAImage summaryRGBA( summaryTotal.width, summaryTotal.height );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, summaryTotal.x, summaryTotal.y, summaryTotal.width, summaryTotal.height, summaryRGBA, 0, 0, 1.0f );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage summaryRGBA( static_cast<int32_t>( static_cast<float>( summaryTotal.width ) * rgbaScale ),
+                                     static_cast<int32_t>( static_cast<float>( summaryTotal.height ) * rgbaScale ) );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, summaryTotal.x, summaryTotal.y, summaryTotal.width, summaryTotal.height, summaryRGBA, 0, 0, rgbaScale );
     display.addRGBAOverlay( summaryRGBA, summaryTotal.x, summaryTotal.y, summaryTotal.width );
-    fheroes2::Image::pushDialogForwarding( &summaryRGBA, summaryTotal.x, summaryTotal.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &summaryRGBA, summaryTotal.x, summaryTotal.y, rgbaScale );
 
     struct SummaryForwardingGuard
     {

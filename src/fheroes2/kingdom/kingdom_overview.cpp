@@ -783,10 +783,12 @@ void Kingdom::openOverviewDialog()
     // persistent post-forwarding paints on this surface — correctly Z-ordered above the list rows
     // and surviving partial redraws triggered by scrolling or swapping armies.
     const fheroes2::Rect kingdomRect = background.totalArea();
-    fheroes2::RGBAImage kingdomRGBA( kingdomRect.width, kingdomRect.height );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, kingdomRect.x, kingdomRect.y, kingdomRect.width, kingdomRect.height, kingdomRGBA, 0, 0, 1.0f );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage kingdomRGBA( static_cast<int32_t>( static_cast<float>( kingdomRect.width ) * rgbaScale ),
+                                     static_cast<int32_t>( static_cast<float>( kingdomRect.height ) * rgbaScale ) );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, kingdomRect.x, kingdomRect.y, kingdomRect.width, kingdomRect.height, kingdomRGBA, 0, 0, rgbaScale );
     display.addRGBAOverlay( kingdomRGBA, kingdomRect.x, kingdomRect.y, kingdomRect.width );
-    fheroes2::Image::pushDialogForwarding( &kingdomRGBA, kingdomRect.x, kingdomRect.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &kingdomRGBA, kingdomRect.x, kingdomRect.y, rgbaScale );
 
     // RAII guard: pops forwarding and removes overlay / buffer-paint registrations targeting this
     // surface before kingdomRGBA destructs. The function has a single break-out-of-loop exit,

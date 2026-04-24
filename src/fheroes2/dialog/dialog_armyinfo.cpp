@@ -582,11 +582,13 @@ int Dialog::ArmyInfo( const Troop & troop, int flags, bool isReflected, const in
     // redraws update the buffer. The dialog's own hi-res monster overlay is registered
     // AFTER this one and therefore renders on top — visible at full resolution.
     const fheroes2::Rect dialogFootprint( shadowOffset.x, dialogOffset.y, sprite_dialog.width() - shadowShift.x, sprite_dialog.height() + shadowShift.y );
-    fheroes2::RGBAImage dialogRGBA( dialogFootprint.width, dialogFootprint.height );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogFootprint.width ) * rgbaScale ),
+                                    static_cast<int32_t>( static_cast<float>( dialogFootprint.height ) * rgbaScale ) );
     fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width, dialogFootprint.height, dialogRGBA, 0, 0,
-                                             1.0f );
+                                             rgbaScale );
     display.addRGBAOverlay( dialogRGBA, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width );
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFootprint.x, dialogFootprint.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFootprint.x, dialogFootprint.y, rgbaScale );
 
     // RAII guard fires on EVERY exit path (including the Dialog::ZERO early return in the
     // right-click-preview branch below). An unbalanced pop leaves the forwarding stack with

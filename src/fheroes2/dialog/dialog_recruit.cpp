@@ -286,11 +286,13 @@ Troop Dialog::RecruitMonster( const Monster & monster0, const uint32_t available
     // in its rect), and live-forward subsequent palette writes so partial redraws
     // stay in sync. The dialog's hi-res monster overlays register AFTER this buffer
     // and therefore render on top at full fidelity.
-    fheroes2::RGBAImage dialogRGBA( roi.width, roi.height );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, roi.x, roi.y, roi.width, roi.height, dialogRGBA, 0, 0, 1.0f );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( roi.width ) * rgbaScale ),
+                                    static_cast<int32_t>( static_cast<float>( roi.height ) * rgbaScale ) );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, roi.x, roi.y, roi.width, roi.height, dialogRGBA, 0, 0, rgbaScale );
     display.addRGBAOverlay( dialogRGBA, roi.x, roi.y, roi.width );
 
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, roi.x, roi.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, roi.x, roi.y, rgbaScale );
 
     // RAII guard: any early return out of this function pops the forwarding frame and drops
     // dialogRGBA's overlay / buffer-paint registrations before the RGBAImage destructs.

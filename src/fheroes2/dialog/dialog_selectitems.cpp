@@ -1182,11 +1182,13 @@ Monster Dialog::selectMonster( const int32_t monsterId )
     // The dialog's own list-item overlays register AFTER this buffer and render on top.
     fheroes2::Display & display = fheroes2::Display::instance();
     const fheroes2::Rect dialogFootprint = listbox.getBackgroundArea();
-    fheroes2::RGBAImage dialogRGBA( dialogFootprint.width, dialogFootprint.height );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width, dialogFootprint.height, dialogRGBA, 0, 0, 1.0f );
+    const float rgbaScale = display.getPhysicalScale();
+    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogFootprint.width ) * rgbaScale ),
+                                    static_cast<int32_t>( static_cast<float>( dialogFootprint.height ) * rgbaScale ) );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width, dialogFootprint.height, dialogRGBA, 0, 0, rgbaScale );
     display.addRGBAOverlay( dialogRGBA, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width );
 
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFootprint.x, dialogFootprint.y, 1.0f );
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFootprint.x, dialogFootprint.y, rgbaScale );
 
     // RAII guard: pop + overlay/paint cleanup fires on any return path.
     struct DialogSurfaceGuard

@@ -264,6 +264,26 @@ namespace fheroes2
             return _screenSize;
         }
 
+        // Ratio of physical screen pixels to game pixels. An RGBA surface sized to
+        // (gameDim * scale) forwards and direct-paints at full display resolution, so
+        // hi-res source art (e.g. 460px monster PNGs) downscales once straight to the
+        // physical target (say 303 physical pixels for a 101-game-pixel portrait on a
+        // 3x display) instead of twice (460→101 game, then 101→303 when the overlay
+        // SDL texture is upscaled to screen). Bottoms out at 1.0 for same-resolution
+        // or windowed-mode setups where game and physical pixels match.
+        float getPhysicalScale() const
+        {
+            const int32_t gameW = width();
+            const int32_t gameH = height();
+            if ( gameW <= 0 || gameH <= 0 ) {
+                return 1.0f;
+            }
+            const float scaleX = static_cast<float>( _screenSize.width ) / static_cast<float>( gameW );
+            const float scaleY = static_cast<float>( _screenSize.height ) / static_cast<float>( gameH );
+            const float scale = std::min( scaleX, scaleY );
+            return ( scale < 1.0f ) ? 1.0f : scale;
+        }
+
         // RGBA overlay support for true-color rendering.
         //
         // Each overlay is tagged with the current forwarding-stack depth. `shadowsParent=true`
