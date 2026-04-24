@@ -148,6 +148,15 @@ namespace Dialog
             return area;
         }
 
+        // Full visual footprint of the dialog (frame + decorative borders), matching
+        // the region the internal ImageRestorer captured on construction. Use this
+        // rect when you need to cover the whole dialog, e.g. when masking RGBA
+        // overlays from the screen behind the dialog.
+        fheroes2::Rect GetFullRect() const
+        {
+            return _restorer != nullptr ? _restorer->rect() : area;
+        }
+
         void redraw();
 
         static int32_t getButtonAreaHeight();

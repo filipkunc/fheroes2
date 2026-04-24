@@ -109,6 +109,32 @@ int Heroes::OpenDialog( const bool readonly, const bool fade, const bool disable
     fheroes2::Blit( backgroundImage, display, dialogRoi.x, dialogRoi.y );
     fheroes2::Blit( fheroes2::AGG::GetICN( Settings::Get().isEvilInterfaceEnabled() ? ICN::HEROEXTE : ICN::HEROEXTG, 0 ), display, dialogRoi.x, dialogRoi.y );
 
+    // Screen-level RGBA composition: snapshot the dialog's current palette content, register
+    // it as the single overlay for the whole dialog, and push a forwarding frame so subsequent
+    // palette writes continuously update the RGBA surface. Custom-monster portraits drawn by
+    // ArmyBar route through renderHiResMonsterPortrait, which detects the active forwarding
+    // frame and queues a post-forwarding direct-paint into this surface — their hi-res pixels
+    // survive the palette→RGBA loop and render inside the dialog at full resolution.
+    fheroes2::RGBAImage dialogRGBA( dialogWithShadowRoi.width, dialogWithShadowRoi.height );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width, dialogWithShadowRoi.height, dialogRGBA, 0,
+                                             0, 1.0f );
+    display.addRGBAOverlay( dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width );
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, 1.0f );
+
+    struct HeroDialogForwardingGuard
+    {
+        fheroes2::RGBAImage * rgba;
+        ~HeroDialogForwardingGuard()
+        {
+            fheroes2::Image::popDialogForwarding();
+            // Drop any widget-registered paints that target this surface BEFORE the surface
+            // goes out of scope — otherwise Display::render() would dereference a dangling
+            // dst pointer on the next frame.
+            fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
+            fheroes2::Display::instance().removeRGBAOverlay( rgba );
+        }
+    } forwardingGuard{ &dialogRGBA };
+
     // Hero portrait.
     const fheroes2::Rect portPos( dialogRoi.x + 49, dialogRoi.y + 31, 101, 93 );
     if ( isEditor && !isValidId( _portrait ) ) {

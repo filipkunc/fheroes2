@@ -17,7 +17,6 @@ class PropertiesPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumWidth(180)
-        self.setMaximumWidth(240)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)

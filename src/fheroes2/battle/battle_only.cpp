@@ -182,6 +182,30 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
 
     const fheroes2::Point cur_pt( frameborder.activeArea().x, frameborder.activeArea().y );
 
+    // Screen-level RGBA composition for this setup dialog: snapshot the window's current
+    // palette content into a buffer, register it as the single overlay for the dialog, and
+    // push a forwarding frame so subsequent palette writes update the buffer. Custom-monster
+    // portraits that ArmyBar registers via renderHiResMonsterPortrait will land as persistent
+    // post-forwarding paints in this buffer — they stay across partial renders (opening a
+    // sub-modal, changing a count, etc.) without being wiped by the palette conversion.
+    fheroes2::Display & display = fheroes2::Display::instance();
+    const fheroes2::Rect battleOnlyRect = frameborder.totalArea();
+    fheroes2::RGBAImage setupRGBA( battleOnlyRect.width, battleOnlyRect.height );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, battleOnlyRect.x, battleOnlyRect.y, battleOnlyRect.width, battleOnlyRect.height, setupRGBA, 0, 0, 1.0f );
+    display.addRGBAOverlay( setupRGBA, battleOnlyRect.x, battleOnlyRect.y, battleOnlyRect.width );
+    fheroes2::Image::pushDialogForwarding( &setupRGBA, battleOnlyRect.x, battleOnlyRect.y, 1.0f );
+
+    struct BattleOnlyForwardingGuard
+    {
+        fheroes2::RGBAImage * rgba;
+        ~BattleOnlyForwardingGuard()
+        {
+            fheroes2::Image::popDialogForwarding();
+            fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
+            fheroes2::Display::instance().removeRGBAOverlay( rgba );
+        }
+    } forwardingGuard{ &setupRGBA };
+
     armyInfo[0].portraitRoi = { cur_pt.x + 93, cur_pt.y + 72, 101, 93 };
     armyInfo[1].portraitRoi = { cur_pt.x + 445, cur_pt.y + 72, 101, 93 };
 
@@ -213,7 +237,6 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
         armyInfo[0].isHeroPresent = true;
     }
 
-    fheroes2::Display & display = fheroes2::Display::instance();
     const fheroes2::Sprite & background = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
     fheroes2::Copy( background, 0, 0, display, cur_pt.x, cur_pt.y, background.width(), background.height() );
 

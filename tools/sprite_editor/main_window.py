@@ -5,12 +5,12 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QDockWidget, QToolBar, QComboBox, QPushButton,
     QSpinBox, QLabel, QSlider, QFileDialog, QMessageBox, QStatusBar,
-    QCheckBox, QWidget, QHBoxLayout
+    QCheckBox, QWidget, QHBoxLayout, QTabWidget, QSplitter
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QAction, QKeySequence
 
-from .models.monster_config import MonsterConfig, load_manifest
+from .models.monster_config import MonsterConfig, load_manifest, update_manifest_entry, remove_manifest_entry
 from .models.bin_parser import (
     MonsterAnimInfo, AnimType, ANIM_DISPLAY_NAMES, COMPOSITE_ANIMATIONS,
     load_bin_file, parse_bin,
@@ -69,6 +69,7 @@ class MainWindow(QMainWindow):
         self.resize(1200, 800)
 
         # State
+        self._settings = QSettings("fheroes2", "sprite_editor")
         self._monsters = load_manifest()
         self._current_config: MonsterConfig | None = None
         self._custom_sprites: SpriteCollection | None = None
@@ -85,6 +86,7 @@ class MainWindow(QMainWindow):
         self._setup_toolbar()
         self._setup_menu()
         self._setup_statusbar()
+        self._restore_persistent_state()
 
         # Load thumbnails and select first monster
         self._load_monster_thumbnails()
@@ -92,57 +94,93 @@ class MainWindow(QMainWindow):
             first = list(self._monsters.keys())[0]
             self._monster_list.select_monster(first)
 
-    def _setup_ui(self):
-        # Central canvas
-        self._canvas = AnimationCanvas()
-        self.setCentralWidget(self._canvas)
+    def _restore_persistent_state(self):
+        """Reload last-used bg color + reference image from QSettings, then
+        connect change signals so future edits are persisted."""
+        bg = self._settings.value("gemini/bg_color")
+        if isinstance(bg, (list, tuple)) and len(bg) == 3:
+            try:
+                self._gemini_panel.set_bg_color(tuple(int(c) for c in bg))
+            except (TypeError, ValueError):
+                pass
 
-        # Left dock: monster list
+        ref_path = self._settings.value("gemini/reference_path", "", type=str)
+        if ref_path and Path(ref_path).exists():
+            self._gemini_panel.load_reference_image(ref_path)
+
+        self._gemini_panel.bg_color_changed.connect(self._save_bg_color)
+        self._gemini_panel.reference_changed.connect(self._save_reference_path)
+
+    def _save_bg_color(self, rgb: tuple):
+        self._settings.setValue("gemini/bg_color", list(rgb))
+
+    def _save_reference_path(self, path: str):
+        self._settings.setValue("gemini/reference_path", path)
+
+    def _persist_current_prompt(self):
+        """Write the current prompt back to the loaded monster's manifest entry."""
+        if not self._current_config:
+            return
+        prompt = self._gemini_panel._prompt_edit.toPlainText()
+        if prompt == self._current_config.prompt:
+            return
+        self._current_config.prompt = prompt
+        try:
+            update_manifest_entry(self._current_config.name, {"prompt": prompt})
+        except OSError as e:
+            self._status.showMessage(f"Could not save prompt: {e}")
+
+    def closeEvent(self, event):
+        self._persist_current_prompt()
+        super().closeEvent(event)
+
+    def _setup_ui(self):
+        # Left dock (shared across tabs): monster list
         self._monster_list = MonsterListWidget()
         self._monster_list.set_monsters(self._monsters)
         self._monster_list.monster_selected.connect(self._load_monster)
         self._monster_list.custom_created.connect(self._on_custom_created)
+        self._monster_list.custom_deleted.connect(self._on_custom_deleted)
         monster_dock = QDockWidget("Monsters")
         monster_dock.setWidget(self._monster_list)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, monster_dock)
 
-        # Left dock: frame list (tabified below monsters)
+        # Create tab-owned widgets
+        self._canvas = AnimationCanvas()
         self._frame_list = FrameListWidget()
-        frame_dock = QDockWidget("Frames")
-        frame_dock.setWidget(self._frame_list)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, frame_dock)
-
         self._frame_list.frame_selected.connect(self._on_frame_selected)
         self._frame_list.frames_selected.connect(self._on_frames_selected)
-
-        # Right dock: properties
         self._properties = PropertiesPanel()
-        props_dock = QDockWidget("Properties")
-        props_dock.setWidget(self._properties)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, props_dock)
-
         self._properties.offset_changed.connect(self._on_offset_changed)
         self._canvas.offset_changed.connect(self._on_offset_changed)
-
-        # Bottom dock: sprite sheet view
         self._sheet_view = SpritesheetView()
-        sheet_dock = QDockWidget("Sprite Sheet")
-        sheet_dock.setWidget(self._sheet_view)
-        sheet_dock.setVisible(False)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, sheet_dock)
-        self._sheet_dock = sheet_dock
-
-        # Bottom dock: Gemini generation panel
         self._gemini_panel = GeminiPanel()
-        gemini_dock = QDockWidget("Gemini Generation")
-        gemini_dock.setWidget(self._gemini_panel)
-        gemini_dock.setVisible(False)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, gemini_dock)
-        self._gemini_dock = gemini_dock
-
         self._gemini_panel.frames_accepted.connect(self._on_gemini_frames_accepted)
         self._gemini_panel.sheet_built.connect(self._on_sheet_built)
         self._gemini_panel.output_received.connect(self._on_sheet_output)
+
+        # Edit Frames tab: frame list | canvas | properties
+        edit_splitter = QSplitter(Qt.Orientation.Horizontal)
+        edit_splitter.addWidget(self._frame_list)
+        edit_splitter.addWidget(self._canvas)
+        edit_splitter.addWidget(self._properties)
+        edit_splitter.setStretchFactor(0, 0)
+        edit_splitter.setStretchFactor(1, 1)
+        edit_splitter.setStretchFactor(2, 0)
+        edit_splitter.setSizes([200, 800, 220])
+
+        # Generate tab: Gemini panel | SpritesheetView
+        gen_splitter = QSplitter(Qt.Orientation.Horizontal)
+        gen_splitter.addWidget(self._gemini_panel)
+        gen_splitter.addWidget(self._sheet_view)
+        gen_splitter.setStretchFactor(0, 0)
+        gen_splitter.setStretchFactor(1, 1)
+        gen_splitter.setSizes([540, 660])
+
+        self._tabs = QTabWidget()
+        self._tabs.addTab(edit_splitter, "Edit Frames")
+        self._tabs.addTab(gen_splitter, "Generate with Gemini")
+        self.setCentralWidget(self._tabs)
 
     def _setup_toolbar(self):
         toolbar = QToolBar("Main")
@@ -244,15 +282,15 @@ class MainWindow(QMainWindow):
 
         # View menu
         view_menu = menu.addMenu("&View")
-        sheet_action = QAction("Sprite &Sheet Panel", self)
-        sheet_action.setCheckable(True)
-        sheet_action.toggled.connect(self._sheet_dock.setVisible)
-        view_menu.addAction(sheet_action)
+        edit_tab_action = QAction("&Edit Frames Tab", self)
+        edit_tab_action.setShortcut(QKeySequence("Ctrl+1"))
+        edit_tab_action.triggered.connect(lambda: self._tabs.setCurrentIndex(0))
+        view_menu.addAction(edit_tab_action)
 
-        gemini_action = QAction("&Gemini Panel", self)
-        gemini_action.setCheckable(True)
-        gemini_action.toggled.connect(self._gemini_dock.setVisible)
-        view_menu.addAction(gemini_action)
+        gen_tab_action = QAction("&Generate with Gemini Tab", self)
+        gen_tab_action.setShortcut(QKeySequence("Ctrl+2"))
+        gen_tab_action.triggered.connect(lambda: self._tabs.setCurrentIndex(1))
+        view_menu.addAction(gen_tab_action)
 
     def _load_monster_thumbnails(self):
         """Extract MONS32 thumbnails from AGG and apply to the monster list."""
@@ -379,7 +417,11 @@ class MainWindow(QMainWindow):
         if not config:
             return
 
+        # Persist the prompt of the outgoing monster before switching away.
+        self._persist_current_prompt()
+
         self._current_config = config
+        self._gemini_panel._prompt_edit.setPlainText(config.prompt)
         self._player.stop()
         self._play_btn.setChecked(False)
 
@@ -771,16 +813,11 @@ class MainWindow(QMainWindow):
 
     def _on_custom_created(self, new_config, prompt: str):
         """Handle new custom monster creation."""
-        import json
+        new_config.prompt = prompt
 
-        # Add to in-memory config
+        # Add to in-memory config and persist to manifest
         self._monsters[new_config.name] = new_config
-
-        # Save to manifest
-        manifest_path = Path(__file__).parent / "resources" / "monster_manifest.json"
-        with open(manifest_path) as f:
-            manifest = json.load(f)
-        manifest[new_config.name] = {
+        update_manifest_entry(new_config.name, {
             "prefix": new_config.prefix,
             "base_icn": new_config.base_icn,
             "bin_file": new_config.bin_file,
@@ -788,30 +825,70 @@ class MainWindow(QMainWindow):
             "base_monster": new_config.base_monster,
             "faction": "Custom",
             "has_custom_sprites": True,
-        }
-        with open(manifest_path, "w") as f:
-            json.dump(manifest, f, indent=2)
+            "prompt": prompt,
+        })
+
+        # Write the frame-0 placeholder PNG the engine uses as a presence probe
+        # for the custom sprite set (see loadCustomSpritesFromPNG / GetRGBACustomFrames).
+        self._ensure_placeholder_png(new_config.prefix)
 
         # Refresh monster list
         self._monster_list.set_monsters(self._monsters)
         self._load_monster_thumbnails()
 
-        # Select the new monster and load it
+        # Select the new monster and load it (this populates the prompt via _load_monster)
         self._monster_list.select_monster(new_config.name)
 
-        # Set up Gemini panel with the prompt
-        if prompt:
-            self._gemini_panel._prompt_edit.setPlainText(prompt)
-
-        # Open Gemini panel
-        self._gemini_dock.setVisible(True)
+        # Switch to Generate tab
+        self._tabs.setCurrentIndex(1)
 
         self._status.showMessage(f"Created custom monster '{new_config.base_monster}' from {new_config.base_icn}")
+
+    @staticmethod
+    def _ensure_placeholder_png(prefix: str) -> None:
+        """Create a 1x1 transparent {prefix}_000.png if it doesn't already exist.
+
+        The game's loadCustomSpritesFromPNG probes frame 0 to decide whether a
+        custom sprite set is present at all; without the placeholder the engine
+        falls back to the base ICN even when frames 1..N are on disk.
+        """
+        from PIL import Image
+
+        SPRITES_DIR.mkdir(parents=True, exist_ok=True)
+        placeholder = SPRITES_DIR / f"{prefix}_000.png"
+        if placeholder.exists():
+            return
+        Image.new("RGBA", (1, 1), (0, 0, 0, 0)).save(placeholder)
+
+    def _on_custom_deleted(self, name: str):
+        """Remove a custom monster from the manifest and refresh the UI."""
+        if name not in self._monsters:
+            return
+
+        # Drop the outgoing prompt-persist attempt — the entry is about to vanish.
+        if self._current_config and self._current_config.name == name:
+            self._current_config = None
+
+        del self._monsters[name]
+        try:
+            remove_manifest_entry(name)
+        except OSError as e:
+            self._status.showMessage(f"Could not remove from manifest: {e}")
+            return
+
+        self._monster_list.set_monsters(self._monsters)
+        self._load_monster_thumbnails()
+
+        # Pick a fallback monster so the editor isn't in a dangling state.
+        if self._monsters:
+            fallback = next(iter(self._monsters))
+            self._monster_list.select_monster(fallback)
+
+        self._status.showMessage(f"Removed custom monster '{name}'")
 
     def _on_sheet_built(self, image, cells, label):
         """Show built input sheet in the Sprite Sheet panel."""
         self._sheet_view.set_sheet(image, cells, f"Input: {label}")
-        self._sheet_dock.setVisible(True)
 
     def _on_sheet_output(self, image, cells, label):
         """Show Gemini output sheet in the Sprite Sheet panel."""

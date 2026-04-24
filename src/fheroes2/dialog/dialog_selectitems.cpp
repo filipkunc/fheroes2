@@ -99,12 +99,20 @@ namespace
 
         using Dialog::ItemSelectionWindow::ActionListPressRight;
 
-        // Drop any stale custom-monster overlays before redrawing visible rows. Rows that are no
-        // longer visible (after scrolling) won't re-register their overlay, so clearing here is
-        // the correct moment to shed them.
+        ~SelectEnumMonster() override
+        {
+            // Drop overlays this dialog registered without touching peers (e.g. ArmyBar overlays
+            // behind the dialog). Using ClearAllCustomMonsterRGBAOverlays here or in Redraw()
+            // would wipe those too, causing the parent screen's custom-monster portraits to
+            // disappear as soon as this list was shown.
+            removeOwnedOverlays();
+        }
+
+        // Remove only the overlays WE registered last time, then let the base class redraw.
+        // Each RedrawItem call records its overlay in _rowOverlays for the next pre-pass.
         void Redraw() override
         {
-            fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
+            removeOwnedOverlays();
             Dialog::ItemSelectionWindow::Redraw();
         }
 
@@ -132,7 +140,8 @@ namespace
                 }
                 const int32_t overlayX = iconBoxX + ( iconBoxSize - overlayW ) / 2;
                 const int32_t overlayY = iconBoxY + ( iconBoxSize - overlayH );
-                fheroes2::Display::instance().addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+                fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+                _rowOverlays.push_back( { portrait, overlayX, overlayY } );
             }
         }
 
@@ -145,6 +154,25 @@ namespace
             }
 
             Dialog::ArmyInfo( Troop( monster, 0 ), Dialog::ZERO );
+        }
+
+    protected:
+        struct RowOverlay
+        {
+            const fheroes2::RGBAImage * image;
+            int32_t x;
+            int32_t y;
+        };
+        std::vector<RowOverlay> _rowOverlays;
+
+        void removeOwnedOverlays()
+        {
+            fheroes2::Display & display = fheroes2::Display::instance();
+            for ( const RowOverlay & row : _rowOverlays ) {
+                display.removeRGBAOverlayAt( row.image, row.x, row.y );
+                display.removeRGBABufferPaintAt( row.image, row.x, row.y );
+            }
+            _rowOverlays.clear();
         }
 
     private:
@@ -1167,6 +1195,32 @@ Monster Dialog::selectMonster( const int32_t monsterId )
     if ( monsterId != Monster::UNKNOWN ) {
         listbox.SetCurrent( monsterId );
     }
+
+    // Mirror battle's RGBA compositing: snapshot the dialog footprint into a local RGBA
+    // buffer, register it as its own overlay so it masks peer ArmyBar overlays (e.g. a
+    // hero's dachshunds) that would otherwise bleed through into this modal, and forward
+    // subsequent palette writes inside the footprint so partial redraws stay in sync.
+    // The dialog's own list-item overlays register AFTER this buffer and render on top.
+    fheroes2::Display & display = fheroes2::Display::instance();
+    const fheroes2::Rect dialogFootprint = listbox.getBackgroundArea();
+    fheroes2::RGBAImage dialogRGBA( dialogFootprint.width, dialogFootprint.height );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width, dialogFootprint.height, dialogRGBA, 0, 0, 1.0f );
+    display.addRGBAOverlay( dialogRGBA, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width );
+
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFootprint.x, dialogFootprint.y, 1.0f );
+
+    // RAII guard: pop + overlay/paint cleanup fires on any return path.
+    struct DialogSurfaceGuard
+    {
+        fheroes2::Display * display;
+        fheroes2::RGBAImage * rgba;
+        ~DialogSurfaceGuard()
+        {
+            fheroes2::Image::popDialogForwarding();
+            display->removeRGBABufferPaintsForTarget( rgba );
+            display->removeRGBAOverlay( rgba );
+        }
+    } dialogSurfaceGuard{ &display, &dialogRGBA };
 
     const int32_t result = listbox.selectItemsEventProcessing();
 

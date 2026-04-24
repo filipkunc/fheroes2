@@ -4,8 +4,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QAbstractItemView, QPushButton,
-    QVBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit, QDialogButtonBox,
-    QLabel,
+    QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit,
+    QDialogButtonBox, QLabel, QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QIcon, QPixmap
@@ -79,6 +79,7 @@ class MonsterListWidget(QWidget):
 
     monster_selected = Signal(str)  # emits monster key
     custom_created = Signal(MonsterConfig, str)  # (new config, prompt)
+    custom_deleted = Signal(str)  # emits monster key being removed
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -91,10 +92,18 @@ class MonsterListWidget(QWidget):
         self._list.currentItemChanged.connect(self._on_item_changed)
         layout.addWidget(self._list)
 
+        btn_row = QHBoxLayout()
         self._create_btn = QPushButton("Create Custom")
         self._create_btn.setToolTip("Create a new custom monster from the selected base")
         self._create_btn.clicked.connect(self._on_create_custom)
-        layout.addWidget(self._create_btn)
+        btn_row.addWidget(self._create_btn)
+
+        self._delete_btn = QPushButton("Delete Custom")
+        self._delete_btn.setToolTip("Remove the selected custom monster from the manifest")
+        self._delete_btn.setEnabled(False)
+        self._delete_btn.clicked.connect(self._on_delete_custom)
+        btn_row.addWidget(self._delete_btn)
+        layout.addLayout(btn_row)
 
         self._monsters: dict[str, MonsterConfig] = {}
 
@@ -153,8 +162,11 @@ class MonsterListWidget(QWidget):
 
     def _on_item_changed(self, current: QListWidgetItem, previous: QListWidgetItem):
         if current is None:
+            self._delete_btn.setEnabled(False)
             return
         name = current.data(Qt.ItemDataRole.UserRole)
+        cfg = self._monsters.get(name) if name else None
+        self._delete_btn.setEnabled(bool(cfg and cfg.faction == "Custom"))
         if name:
             self.monster_selected.emit(name)
 
@@ -174,3 +186,22 @@ class MonsterListWidget(QWidget):
 
         new_cfg = dialog.new_config()
         self.custom_created.emit(new_cfg, dialog.prompt)
+
+    def _on_delete_custom(self):
+        key = self._selected_key()
+        if not key:
+            return
+        cfg = self._monsters.get(key)
+        if not cfg or cfg.faction != "Custom":
+            return
+
+        label = cfg.display_name or cfg.base_monster or key
+        reply = QMessageBox.question(
+            self, "Delete custom monster",
+            f"Remove '{label}' from the manifest?\n\n"
+            f"Sprite PNGs at files/data/sprites/{cfg.prefix}_*.png will stay on disk.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.custom_deleted.emit(key)

@@ -511,5 +511,25 @@
     "base_monster": "Gargoyle",
     "faction": "Custom",
     "has_custom_sprites": true
+  },
+  "fire_elf": {
+    "prefix": "fire_elf",
+    "base_icn": "PHOENIX",
+    "bin_file": "PHOENFRM.BIN",
+    "display_name": "Fire Elf",
+    "base_monster": "Phoenix",
+    "faction": "Custom",
+    "has_custom_sprites": true,
+    "prompt": "Transform into a female Dark Fire Elf based on the reference image. Try to adhere more to the reference image."
+  },
+  "dachshund": {
+    "prefix": "dachshund",
+    "base_icn": "WOLF",
+    "bin_file": "WOLF_FRM.BIN",
+    "display_name": "Dachshund",
+    "base_monster": "Wolf",
+    "faction": "Custom",
+    "has_custom_sprites": true,
+    "prompt": "Transform into a cute female Dachshund based on the reference image"
   }
 }

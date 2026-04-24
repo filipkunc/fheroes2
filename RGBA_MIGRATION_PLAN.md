@@ -1,0 +1,149 @@
+# Screen-level RGBA composition migration — plan & status
+
+## Why
+
+Custom monster portraits (Thor, Succubus, Dachshund, …) are hi-res PNGs that shouldn't go through the engine's 256-colour palette path. Originally each portrait was registered via `Display::addRGBAOverlay`, which is an SDL-texture-layer overlay painted on top of everything. That produced a long tail of Z-order bugs — overlays bleeding through modals, overlays getting wiped by `ClearAllCustomMonsterRGBAOverlays`, multi-slot / multi-bar portraits stomping each other, portraits missing after dismissal, etc.
+
+The target architecture mirrors what `Battle::Interface` already does with `_mainSurfaceRGBA`:
+
+1. **Each screen owns one RGBA surface** sized to its viewport.
+2. **`setDialogForwarding` pipes palette writes** from that screen into the RGBA surface at render time (indexed → RGBA conversion).
+3. **Hi-res portraits blit directly** into the surface via `BlitRGBAScaled`, bypassing palette quantization.
+4. **One `addRGBAOverlay(screenRGBA, …)`** at the root draws the composited result.
+5. **Modal dialogs stack their own smaller RGBA** on top via the forwarding stack. When popped, they stop writing to their surface and their overlay is removed.
+
+Net effect: Z-ordering by construction, zero ad-hoc overlay masking, no more `ClearAllCustomMonsterRGBAOverlays` needed for custom portraits.
+
+## Status snapshot (2026-04)
+
+### ✅ Done — Phase 1 infrastructure
+
+| Piece | File | Purpose |
+|---|---|---|
+| Stack-based forwarding | `src/engine/image.h`, `src/engine/image.cpp` | `pushDialogForwarding` / `popDialogForwarding` / `getActiveDialogForwarding`. Legacy `set`/`clear` kept as shims so `battle_interface.cpp` keeps working. `_dialogFwdTarget` etc. are kept in sync with top of stack so `screen.cpp`'s forwarding loop still reads them directly. |
+| `ScopedDialogForwarding` RAII | `src/engine/image.h` | Push/pop only. |
+| `renderHiResMonsterPortrait` helper | `src/fheroes2/agg/agg_image.h`, `agg_image.cpp` | Single entry point every hi-res portrait caller funnels through. If forwarding is active → `registerRGBABufferPaint` for post-forwarding direct-paint into the target surface. Otherwise → `Display::addRGBAOverlay` fallback (preserved so unmigrated screens keep working). |
+| Persistent `RGBABufferPaint` pool | `src/engine/screen.h`, `src/engine/screen.cpp` | `registerRGBABufferPaint`, `removeRGBABufferPaintAt(src, gameX, gameY)`, `removeRGBABufferPaintsForTarget(dst)`. Identity is **game-space** coords (so widgets remove what they added without knowing surface math). Applied after the palette→RGBA forwarding loop in `Display::render()`. |
+
+### ✅ Done — Phase 2 first migration
+
+| Screen / widget | Status |
+|---|---|
+| Hero dialog (`src/fheroes2/heroes/heroes_dialog.cpp`) | Owns `dialogRGBA`, pushes forwarding, single overlay. Local `HeroDialogForwardingGuard` RAII handles teardown across all 4 return paths. |
+| Battle Only setup (`src/fheroes2/battle/battle_only.cpp`) | Same pattern; local `BattleOnlyForwardingGuard`. |
+| Modals — ArmyInfo, SelectCount, RecruitMonster, selectMonster | Each owns a sub-rect `dialogRGBA`, pushes forwarding, local `DialogSurfaceGuard` handles cleanup. |
+| `ArmyBar::RedrawItem` | Both mini-sprite and full-sprite branches route custom portraits through `renderHiResMonsterPortrait`. |
+| `SelectEnumMonster::RedrawItem` | Same. |
+
+### 🔥 Known architectural constraint
+
+The forwarding loop only overwrites RGBA where palette > 0. That means direct-paints into the surface survive *only* where the palette underneath is index 0. For `ArmyBar` slots the slot background is currently non-zero palette (STRIP sprite), so the forwarding pass overwrites the slot region with palette pixels each frame. The post-forwarding paint queue drains **after** forwarding, which is what makes the portrait re-appear on top. This works as long as the widget re-registers the paint on every `RedrawItem`.
+
+Consequence: if a widget doesn't redraw when its slot's palette is dirtied (e.g. a partial redraw from an unrelated widget forwards the slot's palette back in), the RGBA version of the portrait survives because the paint is persistent in `_rgbaBufferPaints` and re-applied every frame. ✅
+
+### 🐛 Important gotcha uncovered — **use RAII for push/pop**
+
+Every manual `pushDialogForwarding` followed by a `popDialogForwarding` further down the function is a **crash risk** if there's any early return between them. Early returns that skip the pop leave a forwarding frame on the stack with a dangling `RGBAImage*` — the next `Display::render()` faults dereferencing it.
+
+Historical example: `Dialog::ArmyInfo` had a `return Dialog::ZERO;` in the right-click-preview branch between push and pop. Dismissing armies in Battle Only reliably crashed because the right-click preview path was hit during the dismiss flow.
+
+**Rule for every new migration:** use a RAII struct (see `DialogSurfaceGuard` pattern in the four modal files, or `HeroDialogForwardingGuard` / `BattleOnlyForwardingGuard`) that pops the forwarding frame **and** removes overlay + buffer-paint registrations targeting the local RGBA. Never manually call `pushDialogForwarding` without one.
+
+### 🧩 Widget-side key detail
+
+`registerRGBABufferPaint` stores **both** game-space coords (identity / dedup key) and surface-space coords (actual blit target). `removeRGBABufferPaintAt` uses game-space — same values widgets already track. This fixed an accumulation bug where removal failed silently because the widget passed game coords but the entry was keyed on surface coords.
+
+## ⏳ Remaining work
+
+### Phase 3 — Adventure map + status panel
+
+- **File**: `src/fheroes2/gui/interface_gamearea.cpp` or wherever the main adventure-map loop lives, plus `src/fheroes2/army/army_ui_helper.cpp`.
+- Install a screen-sized RGBA on adventure map entry, RAII-guard it, push forwarding.
+- `drawMiniMonsters` (compact + full) → replace `addRGBAOverlay` with `renderHiResMonsterPortrait`.
+- Notes:
+  - Adventure map scrolls — every scroll step redraws the map palette, which forwards into the RGBA. That's fine.
+  - Animations (flags, monster frame cycles) forward automatically.
+  - Hero-on-tile mini portraits in the status panel have been reported missing after certain transitions — this is the place to validate fix.
+
+### Phase 4 — Other ArmyBar hosts
+
+| Host | File |
+|---|---|
+| Castle dialog (garrison + visitor) | `src/fheroes2/castle/castle_dialog.cpp` + related |
+| Kingdom Overview | `src/fheroes2/kingdom/kingdom_overview.cpp` |
+| Hero Meeting | `src/fheroes2/heroes/heroes_meeting.cpp` |
+
+All use `ArmyBar`. Each host should:
+1. Create a screen-sized `RGBAImage` (or dialog-sized; whichever matches the ImageRestorer footprint).
+2. Snapshot its current palette into it (`BlitIndexedToRGBAScaledRegion`).
+3. Register one `addRGBAOverlay(&rgba, …)`.
+4. `pushDialogForwarding(&rgba, …)`.
+5. Use a RAII guard — see existing examples — that handles pop + `removeRGBABufferPaintsForTarget` + `removeRGBAOverlay` on all exit paths.
+
+### Phase 5 — Editor
+
+`src/fheroes2/editor/...` hosts `selectMonsterType` via `MonsterTypeSelection`. Verify that each editor screen that shows monster previews is either:
+- already working fine in the overlay-fallback path, **or**
+- wrapped in the same screen-RGBA pattern if it hosts an `ArmyBar`.
+
+### Phase 6 — Cleanup (only after everything above is migrated and verified)
+
+Once the fallback path is no longer exercised:
+
+1. Delete the fallback branch in `renderHiResMonsterPortrait` that calls `Display::addRGBAOverlay`. Every caller must have an active forwarding target by then.
+2. Remove `ArmyBar::_slotOverlays` tracking — slots don't need to track overlays anymore because `_rgbaBufferPaints` keyed on `(src, gameX, gameY)` is self-managing via the RAII dtor in `removeRGBABufferPaintsForTarget`. Still need `removeRGBABufferPaintAt` in `ArmyBar::Redraw` pre-pass for the dismissal case.
+3. Remove `SelectEnumMonster::_rowOverlays` tracking for the same reason.
+4. Remove `Display::removeRGBAOverlayAt` (no consumers left once `ArmyBar` doesn't call it).
+5. Audit `AGG::ClearAllCustomMonsterRGBAOverlays` — once no one registers custom-monster `addRGBAOverlay` entries, this becomes a no-op. Can be deleted along with its call sites in dialogs.
+6. `addRGBAOverlay` / `removeRGBAOverlay` / `_rgbaOverlays` stays on `Display` — it's still used for each screen's single root overlay (the `screenRGBA`) plus battle's `_mainSurfaceRGBA`.
+
+## Key file locations
+
+| Area | File |
+|---|---|
+| Forwarding stack | `src/engine/image.h`, `src/engine/image.cpp` (`_dialogFwdStack`, push/pop/set/clear, `ScopedDialogForwarding`) |
+| Paint pool + render loop | `src/engine/screen.h`, `src/engine/screen.cpp` (`_rgbaBufferPaints`, `register`/`remove…At`/`removeForTarget`, drain in `Display::render()`) |
+| Helper | `src/fheroes2/agg/agg_image.h` / `agg_image.cpp` (`renderHiResMonsterPortrait`) |
+| Example host with RAII guard | `src/fheroes2/heroes/heroes_dialog.cpp`, `src/fheroes2/battle/battle_only.cpp` |
+| Example modal with RAII guard | `src/fheroes2/dialog/dialog_armyinfo.cpp` (`DialogSurfaceGuard`) — especially the right-click-preview early return |
+| ArmyBar portrait path | `src/fheroes2/army/army_bar.cpp` |
+
+## Build / debug quick-ref
+
+```
+# Release
+MSBuild build/fheroes2.sln /t:fheroes2 /p:Configuration=Release /p:Platform=x64 /m
+
+# Debug (with PDB, assertions, JIT attach)
+MSBuild build/fheroes2.sln /t:fheroes2 /p:Configuration=Debug /p:Platform=x64 /m
+```
+
+VS Code:
+- `.vscode/launch.json` has `Launch fheroes2 (Release)`, `Launch fheroes2 (Debug)`, and `Attach to fheroes2`.
+- `.vscode/tasks.json` has `CMake Build (Release)` and `CMake Build (Debug)`.
+- `build/Debug/` has symlinks to `ANIM`/`DATA`/`MAPS`/`MUSIC`/`files` so the debug exe finds game data.
+
+When the debug exe crashes, the VS Code debugger breaks on the fault. Copy the top ~10 frames of the Call Stack panel + locals shown for the top frame — that's usually enough to localize.
+
+## Testing recipes (copy when validating a new phase)
+
+For each screen migrated:
+
+1. Open the screen with a custom-monster army (Thor / Succubus / Dachshund).
+2. Open every sub-modal reachable from the screen:
+   - Right-click army slot → ArmyInfo
+   - Left-click army slot → SelectCount
+   - Add/select monster → Select Monster
+   - Recruit flow, if applicable
+3. Dismiss monsters in various orders. Try dismissing all.
+4. Drag/swap monsters between slots (intra-bar) and between bars (inter-bar) if the screen has multiple.
+5. Split stacks. Retain split.
+6. Close and re-open the screen.
+7. For adventure map: scroll, move hero, combat, dialog.
+
+Watch for:
+- Portraits disappearing (missing register)
+- Portraits lingering where the unit no longer is (missing remove)
+- Portraits bleeding through a modal (modal didn't push its own RGBA)
+- Flashes/flickers on frame transitions
+- Crashes — always catch these with the debug build

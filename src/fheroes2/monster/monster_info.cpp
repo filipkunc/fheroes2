@@ -152,7 +152,7 @@ namespace
                 ICN::MAGE2,    ICN::TITANBLU, ICN::TITANBLA, ICN::SKELETON, ICN::ZOMBIE,   ICN::ZOMBIE2,  ICN::MUMMYW,   ICN::MUMMY2,   ICN::VAMPIRE,
                 ICN::VAMPIRE2, ICN::LICH,     ICN::LICH2,    ICN::DRAGBONE, ICN::ROGUE,    ICN::NOMAD,    ICN::GHOST,    ICN::GENIE,    ICN::MEDUSA,
                 ICN::EELEM,    ICN::AELEM,    ICN::FELEM,    ICN::WELEM,    ICN::DRAGAZUR, ICN::DRAGBLOD, ICN::TITNTHOR, ICN::AVENGER,
-                ICN::SUCCUBUS,
+                ICN::SUCCUBUS, ICN::DACHSHUND,
                 ICN::UNKNOWN,  ICN::UNKNOWN,  ICN::UNKNOWN,  ICN::UNKNOWN,  ICN::UNKNOWN };
 
         const char * binFileName[Monster::MONSTER_COUNT]
@@ -164,7 +164,7 @@ namespace
                 "MAGE1FRM.BIN", "TITANFRM.BIN", "TITA2FRM.BIN", "SKEL_FRM.BIN", "ZOMB_FRM.BIN", "ZOMB_FRM.BIN", "MUMMYFRM.BIN", "MUMMYFRM.BIN", "VAMPIFRM.BIN",
                 "VAMPIFRM.BIN", "LICH_FRM.BIN", "LICH_FRM.BIN", "DRABNFRM.BIN", "ROGUEFRM.BIN", "NOMADFRM.BIN", "GHOSTFRM.BIN", "GENIEFRM.BIN", "MEDUSFRM.BIN",
                 "FELEMFRM.BIN", "FELEMFRM.BIN", "FELEMFRM.BIN", "FELEMFRM.BIN", "DRAGBFRM.BIN", "DRABNFRM.BIN", "TITA2FRM.BIN", "PALADFRM.BIN",
-                "GARGLFRM.BIN",
+                "GARGLFRM.BIN", "WOLF_FRM.BIN",
                 "UNKNOWN",      "UNKNOWN",      "UNKNOWN",      "UNKNOWN",      "UNKNOWN" };
 
         const fheroes2::MonsterSound monsterSounds[Monster::MONSTER_COUNT] = {
@@ -241,6 +241,7 @@ namespace
             { M82::TITNATTK, M82::TITNKILL, M82::TITNMOVE, M82::TITNWNCE, M82::TITNSHOT, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Thor
             { M82::PLDNATTK, M82::PLDNKILL, M82::PLDNMOVE, M82::PLDNWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Avenger
             { M82::GARGATTK, M82::GARGKILL, M82::GARGMOVE, M82::GARGWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Succubus
+            { M82::WOLFATTK, M82::WOLFKILL, M82::WOLFMOVE, M82::WOLFWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Dachshund
             { M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Random Monster
             { M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Random Monster 1
             { M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN }, // Random Monster 2
@@ -323,6 +324,7 @@ namespace
             { 16, 16, 30, 40, 300, Speed::ULTRAFAST, 24, 0, {}, {} }, // Thor
             { 15, 15, 20, 35, 100, Speed::ULTRAFAST, 0, 0, {}, {} }, // Avenger
             { 13, 12, 20, 30, 250, Speed::ULTRAFAST, 0, 0, {}, {} }, // Succubus
+            { 6, 6, 3, 5, 50, Speed::VERYFAST, 0, 0, {}, {} }, // Dachshund
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster 1
             { 0, 0, 0, 0, 0, Speed::VERYSLOW, 0, 0, {}, {} }, // Random Monster 2
@@ -404,6 +406,7 @@ namespace
                 { gettext_noop( "Thor" ), gettext_noop( "Thors" ), 1, Race::WZRD, 6, { 7000, 0, 0, 0, 0, 0, 3 } },
                 { gettext_noop( "Avenger" ), gettext_noop( "Avengers" ), 2, Race::KNGT, 6, { 1500, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Succubus" ), gettext_noop( "Succubi" ), 2, Race::BARB, 6, { 2500, 0, 0, 0, 0, 1, 0 } },
+                { gettext_noop( "Dachshund" ), gettext_noop( "Dachshunds" ), 5, Race::BARB, 3, { 400, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Random Monster" ), gettext_noop( "Random Monsters" ), 0, Race::NONE, 0, { 0, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Random Monster 1" ), gettext_noop( "Random Monsters 1" ), 0, Race::NONE, 1, { 0, 0, 0, 0, 0, 0, 0 } },
                 { gettext_noop( "Random Monster 2" ), gettext_noop( "Random Monsters 2" ), 0, Race::NONE, 2, { 0, 0, 0, 0, 0, 0, 0 } },
@@ -442,6 +445,10 @@ namespace
 
         monsterData[Monster::WOLF].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_HEX_SIZE );
         monsterData[Monster::WOLF].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_MELEE_ATTACK );
+
+        monsterData[Monster::DACHSHUND].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_HEX_SIZE );
+        monsterData[Monster::DACHSHUND].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::DOUBLE_MELEE_ATTACK );
+        monsterData[Monster::DACHSHUND].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::NO_ENEMY_RETALIATION );
 
         monsterData[Monster::TROLL].battleStats.abilities.emplace_back( fheroes2::MonsterAbilityType::HP_REGENERATION );
 

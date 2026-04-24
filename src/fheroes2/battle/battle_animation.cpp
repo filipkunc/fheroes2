@@ -94,7 +94,7 @@ AnimationReference::AnimationReference( const int monsterID )
     : _monsterID( monsterID )
 {
     // Custom monsters after WATER_ELEMENT need to be explicitly allowed
-    if ( monsterID < Monster::PEASANT || ( monsterID > Monster::WATER_ELEMENT && monsterID != Monster::AZURE_DRAGON && monsterID != Monster::BLOOD_DRAGON && monsterID != Monster::THOR && monsterID != Monster::AVENGER && monsterID != Monster::SUCCUBUS ) ) {
+    if ( monsterID < Monster::PEASANT || ( monsterID > Monster::WATER_ELEMENT && monsterID != Monster::AZURE_DRAGON && monsterID != Monster::BLOOD_DRAGON && monsterID != Monster::THOR && monsterID != Monster::AVENGER && monsterID != Monster::SUCCUBUS && monsterID != Monster::DACHSHUND ) ) {
         return;
     }
 

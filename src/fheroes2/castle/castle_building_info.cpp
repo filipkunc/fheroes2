@@ -145,6 +145,7 @@ namespace
             return { { 145, 195, 76, 52 } };
         case DWELLING_MONSTER3:
         case DWELLING_UPGRADE3:
+        case DWELLING_UPGRADE13:
             return { { 557, 48, 83, 83 } };
         case DWELLING_MONSTER4:
         case DWELLING_UPGRADE4:
@@ -510,6 +511,8 @@ namespace
             return _( "Pyramid" );
         case DWELLING_UPGRADE12:
             return _( "Succubus Palace" );
+        case DWELLING_UPGRADE13:
+            return _( "Dachshund Den" );
         default:
             break;
         }
@@ -706,6 +709,8 @@ namespace
             return _( "6x Upg. Dwelling 6" );
         case DWELLING_UPGRADE12:
             return _( "7x Upg. Dwelling 6" );
+        case DWELLING_UPGRADE13:
+            return _( "Upg. Dwelling 3" );
         default:
             break;
         }
@@ -1025,6 +1030,8 @@ namespace fheroes2
             switch ( buildingId ) {
             case DWELLING_MONSTER2:
                 return DWELLING_UPGRADE2;
+            case DWELLING_MONSTER3:
+                return DWELLING_UPGRADE13;
             case DWELLING_MONSTER4:
                 return DWELLING_UPGRADE4;
             case DWELLING_MONSTER5:
@@ -1398,6 +1405,10 @@ namespace fheroes2
             if ( race == Race::BARB )
                 requirement |= DWELLING_MONSTER6;
             break;
+        case DWELLING_UPGRADE13:
+            if ( race == Race::BARB )
+                requirement |= DWELLING_MONSTER3;
+            break;
 
         default:
             break;
@@ -1464,6 +1475,8 @@ namespace fheroes2
             return 34; // Avenger's Chapel uses a palette-transformed version of Upg. Cathedral sprite
         case DWELLING_UPGRADE12:
             return 35; // Succubus Palace uses a palette-transformed version of Cyclops Pyramid sprite
+        case DWELLING_UPGRADE13:
+            return 36; // Dachshund Den uses a palette-transformed version of Wolf Den sprite
         case BUILD_MAGEGUILD1:
         case BUILD_MAGEGUILD2:
         case BUILD_MAGEGUILD3:
@@ -1560,6 +1573,7 @@ namespace fheroes2
             priorities.emplace_back( BUILD_RIGHTTURRET );
             priorities.emplace_back( BUILD_MOAT );
             priorities.emplace_back( DWELLING_MONSTER3 );
+            priorities.emplace_back( DWELLING_UPGRADE13 );
             priorities.emplace_back( BUILD_THIEVESGUILD );
             priorities.emplace_back( DWELLING_MONSTER1 );
             priorities.emplace_back( BUILD_MARKETPLACE );

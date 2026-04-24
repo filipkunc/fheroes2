@@ -2956,6 +2956,35 @@ namespace
             // Succubus Palace: generated from Cyclops Pyramid (TWNBDW_5) with red palette transform.
             CopyICNWithPalette( id, ICN::TWNBDW_5, PAL::PaletteType::BLOOD_CRYPT );
             break;
+        case ICN::DACHSHUND: {
+            const size_t dachshundSpriteCount = 33; // Same as Wolf sprite count
+
+            // 1. Try loading custom PNG sprites from files/data/sprites/dachshund_NNN.png
+            if ( loadCustomSpritesFromPNG( "dachshund", ICN::WOLF, dachshundSpriteCount, _icnVsSprite[id] ) ) {
+                break;
+            }
+
+            // 2. Fall back to the unaltered Wolf indexed sprites.
+            _icnVsSprite[id].clear();
+            CopyICNWithPalette( id, ICN::WOLF, PAL::PaletteType::STANDARD );
+            break;
+        }
+        case ICN::MONH_DACHSHUND: {
+            // Dachshund portrait: start from the unaltered Wolf portrait (MONH0015 — Wolf ID is 15,
+            // 1-based index 15 - 1 = 14, but MONH0000 is PEASANT so Wolf uses MONH0014). Then
+            // overwrite with the hi-res PNG frame 1 when custom sprites are available.
+            CopyICNWithPalette( id, ICN::MONH0014, PAL::PaletteType::STANDARD );
+            const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::DACHSHUND );
+            if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() && !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite & portrait = _icnVsSprite[id][0];
+                writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], portrait.width(), portrait.height(), portrait );
+            }
+            break;
+        }
+        case ICN::TWNBUP3A:
+            // Dachshund Den: generated from Wolf Den (TWNBDW_2) with whitened palette transform.
+            CopyICNWithPalette( id, ICN::TWNBDW_2, PAL::PaletteType::DACHSHUND_DEN );
+            break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
             break;
@@ -3559,6 +3588,23 @@ namespace
                 const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::SUCCUBUS );
                 if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
                     fheroes2::Sprite & icon = _icnVsSprite[id][succubusSpriteIndex];
+                    writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
+                }
+            }
+
+            // Add Dachshund sprite (based on Wolf; hi-res PNG overwrites the icon when available).
+            // Wolf is at monster ID 15 -> sprite index 14. Dachshund is at monster ID 72 -> sprite index 71.
+            if ( _icnVsSprite[id].size() > 14 ) {
+                const size_t wolfSpriteIndex = 14;
+                const size_t dachshundSpriteIndex = 71;
+                if ( _icnVsSprite[id].size() <= dachshundSpriteIndex ) {
+                    _icnVsSprite[id].resize( dachshundSpriteIndex + 1 );
+                }
+                _icnVsSprite[id][dachshundSpriteIndex] = _icnVsSprite[id][wolfSpriteIndex];
+
+                const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::DACHSHUND );
+                if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
+                    fheroes2::Sprite & icon = _icnVsSprite[id][dachshundSpriteIndex];
                     writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
                 }
             }
@@ -5478,6 +5524,19 @@ namespace
                 }
             }
 
+            // Add Dachshund mini sprites (based on Wolf; hi-res PNG overlay handles the Dachshund look at render time).
+            // Wolf is monster ID 15, so MINIMON base index = 14 * 9. Dachshund is ID 72 -> 71 * 9.
+            constexpr uint32_t wolfMiniBaseIndex = 14 * 9;
+            constexpr uint32_t dachshundMiniBaseIndex = 71 * 9;
+            if ( _icnVsSprite[ICN::MINIMON].size() > wolfMiniBaseIndex + 8 ) {
+                if ( _icnVsSprite[ICN::MINIMON].size() <= dachshundMiniBaseIndex + 8 ) {
+                    _icnVsSprite[ICN::MINIMON].resize( dachshundMiniBaseIndex + 9 );
+                }
+                for ( uint32_t i = 0; i < 9; ++i ) {
+                    _icnVsSprite[ICN::MINIMON][dachshundMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][wolfMiniBaseIndex + i];
+                }
+            }
+
             // TODO: optimize image sizes.
             _icnVsSprite[ICN::MINI_MONSTER_IMAGE] = _icnVsSprite[ICN::MINIMON];
             _icnVsSprite[ICN::MINI_MONSTER_SHADOW] = _icnVsSprite[ICN::MINIMON];
@@ -6433,6 +6492,7 @@ namespace fheroes2::AGG
         static const RGBACustomEntry registry[] = {
             { Monster::THOR, "thor", 56 },
             { Monster::SUCCUBUS, "succubus", 32 },
+            { Monster::DACHSHUND, "dachshund", 33 },
         };
 
         static std::map<int, std::vector<RGBAImage>> cache;
@@ -6535,7 +6595,7 @@ namespace fheroes2::AGG
     void ClearAllCustomMonsterRGBAOverlays()
     {
         // Force lazy-load so the registry is populated before we iterate.
-        static const int registered[] = { Monster::THOR, Monster::SUCCUBUS };
+        static const int registered[] = { Monster::THOR, Monster::SUCCUBUS, Monster::DACHSHUND };
         Display & display = Display::instance();
         for ( const int id : registered ) {
             const std::vector<RGBAImage> * frames = GetRGBACustomFrames( id );
@@ -6549,6 +6609,46 @@ namespace fheroes2::AGG
                 display.removeRGBAOverlay( portrait );
             }
         }
+    }
+
+    void renderHiResMonsterPortrait( const RGBAImage & portrait, const int32_t gameX, const int32_t gameY, const int32_t gameWidth, const bool flip,
+                                     const uint8_t alpha )
+    {
+        if ( portrait.empty() || gameWidth <= 0 ) {
+            return;
+        }
+
+        const Image::DialogForwardingFrame * active = Image::getActiveDialogForwarding();
+        if ( active != nullptr && active->target != nullptr && !active->target->empty() ) {
+            // Register a persistent direct-paint into the active RGBA surface. Display::render()
+            // applies this AFTER the palette→RGBA forwarding loop, so the hi-res portrait is
+            // not overwritten by palette content underneath. The registration survives across
+            // renders until the widget explicitly removes it (removeRGBABufferPaintAt) — the
+            // same lifecycle contract as addRGBAOverlay.
+            const float scale = active->scale;
+            const int32_t srcW = portrait.width();
+            const int32_t srcH = portrait.height();
+            if ( srcW <= 0 || srcH <= 0 ) {
+                return;
+            }
+            const int32_t dstX = static_cast<int32_t>( static_cast<float>( gameX - active->offsetX ) * scale );
+            const int32_t dstY = static_cast<int32_t>( static_cast<float>( gameY - active->offsetY ) * scale );
+            const int32_t dstW = static_cast<int32_t>( static_cast<float>( gameWidth ) * scale );
+            if ( dstW <= 0 ) {
+                return;
+            }
+            // Preserve aspect ratio when scaling into the target.
+            const int32_t dstH = static_cast<int32_t>( ( static_cast<int64_t>( srcH ) * dstW ) / srcW );
+            if ( dstH <= 0 ) {
+                return;
+            }
+            Display::instance().registerRGBABufferPaint( portrait, *active->target, gameX, gameY, dstX, dstY, dstW, dstH, flip, alpha );
+            return;
+        }
+
+        // Fallback for screens / widgets that have not been migrated to own an RGBA surface yet.
+        // Existing overlay-based behaviour is preserved so the UI keeps working during migration.
+        Display::instance().addRGBAOverlay( portrait, gameX, gameY, gameWidth, flip, alpha );
     }
 
     const Image & GetTIL( int tilId, uint32_t index, uint32_t shapeId )

@@ -50,6 +50,7 @@ namespace PAL
         THOR_TOWER, // For transforming Upg. Cloud Castle into Hall of Valhalla.
         AVENGER, // For transforming Crusader into Avenger (golden/white).
         AVENGER_CHAPEL, // For transforming Upg. Cathedral into Avenger's Chapel.
+        DACHSHUND_DEN, // For transforming Wolf Den into Dachshund Den (browns -> grays/whites).
         CUSTOM
     };
 

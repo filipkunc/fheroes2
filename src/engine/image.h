@@ -135,12 +135,56 @@ namespace fheroes2
             _singleLayer = true;
         }
 
-        // Dialog forwarding: during Display::render(), any non-zero pixel on Display in the battle area
-        // gets converted indexed→RGBA and written to the RGBA overlay. Display's battle area is filled
-        // with index 0 each frame, so only dialog content (non-zero) gets forwarded.
+        // Dialog forwarding: during Display::render(), any non-zero pixel on Display within the
+        // active forwarding frame's footprint gets converted indexed→RGBA and written into the
+        // target surface. This is the foundation of screen-level RGBA composition — custom
+        // monster portraits can also be blitted directly into the same surface via
+        // BlitRGBAScaled, bypassing palette quantization.
+        //
+        // The stack lets nested screens/dialogs layer their own RGBA targets without clobbering
+        // each other: a host screen pushes its full-screen surface; a modal dialog on top pushes
+        // its own smaller one; when the dialog closes it pops and the host's forwarding resumes.
+        struct DialogForwardingFrame
+        {
+            RGBAImage * target;
+            int32_t offsetX;
+            int32_t offsetY;
+            float scale;
+        };
+
+        static void pushDialogForwarding( RGBAImage * target, int32_t offsetX, int32_t offsetY, float scale );
+        static void popDialogForwarding();
+
+        // RAII helper: push on construction, pop on destruction. Use this at every call site
+        // that pushes a forwarding frame so the frame is guaranteed to be popped on ANY exit
+        // path (normal return, early return, exception) — an unbalanced pop leaves a dangling
+        // RGBAImage* on the stack that the next Display::render() faults trying to dereference.
+        class ScopedDialogForwarding
+        {
+        public:
+            ScopedDialogForwarding( RGBAImage * target, const int32_t offsetX, const int32_t offsetY, const float scale )
+            {
+                Image::pushDialogForwarding( target, offsetX, offsetY, scale );
+            }
+
+            ~ScopedDialogForwarding()
+            {
+                Image::popDialogForwarding();
+            }
+
+            ScopedDialogForwarding( const ScopedDialogForwarding & ) = delete;
+            ScopedDialogForwarding & operator=( const ScopedDialogForwarding & ) = delete;
+        };
+
+        // Legacy API kept for compatibility with existing battle_interface.cpp code paths. New
+        // call sites should use push/pop instead to play nicely with nested frames.
         static void setDialogForwarding( RGBAImage * target, int32_t offsetX, int32_t offsetY, float scale );
         static void clearDialogForwarding();
 
+        static const DialogForwardingFrame * getActiveDialogForwarding();
+
+        // These mirror the top of the forwarding stack and are read directly by
+        // Display::render()'s indexed→RGBA loop. They are kept in sync by push/pop/set/clear.
         static RGBAImage * _dialogFwdTarget;
         static int32_t _dialogFwdOffsetX;
         static int32_t _dialogFwdOffsetY;

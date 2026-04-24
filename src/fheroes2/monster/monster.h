@@ -128,6 +128,7 @@ public:
         THOR,
         AVENGER,
         SUCCUBUS,
+        DACHSHUND,
 
         // Editor-related monsters.
         RANDOM_MONSTER,

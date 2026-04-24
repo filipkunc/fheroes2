@@ -289,6 +289,99 @@ namespace fheroes2
                                  _rgbaOverlays.end() );
         }
 
+        // Remove the overlay entry for a specific image at a specific position. Use this
+        // when the same image is registered in multiple places (e.g. an army with several
+        // slots of the same monster type, or two ArmyBars sharing a portrait) and you only
+        // want to drop the one you own. Matches on (image, x, y).
+        void removeRGBAOverlayAt( const RGBAImage * image, const int32_t x, const int32_t y )
+        {
+            if ( image == nullptr ) {
+                return;
+            }
+            _rgbaOverlays.erase( std::remove_if( _rgbaOverlays.begin(), _rgbaOverlays.end(),
+                                                 [image, x, y]( const RGBAOverlay & o ) { return o.image == image && o.x == x && o.y == y; } ),
+                                 _rgbaOverlays.end() );
+        }
+
+        // Direct-paint-into-RGBA-buffer registrations. These are the RGBA-space analogue of
+        // addRGBAOverlay: persistent entries (not cleared per frame) that Display::render()
+        // applies AFTER the palette→RGBA forwarding loop. Widgets register once, keep the
+        // paint alive across renders, and remove explicitly when the source slot empties or
+        // the widget is destroyed — exactly like overlays. The "after forwarding" ordering
+        // preserves hi-res portraits that would otherwise be overwritten by the palette
+        // conversion when the host screen owns a forwarded RGBA surface.
+        //
+        // Identity is keyed on (src, gameX, gameY) — the caller's game-space coordinates.
+        // The surface-space blit coordinates (dst*) are used only by Display::render() to
+        // perform the actual BlitRGBAScaled; widgets don't have to know about them.
+        struct RGBABufferPaint
+        {
+            const RGBAImage * src;
+            RGBAImage * dst;
+            // Identity: caller's game-space coordinates (used by registerRGBABufferPaint
+            // dedup and removeRGBABufferPaintAt). Widgets track and remove in this space.
+            int32_t gameX;
+            int32_t gameY;
+            // Blit parameters in destination surface coordinates (used at render time).
+            int32_t dstX;
+            int32_t dstY;
+            int32_t dstW;
+            int32_t dstH;
+            bool flip;
+            uint8_t alpha;
+        };
+
+        void registerRGBABufferPaint( const RGBAImage & src, RGBAImage & dst, const int32_t gameX, const int32_t gameY, const int32_t dstX, const int32_t dstY,
+                                      const int32_t dstW, const int32_t dstH, const bool flip = false, const uint8_t alpha = 255 )
+        {
+            // Replace any existing registration matching this (src, dst, gameX, gameY) tuple so
+            // repeated widget redraws don't accumulate duplicates.
+            for ( RGBABufferPaint & p : _rgbaBufferPaints ) {
+                if ( p.src == &src && p.dst == &dst && p.gameX == gameX && p.gameY == gameY ) {
+                    p.dstX = dstX;
+                    p.dstY = dstY;
+                    p.dstW = dstW;
+                    p.dstH = dstH;
+                    p.flip = flip;
+                    p.alpha = alpha;
+                    return;
+                }
+            }
+            _rgbaBufferPaints.push_back( { &src, &dst, gameX, gameY, dstX, dstY, dstW, dstH, flip, alpha } );
+        }
+
+        // Remove registration(s) matching (src, gameX, gameY), regardless of destination
+        // buffer. Call this when a slot dismisses / moves / the owning widget is destroyed.
+        void removeRGBABufferPaintAt( const RGBAImage * src, const int32_t gameX, const int32_t gameY )
+        {
+            if ( src == nullptr ) {
+                return;
+            }
+            _rgbaBufferPaints.erase( std::remove_if( _rgbaBufferPaints.begin(), _rgbaBufferPaints.end(),
+                                                    [src, gameX, gameY]( const RGBABufferPaint & p ) {
+                                                        return p.src == src && p.gameX == gameX && p.gameY == gameY;
+                                                    } ),
+                                    _rgbaBufferPaints.end() );
+        }
+
+        // Remove every registration that targets the given destination buffer. Call this when
+        // the destination surface is about to go out of scope (e.g. a screen's RGBA is being
+        // destroyed on dialog close) to avoid dangling dst pointers.
+        void removeRGBABufferPaintsForTarget( const RGBAImage * dst )
+        {
+            if ( dst == nullptr ) {
+                return;
+            }
+            _rgbaBufferPaints.erase( std::remove_if( _rgbaBufferPaints.begin(), _rgbaBufferPaints.end(),
+                                                    [dst]( const RGBABufferPaint & p ) { return p.dst == dst; } ),
+                                    _rgbaBufferPaints.end() );
+        }
+
+        const std::vector<RGBABufferPaint> & getRGBABufferPaints() const
+        {
+            return _rgbaBufferPaints;
+        }
+
         const std::vector<RGBAOverlay> & getRGBAOverlays() const
         {
             return _rgbaOverlays;
@@ -336,6 +429,7 @@ namespace fheroes2
         Size _screenSize;
 
         std::vector<RGBAOverlay> _rgbaOverlays;
+        std::vector<RGBABufferPaint> _rgbaBufferPaints;
 
         const RGBAImage * _rgbaCompositLayer{ nullptr };
         int32_t _rgbaCompositOffsetX{ 0 };

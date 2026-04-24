@@ -21,7 +21,6 @@ class FrameListWidget(QListWidget):
         self.setIconSize(QSize(THUMB_SIZE, THUMB_SIZE))
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setMinimumWidth(140)
-        self.setMaximumWidth(200)
 
         self.currentRowChanged.connect(self._on_row_changed)
         self.itemSelectionChanged.connect(self._on_selection_changed)

@@ -1174,6 +1174,15 @@ namespace ICN
         // Succubus Palace building sprite (generated from Cyclops Pyramid TWNBDW_5 with red palette)
         TWNBUP6A,
 
+        // Dachshund battle sprite (custom PNGs loaded from files/data/sprites/dachshund_*.png)
+        DACHSHUND,
+
+        // Dachshund portrait (generated from Wolf portrait, overwritten by hi-res PNG frame 1 when available)
+        MONH_DACHSHUND,
+
+        // Dachshund Den building sprite (generated from Wolf Den TWNBDW_2 with whitened palette)
+        TWNBUP3A,
+
         // IMPORTANT! Put any new entry just above this one.
         LASTICN
     };

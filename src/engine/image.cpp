@@ -446,17 +446,73 @@ namespace fheroes2
     int32_t Image::_dialogFwdOffsetY = 0;
     float Image::_dialogFwdScale = 1.0f;
 
+    namespace
+    {
+        std::vector<Image::DialogForwardingFrame> & getDialogFwdStack()
+        {
+            static std::vector<Image::DialogForwardingFrame> stack;
+            return stack;
+        }
+
+        void syncDialogFwdCache()
+        {
+            const auto & stack = getDialogFwdStack();
+            if ( stack.empty() ) {
+                Image::_dialogFwdTarget = nullptr;
+                Image::_dialogFwdOffsetX = 0;
+                Image::_dialogFwdOffsetY = 0;
+                Image::_dialogFwdScale = 1.0f;
+            }
+            else {
+                const Image::DialogForwardingFrame & top = stack.back();
+                Image::_dialogFwdTarget = top.target;
+                Image::_dialogFwdOffsetX = top.offsetX;
+                Image::_dialogFwdOffsetY = top.offsetY;
+                Image::_dialogFwdScale = top.scale;
+            }
+        }
+    }
+
+    void Image::pushDialogForwarding( RGBAImage * target, const int32_t offsetX, const int32_t offsetY, const float scale )
+    {
+        getDialogFwdStack().push_back( { target, offsetX, offsetY, scale } );
+        syncDialogFwdCache();
+    }
+
+    void Image::popDialogForwarding()
+    {
+        auto & stack = getDialogFwdStack();
+        if ( !stack.empty() ) {
+            stack.pop_back();
+        }
+        syncDialogFwdCache();
+    }
+
+    const Image::DialogForwardingFrame * Image::getActiveDialogForwarding()
+    {
+        const auto & stack = getDialogFwdStack();
+        return stack.empty() ? nullptr : &stack.back();
+    }
+
     void Image::setDialogForwarding( RGBAImage * target, const int32_t offsetX, const int32_t offsetY, const float scale )
     {
-        _dialogFwdTarget = target;
-        _dialogFwdOffsetX = offsetX;
-        _dialogFwdOffsetY = offsetY;
-        _dialogFwdScale = scale;
+        // Legacy API: replaces the current top of stack (or pushes when empty). Battle's
+        // Interface ctor/dtor rely on this "replace" semantic across its various fade paths.
+        auto & stack = getDialogFwdStack();
+        if ( stack.empty() ) {
+            stack.push_back( { target, offsetX, offsetY, scale } );
+        }
+        else {
+            stack.back() = { target, offsetX, offsetY, scale };
+        }
+        syncDialogFwdCache();
     }
 
     void Image::clearDialogForwarding()
     {
-        _dialogFwdTarget = nullptr;
+        // Legacy API: fully clears the stack. Matches the old "no forwarding" state.
+        getDialogFwdStack().clear();
+        syncDialogFwdCache();
     }
 
     Image::Image( Image && image ) noexcept

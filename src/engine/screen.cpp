@@ -1795,6 +1795,23 @@ namespace fheroes2
             }
         }
 
+        // Apply persistent RGBA buffer paints. These run AFTER the forwarding loop so that
+        // hi-res portraits direct-painted into a forwarded surface are not overwritten by
+        // palette→RGBA conversion. Registrations persist across frames (like addRGBAOverlay
+        // does for SDL-layer overlays); widgets remove them explicitly via
+        // removeRGBABufferPaintAt when the slot empties or the widget is destroyed.
+        for ( const RGBABufferPaint & paint : _rgbaBufferPaints ) {
+            if ( paint.src == nullptr || paint.dst == nullptr || paint.src->empty() || paint.dst->empty() ) {
+                continue;
+            }
+            if ( paint.alpha >= 255 ) {
+                BlitRGBAScaled( *paint.src, *paint.dst, paint.dstX, paint.dstY, paint.dstW, paint.dstH, paint.flip );
+            }
+            else {
+                BlitRGBAScaledAlpha( *paint.src, *paint.dst, paint.dstX, paint.dstY, paint.dstW, paint.dstH, paint.alpha, paint.flip );
+            }
+        }
+
         if ( _cursor->isVisible() && _cursor->isSoftwareEmulation() && !_cursor->_image.empty() ) {
             const Sprite & cursorImage = _cursor->_image;
             Rect cursorROI( cursorImage.x(), cursorImage.y(), cursorImage.width(), cursorImage.height() );

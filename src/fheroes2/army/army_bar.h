@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "image.h"
 #include "interface_itemsbar.h"
@@ -94,4 +95,18 @@ private:
     bool _saveLastTroop{ true };
     std::string msg;
     int32_t _troopWindowOffsetY{ 0 };
+
+    // Hi-res RGBA overlays we registered on the previous Redraw, stored as
+    // (image, x, y) so we can remove EXACTLY those on the next pre-pass — not
+    // wiping peer ArmyBars' overlays that happen to share the same image pointer
+    // (e.g. two armies each containing the same monster type), nor wiping other
+    // slots in this bar with the same monster type (armies can legitimately hold
+    // multiple stacks of one monster).
+    struct SlotOverlay
+    {
+        const fheroes2::RGBAImage * image;
+        int32_t x;
+        int32_t y;
+    };
+    std::vector<SlotOverlay> _slotOverlays;
 };

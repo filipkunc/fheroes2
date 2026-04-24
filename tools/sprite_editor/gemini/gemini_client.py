@@ -3,6 +3,7 @@
 Reuses the sheet building/slicing logic from reskin_spritesheet.py.
 """
 
+import colorsys
 import io
 import math
 import time
@@ -132,10 +133,38 @@ class SlicedFrame:
     display_height: int = 0  # 0 = use image size
 
 
+def _compute_bg_mask(cell_pixels: np.ndarray, bg_color: tuple[int, int, int]) -> np.ndarray:
+    """Return a boolean mask of pixels that match bg_color (background + blended fringe).
+
+    Uses hue-window detection when bg is saturated (catches Gemini's blended edges
+    that drift towards the bg hue), falls back to RGB distance for low-saturation
+    backgrounds (grey/white/black) where hue is unstable.
+    """
+    r, g, b = bg_color
+    bg_h, bg_s, _bg_v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+
+    if bg_s < 0.15:
+        # Low-saturation bg: hue is undefined, use RGB distance instead.
+        rgb = cell_pixels[:, :, :3].astype(np.int16)
+        target = np.array(bg_color, dtype=np.int16).reshape(1, 1, 3)
+        return np.max(np.abs(rgb - target), axis=2) < 40
+
+    rgb_img = Image.fromarray(cell_pixels[:, :, :3], "RGB")
+    hsv = np.array(rgb_img.convert("HSV")).transpose(2, 0, 1).astype(np.float32)
+    hue_deg = hsv[0] / 255.0 * 360.0
+    sat = hsv[1] / 255.0
+
+    target_deg = bg_h * 360.0
+    diff = np.abs(hue_deg - target_deg)
+    diff = np.minimum(diff, 360.0 - diff)  # circular distance
+    return (diff < 30.0) & (sat > 0.2)
+
+
 def slice_sheet(output_sheet: Image.Image, layout: list[tuple[int, int, int, int] | None],
                 original_frames: list[SpriteFrame], upscale: int = DEFAULT_UPSCALE,
                 margin: int = DEFAULT_MARGIN,
-                use_silhouette_mask: bool = False) -> list[SlicedFrame]:
+                use_silhouette_mask: bool = False,
+                bg_color: tuple[int, int, int] = DEFAULT_BG_COLOR) -> list[SlicedFrame]:
     """Slice a Gemini output sheet back into individual RGBA frames.
 
     Crops the full cell (including margin) so new content like capes and wings
@@ -160,21 +189,10 @@ def slice_sheet(output_sheet: Image.Image, layout: list[tuple[int, int, int, int
         # Crop the full cell (including margin) to preserve new content
         cell = output_sheet.crop((x, y, x + w, y + h)).convert("RGBA")
 
-        # Remove background using HSV hue detection.
-        # Magenta (255,0,255) has hue ~300°. Any pixel near that hue with
-        # reasonable saturation is background or fringe — regardless of brightness.
-        # This catches both the solid bg and Gemini's blended edge pixels.
+        # Remove background around the user-chosen bg_color (catches solid bg
+        # and Gemini's blended fringe pixels).
         cell_pixels = np.array(cell)
-        hsv = cell.convert("HSV")
-        hue, sat_ch, _val = np.array(hsv).transpose(2, 0, 1).astype(np.float32)
-
-        # PIL HSV: H is 0-255 mapping to 0-360°. Magenta ≈ 300° = 212 in PIL units.
-        # Accept hue range 270°-330° (= 191-234 in PIL units) with saturation > 0.2
-        hue_deg = hue / 255.0 * 360.0
-        sat = sat_ch / 255.0
-        is_magenta = ((hue_deg > 270) & (hue_deg < 330) & (sat > 0.2))
-
-        cell_pixels[is_magenta, 3] = 0
+        cell_pixels[_compute_bg_mask(cell_pixels, bg_color), 3] = 0
         result = Image.fromarray(cell_pixels)
 
         # Adjust offsets: the margin adds pixels on all sides, shifting the

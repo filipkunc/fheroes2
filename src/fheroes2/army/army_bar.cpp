@@ -190,7 +190,17 @@ namespace
 
 ArmyBar::~ArmyBar()
 {
-    fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
+    // Remove only the paint registrations THIS bar made, on BOTH pools. Using
+    // ClearAllCustomMonsterRGBAOverlays here would also wipe peer ArmyBars' paints
+    // (e.g. another open hero dialog). We don't know whether renderHiResMonsterPortrait
+    // took the overlay fallback path or the persistent RGBA-buffer path at registration
+    // time, so remove from both — the non-matching one is a no-op.
+    fheroes2::Display & display = fheroes2::Display::instance();
+    for ( const SlotOverlay & slot : _slotOverlays ) {
+        display.removeRGBAOverlayAt( slot.image, slot.x, slot.y );
+        display.removeRGBABufferPaintAt( slot.image, slot.x, slot.y );
+    }
+    _slotOverlays.clear();
 }
 
 ArmyBar::ArmyBar( Army * ptr, const bool miniSprites, const bool readOnly, const bool isEditMode /* false */, const bool saveLastTroop /* true */ )
@@ -284,10 +294,10 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
         const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
         if ( useCustomPortrait ) {
-            // Skip the MONS32 blit entirely and paint the hi-res portrait via an RGBA overlay.
-            fheroes2::Display & display = fheroes2::Display::instance();
-            display.removeRGBAOverlay( portrait );
-
+            // Skip the MONS32 blit entirely and paint the hi-res portrait either directly into
+            // the active screen/dialog RGBA surface (when forwarding is installed) or as an
+            // overlay (fallback). renderHiResMonsterPortrait picks the right path; per-bar
+            // overlay cleanup in ArmyBar::Redraw still removes the fallback-path overlays.
             const int32_t srcW = portrait->width();
             const int32_t srcH = portrait->height();
             // Leave a couple of pixels at the bottom for the count text and a small margin top.
@@ -301,7 +311,8 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
             }
             const int32_t overlayX = pos.x + ( boxW - overlayW ) / 2;
             const int32_t overlayY = pos.y + ( boxH - overlayH );
-            display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+            fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+            _slotOverlays.push_back( { portrait, overlayX, overlayY } );
         }
         else {
             const fheroes2::Sprite & mons32 = fheroes2::AGG::GetICN( ICN::MONS32, troop.GetSpriteIndex() );
@@ -333,11 +344,7 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
         fheroes2::renderMonsterFrame( troop, dstsf, pos.getPosition(), !useCustomPortrait );
 
         if ( useCustomPortrait ) {
-            fheroes2::Display & display = fheroes2::Display::instance();
-            // Drop any prior overlay for this monster so repeated redraws don't stack. Armies
-            // typically have unique monster types per slot so one overlay per monster is enough.
-            display.removeRGBAOverlay( portrait );
-
+            // Per-bar cleanup happens in ArmyBar::Redraw (position-keyed via _slotOverlays).
             // Fit within the slot itself rather than relying on MONH's internal x/y anchor, which
             // varies per monster and isn't a reliable "where the portrait goes inside the STRIP
             // frame" rect. Leave small padding so the decorative STRIP frame isn't covered.
@@ -356,7 +363,8 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
             }
             const int32_t overlayX = pos.x + padX + ( boxW - overlayW ) / 2;
             const int32_t overlayY = pos.y + padTop + ( boxH - overlayH );
-            display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+            fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+            _slotOverlays.push_back( { portrait, overlayX, overlayY } );
         }
 
         text.draw( pos.x + pos.width - text.width() - 3, pos.y + pos.height - text.height() + 1, dstsf );
@@ -377,6 +385,20 @@ void ArmyBar::ResetSelected()
 void ArmyBar::Redraw( fheroes2::Image & dstsf )
 {
     spcursor.hide();
+
+    // Drop only the paint registrations THIS bar made on the previous Redraw (keyed by
+    // image AND position). Peer ArmyBars' paints with the same image pointer stay intact,
+    // and multiple slots of the same monster within one bar all survive. We remove from
+    // both the SDL-overlay pool and the RGBA-buffer-paint pool since the helper picks the
+    // path at registration time based on whether forwarding is active. Each RedrawItem
+    // below will push a fresh SlotOverlay entry.
+    fheroes2::Display & display = fheroes2::Display::instance();
+    for ( const SlotOverlay & slot : _slotOverlays ) {
+        display.removeRGBAOverlayAt( slot.image, slot.x, slot.y );
+        display.removeRGBABufferPaintAt( slot.image, slot.x, slot.y );
+    }
+    _slotOverlays.clear();
+
     Interface::ItemsActionBar<ArmyTroop>::Redraw( dstsf );
 }
 

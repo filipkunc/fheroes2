@@ -98,7 +98,38 @@ bool Dialog::SelectCount( std::string header, const int32_t min, const int32_t m
     const fheroes2::Rect & windowArea = box.GetArea();
 
     fheroes2::Display & display = fheroes2::Display::instance();
+
     headerText.draw( windowArea.x, windowArea.y, fheroes2::boxAreaWidthPx, display );
+
+    // Mirror battle's RGBA compositing pattern so overlays from the screen behind
+    // this modal (typically an ArmyBar) don't bleed through its frame: snapshot the
+    // dialog's palette content into a local RGBA buffer, register it as its own
+    // overlay (renders AFTER previously-registered overlays, masking them in the
+    // dialog rect), and live-forward subsequent palette writes into the buffer.
+    // The dialog's own MonsterDialogElement overlay is added BELOW so it renders
+    // above the masking buffer — hi-res monster art stays visible at full fidelity.
+    const fheroes2::Rect dialogFullRect = box.GetFullRect();
+    fheroes2::RGBAImage dialogRGBA( dialogFullRect.width, dialogFullRect.height );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFullRect.x, dialogFullRect.y, dialogFullRect.width, dialogFullRect.height, dialogRGBA, 0, 0, 1.0f );
+    display.addRGBAOverlay( dialogRGBA, dialogFullRect.x, dialogFullRect.y, dialogFullRect.width );
+
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFullRect.x, dialogFullRect.y, 1.0f );
+
+    // RAII guard so any future early return out of this function still pops the forwarding
+    // frame and drops dialogRGBA's overlay / buffer-paint registrations before the RGBAImage
+    // goes out of scope. An unbalanced pop leaves a dangling target pointer on the forwarding
+    // stack that the next Display::render() dereferences and crashes on.
+    struct DialogSurfaceGuard
+    {
+        fheroes2::Display * display;
+        fheroes2::RGBAImage * rgba;
+        ~DialogSurfaceGuard()
+        {
+            fheroes2::Image::popDialogForwarding();
+            display->removeRGBABufferPaintsForTarget( rgba );
+            display->removeRGBAOverlay( rgba );
+        }
+    } dialogSurfaceGuard{ &display, &dialogRGBA };
 
     offsetY += windowArea.y;
     const fheroes2::Point topUiOffset{ windowArea.x + ( windowArea.width - topUiWidth ) / 2, offsetY };
@@ -223,6 +254,7 @@ bool Dialog::SelectCount( std::string header, const int32_t min, const int32_t m
 
     // A top/bottom element may have added a hi-res RGBA overlay (e.g. MonsterDialogElement for
     // custom monsters). Clear it so it doesn't linger after the dialog closes.
+    // The surface/forwarding cleanup is handled by dialogSurfaceGuard's destructor.
     fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
 
     return result == Dialog::OK;

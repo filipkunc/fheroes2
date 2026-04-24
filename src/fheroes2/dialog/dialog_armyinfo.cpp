@@ -570,6 +570,35 @@ int Dialog::ArmyInfo( const Troop & troop, int flags, bool isReflected, const in
         pos_rt.y -= 1;
     }
 
+    // Mask any RGBA overlays (typically an ArmyBar behind us) from bleeding through
+    // the dialog body. We do this by mirroring battle's pattern: the dialog's visible
+    // footprint is snapshotted into a local RGBA buffer, registered as its own overlay
+    // (so it renders AFTER previously-registered overlays, masking them in its rect),
+    // and subsequent palette edits inside the footprint are live-forwarded so partial
+    // redraws update the buffer. The dialog's own hi-res monster overlay is registered
+    // AFTER this one and therefore renders on top — visible at full resolution.
+    const fheroes2::Rect dialogFootprint( shadowOffset.x, dialogOffset.y, sprite_dialog.width() - shadowShift.x, sprite_dialog.height() + shadowShift.y );
+    fheroes2::RGBAImage dialogRGBA( dialogFootprint.width, dialogFootprint.height );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width, dialogFootprint.height, dialogRGBA, 0, 0,
+                                             1.0f );
+    display.addRGBAOverlay( dialogRGBA, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width );
+    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFootprint.x, dialogFootprint.y, 1.0f );
+
+    // RAII guard fires on EVERY exit path (including the Dialog::ZERO early return in the
+    // right-click-preview branch below). An unbalanced pop leaves the forwarding stack with
+    // a dangling RGBAImage* that the next Display::render() faults on when it dereferences.
+    struct DialogSurfaceGuard
+    {
+        fheroes2::Display * display;
+        fheroes2::RGBAImage * rgba;
+        ~DialogSurfaceGuard()
+        {
+            fheroes2::Image::popDialogForwarding();
+            display->removeRGBABufferPaintsForTarget( rgba );
+            display->removeRGBAOverlay( rgba );
+        }
+    } dialogSurfaceGuard{ &display, &dialogRGBA };
+
     const fheroes2::Point monsterStatOffset( pos_rt.x + 400, pos_rt.y + 37 );
     DrawMonsterStats( monsterStatOffset, troop, display );
 

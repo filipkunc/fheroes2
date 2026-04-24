@@ -5,8 +5,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout,
-    QTextEdit, QLineEdit, QComboBox, QSpinBox, QPushButton, QLabel,
-    QFileDialog, QMessageBox, QCheckBox, QScrollArea, QSplitter, QColorDialog,
+    QTextEdit, QComboBox, QSpinBox, QPushButton, QLabel,
+    QFileDialog, QMessageBox, QCheckBox, QColorDialog,
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QImage, QPixmap, QColor
@@ -61,6 +61,8 @@ class GeminiPanel(QWidget):
     frames_accepted = Signal(list, list)  # (frame_indices, PIL images)
     sheet_built = Signal(object, list, str)  # (PIL Image, cell rects, label)
     output_received = Signal(object, list, str)  # (PIL Image, cell rects, label)
+    bg_color_changed = Signal(tuple)  # (r, g, b)
+    reference_changed = Signal(str)  # absolute path, or "" when cleared
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -111,18 +113,42 @@ class GeminiPanel(QWidget):
         )
         prompt_layout.addRow("System:", self._system_edit)
 
-        # Reference image
-        ref_row = QHBoxLayout()
-        self._ref_label = QLabel("None")
-        ref_btn = QPushButton("Browse...")
-        ref_btn.setFixedWidth(70)
-        ref_btn.clicked.connect(self._browse_reference)
-        ref_row.addWidget(self._ref_label)
-        ref_row.addWidget(ref_btn)
-        prompt_layout.addRow("Reference:", ref_row)
-
         prompt_group.setLayout(prompt_layout)
         layout.addWidget(prompt_group)
+
+        # Reference image — collapsible group with thumbnail
+        ref_group = QGroupBox("Reference image (sent to Gemini)")
+        ref_group.setCheckable(True)
+        ref_group.setChecked(True)
+        ref_outer = QVBoxLayout(ref_group)
+        ref_outer.setContentsMargins(6, 6, 6, 6)
+
+        self._ref_body = QWidget()
+        ref_body_layout = QVBoxLayout(self._ref_body)
+        ref_body_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._ref_thumb = QLabel("No reference image loaded")
+        self._ref_thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._ref_thumb.setMinimumHeight(120)
+        self._ref_thumb.setStyleSheet("background: #2a2a2a; color: #888;")
+        ref_body_layout.addWidget(self._ref_thumb)
+
+        ref_row = QHBoxLayout()
+        self._ref_label = QLabel("None")
+        ref_browse_btn = QPushButton("Browse...")
+        ref_browse_btn.setFixedWidth(80)
+        ref_browse_btn.clicked.connect(self._browse_reference)
+        ref_clear_btn = QPushButton("Clear")
+        ref_clear_btn.setFixedWidth(60)
+        ref_clear_btn.clicked.connect(self._clear_reference)
+        ref_row.addWidget(self._ref_label, stretch=1)
+        ref_row.addWidget(ref_browse_btn)
+        ref_row.addWidget(ref_clear_btn)
+        ref_body_layout.addLayout(ref_row)
+
+        ref_outer.addWidget(self._ref_body)
+        ref_group.toggled.connect(self._ref_body.setVisible)
+        layout.addWidget(ref_group)
 
         # Settings row
         settings_layout = QHBoxLayout()
@@ -190,39 +216,6 @@ class GeminiPanel(QWidget):
 
         layout.addLayout(action_layout)
 
-        # Sheet preview — side by side
-        sheet_splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        # Input sheet
-        input_group = QGroupBox("Input (sent to Gemini)")
-        input_layout = QVBoxLayout()
-        self._input_label = QLabel("Build sheet first")
-        self._input_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._input_label.setMinimumHeight(150)
-        self._input_label.setStyleSheet("background: #2a2a2a;")
-        input_scroll = QScrollArea()
-        input_scroll.setWidget(self._input_label)
-        input_scroll.setWidgetResizable(True)
-        input_layout.addWidget(input_scroll)
-        input_group.setLayout(input_layout)
-        sheet_splitter.addWidget(input_group)
-
-        # Output sheet
-        output_group = QGroupBox("Output (from Gemini)")
-        output_layout = QVBoxLayout()
-        self._output_label = QLabel("Send to Gemini first")
-        self._output_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._output_label.setMinimumHeight(150)
-        self._output_label.setStyleSheet("background: #2a2a2a;")
-        output_scroll = QScrollArea()
-        output_scroll.setWidget(self._output_label)
-        output_scroll.setWidgetResizable(True)
-        output_layout.addWidget(output_scroll)
-        output_group.setLayout(output_layout)
-        sheet_splitter.addWidget(output_group)
-
-        layout.addWidget(sheet_splitter, stretch=1)
-
         # Accept/reject section
         result_group = QGroupBox("Results")
         result_layout = QVBoxLayout()
@@ -287,15 +280,44 @@ class GeminiPanel(QWidget):
         return self._custom_frames
 
     def _browse_reference(self):
+        start_dir = str(Path(self._reference_path).parent) if self._reference_path else ""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Select Reference Image", "",
+            self, "Select Reference Image", start_dir,
             "Images (*.png *.jpg *.jpeg *.bmp);;All Files (*)",
         )
         if path:
-            self._reference_image = Image.open(path).convert("RGB")
-            self._reference_path = path
-            name = Path(path).name
-            self._ref_label.setText(f"{name} ({self._reference_image.width}x{self._reference_image.height})")
+            self.load_reference_image(path)
+            self.reference_changed.emit(path)
+
+    def load_reference_image(self, path: str) -> bool:
+        """Load a reference image from disk and populate the preview.
+
+        Returns True on success. Used by callers restoring persisted state, so
+        missing files or decode errors silently clear the reference instead of
+        raising.
+        """
+        try:
+            image = Image.open(path).convert("RGB")
+        except (FileNotFoundError, OSError):
+            self._clear_reference_state()
+            return False
+        self._reference_image = image
+        self._reference_path = path
+        name = Path(path).name
+        self._ref_label.setText(f"{name} ({image.width}x{image.height})")
+        self._ref_thumb.setPixmap(_pil_to_qpixmap(image, 260, 260))
+        return True
+
+    def _clear_reference(self):
+        self._clear_reference_state()
+        self.reference_changed.emit("")
+
+    def _clear_reference_state(self):
+        self._reference_image = None
+        self._reference_path = ""
+        self._ref_label.setText("None")
+        self._ref_thumb.clear()
+        self._ref_thumb.setText("No reference image loaded")
 
     def _get_sheets_dir(self) -> Path:
         """Get or create the sheets output directory."""
@@ -309,8 +331,14 @@ class GeminiPanel(QWidget):
         r, g, b = self._bg_color
         color = QColorDialog.getColor(QColor(r, g, b), self, "Sheet Background Color")
         if color.isValid():
-            self._bg_color = (color.red(), color.green(), color.blue())
-            self._bg_btn.setStyleSheet(f"background-color: {color.name()};")
+            rgb = (color.red(), color.green(), color.blue())
+            self.set_bg_color(rgb)
+            self.bg_color_changed.emit(rgb)
+
+    def set_bg_color(self, rgb: tuple[int, int, int]) -> None:
+        """Apply a bg color without emitting bg_color_changed — for restoring persisted state."""
+        self._bg_color = rgb
+        self._bg_btn.setStyleSheet(f"background-color: rgb({rgb[0]},{rgb[1]},{rgb[2]});")
 
     def _build_sheet(self):
         """Build input sprite sheet from selected frames."""
@@ -337,12 +365,7 @@ class GeminiPanel(QWidget):
         input_path = self._sheets_dir / f"{self._current_batch_name}_input.png"
         self._input_sheet.save(input_path)
 
-        # Show input sheet
-        pixmap = _pil_to_qpixmap(self._input_sheet, 500, 600)
-        self._input_label.setPixmap(pixmap)
-
         self._send_btn.setEnabled(True)
-        self._output_label.setText("Ready to send")
         real_count = len([f for f in self._selected_frames if not f.is_placeholder])
         label = (f"Input: {self._input_sheet.width}x{self._input_sheet.height}, "
                  f"{real_count} frames, {upscale}x, margin {margin}px")
@@ -373,7 +396,6 @@ class GeminiPanel(QWidget):
 
         self._send_btn.setEnabled(False)
         self._status_label.setText("Sending to Gemini...")
-        self._output_label.setText("Waiting for response...")
 
         self._worker = GeminiWorker(client, self._input_sheet, prompt, system, self._reference_image)
         self._worker.finished.connect(self._on_gemini_result)
@@ -405,10 +427,6 @@ class GeminiPanel(QWidget):
             output_path = self._sheets_dir / f"{self._current_batch_name}_output.png"
             result.save(output_path)
 
-        # Show output sheet
-        pixmap = _pil_to_qpixmap(result, 500, 600)
-        self._output_label.setPixmap(pixmap)
-
         # Slice into individual frames using the locked-in batch frames
         upscale = self._upscale_spin.value()
         margin = self._margin_spin.value()
@@ -416,6 +434,7 @@ class GeminiPanel(QWidget):
             result, self._layout, self._batch_frames,
             upscale=upscale, margin=margin,
             use_silhouette_mask=self._mask_cb.isChecked(),
+            bg_color=self._bg_color,
         )
 
         # Save sliced frames to sheets dir for manual editing
