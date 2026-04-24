@@ -1295,7 +1295,6 @@ void Battle::TurnOrder::_redrawUnit( const fheroes2::Rect & pos, const Battle::U
 
 void Battle::TurnOrder::addCustomMonsterOverlays() const
 {
-    fheroes2::Display & display = fheroes2::Display::instance();
     for ( const UnitPos & entry : _rects ) {
         const Unit * unit = entry.first;
         if ( unit == nullptr || !unit->isValid() || unit->Modes( Battle::CAP_MIRRORIMAGE ) ) {
@@ -1318,7 +1317,11 @@ void Battle::TurnOrder::addCustomMonsterOverlays() const
         }
         const int32_t overlayX = pos.x + 1 + ( boxW - overlayW ) / 2;
         const int32_t overlayY = pos.y + 1 + ( boxH - overlayH );
-        display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+        // Route through the helper so it direct-paints into battle's _mainSurfaceRGBA via the
+        // active forwarding frame. No separate SDL overlay is registered; position changes
+        // between redrawPreRender cycles are handled by the caller clearing buffer paints on
+        // _mainSurfaceRGBA before re-registering (see the clear in redrawPreRender).
+        fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
     }
 }
 
@@ -1569,13 +1572,13 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
 Battle::Interface::~Interface()
 {
     // Pop battle's frame off the forwarding stack so the parent scope's frame (AdventureMap) is
-    // active again. Remove ONLY battle's own overlays and buffer paints — the parent's root
+    // active again. Remove ONLY battle's own root overlay and any buffer paints targeting
+    // _mainSurfaceRGBA (turn-order portraits, casualty dialog portraits) — the parent's root
     // overlay stays registered so its RGBA surface keeps compositing to screen.
     fheroes2::Image::popDialogForwarding();
     fheroes2::Display & display = fheroes2::Display::instance();
     display.removeRGBAOverlay( &_mainSurfaceRGBA );
     display.removeRGBABufferPaintsForTarget( &_mainSurfaceRGBA );
-    fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
     display.setRGBACompositLayer( nullptr, 0, 0 );
 
     AudioManager::ResetAudio();
@@ -1751,15 +1754,17 @@ void Battle::Interface::redrawPreRender()
                     : static_cast<int32_t>( static_cast<float>( _mainSurfaceRGBA.height() ) / _rgbaScale ), 0 );
 
     // Register the RGBA surface as an overlay for physical-resolution rendering. Remove only
-    // battle-owned overlays before re-adding so a parent screen (AdventureMap) keeps its root
-    // overlay registered across every partial render cycle.
+    // battle-owned registrations before re-adding so a parent screen (AdventureMap) keeps its
+    // root overlay registered across every partial render cycle. Buffer paints targeting
+    // _mainSurfaceRGBA come from the turn-order hi-res portraits below; clearing them before
+    // re-registering handles the case where a unit died / moved between frames and its slot
+    // now belongs to a different unit.
     display.removeRGBAOverlay( &_mainSurfaceRGBA );
-    fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
+    display.removeRGBABufferPaintsForTarget( &_mainSurfaceRGBA );
     display.addRGBAOverlay( _mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width );
 
-    // Layer hi-res portraits for custom monsters (Thor, Succubus, ...) in the turn order on top
-    // of the main surface. Must come AFTER the removeRGBAOverlay+ClearAllCustomMonsterRGBAOverlays
-    // above, otherwise the re-registration is immediately dropped.
+    // Layer hi-res portraits for custom monsters (Thor, Succubus, ...) in the turn order. They
+    // direct-paint into _mainSurfaceRGBA via the helper, so Z-order is correct by construction.
     if ( Settings::Get().BattleShowTurnOrder() ) {
         _turnOrder.addCustomMonsterOverlays();
     }

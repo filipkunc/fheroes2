@@ -77,14 +77,6 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
         fheroes2::Display::instance().removeRGBABufferPaintsInRect( activeForFrame->target, cx - width, clearY, width * 2, clearH );
     }
 
-    // Legacy fallback: the compact path historically wiped all custom-monster overlays per
-    // frame. With Phase 3b+ this has no effect for the adventure-map status panel (everything
-    // now goes through renderHiResMonsterPortrait → buffer paints), but keep the call so stale
-    // addRGBAOverlay registrations from any not-yet-migrated caller still get cleaned up.
-    if ( isCompact ) {
-        fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
-    }
-
     const size_t slots = troops.Size();
     for ( size_t slot = 0; slot < slots; ++slot ) {
         if ( count == 0 ) {

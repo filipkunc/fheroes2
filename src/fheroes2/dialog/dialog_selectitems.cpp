@@ -99,20 +99,19 @@ namespace
 
         using Dialog::ItemSelectionWindow::ActionListPressRight;
 
-        ~SelectEnumMonster() override
-        {
-            // Drop overlays this dialog registered without touching peers (e.g. ArmyBar overlays
-            // behind the dialog). Using ClearAllCustomMonsterRGBAOverlays here or in Redraw()
-            // would wipe those too, causing the parent screen's custom-monster portraits to
-            // disappear as soon as this list was shown.
-            removeOwnedOverlays();
-        }
+        ~SelectEnumMonster() override = default;
 
-        // Remove only the overlays WE registered last time, then let the base class redraw.
-        // Each RedrawItem call records its overlay in _rowOverlays for the next pre-pass.
+        // Wipe any stale portrait paints before redrawing — the list may have scrolled so the
+        // previous row at a given y-coord now shows a different monster. Scoped to the scroll
+        // area rect against the active forwarding target (the dialog's own RGBA from Phase 2).
+        // Per-dialog cleanup on close is handled by the host's RAII guard
+        // (removeRGBABufferPaintsForTarget).
         void Redraw() override
         {
-            removeOwnedOverlays();
+            const fheroes2::Image::DialogForwardingFrame * active = fheroes2::Image::getActiveDialogForwarding();
+            if ( active != nullptr && active->target != nullptr && rtAreaItems.width > 0 && rtAreaItems.height > 0 ) {
+                fheroes2::Display::instance().removeRGBABufferPaintsInRect( active->target, rtAreaItems.x, rtAreaItems.y, rtAreaItems.width, rtAreaItems.height );
+            }
             Dialog::ItemSelectionWindow::Redraw();
         }
 
@@ -120,13 +119,13 @@ namespace
         {
             renderItem( getImage( index ), Monster{ index }.GetName(), { dstx, dsty }, 45 / 2, 50, _offsetY / 2, current );
 
-            // For custom monsters with hi-res PNGs, overlay the cropped portrait on top of the
-            // palette-quantised 32x32 icon — quantisation produces dither noise at this ratio
-            // (460→32 downscale). The overlay's SDL texture scale is much cleaner.
+            // For custom monsters with hi-res PNGs, direct-paint the cropped portrait into the
+            // dialog's RGBA surface — the palette-quantised 32x32 icon has dither noise from the
+            // 460→32 downscale. Stale paints from a previous scroll position are wiped by the
+            // rect-clear in Redraw above.
             const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( index );
             if ( portrait != nullptr && !portrait->empty() ) {
                 // Icon is centred within the 43x43 STRIP background blitted at (dstx+1, dsty).
-                // Place a ~30x30 overlay inside that background, matching the icon's footprint.
                 const int32_t iconBoxSize = 32;
                 const int32_t iconBoxX = dstx + 1 + ( 43 - iconBoxSize ) / 2;
                 const int32_t iconBoxY = dsty + ( 43 - iconBoxSize ) / 2;
@@ -141,7 +140,6 @@ namespace
                 const int32_t overlayX = iconBoxX + ( iconBoxSize - overlayW ) / 2;
                 const int32_t overlayY = iconBoxY + ( iconBoxSize - overlayH );
                 fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
-                _rowOverlays.push_back( { portrait, overlayX, overlayY } );
             }
         }
 
@@ -154,25 +152,6 @@ namespace
             }
 
             Dialog::ArmyInfo( Troop( monster, 0 ), Dialog::ZERO );
-        }
-
-    protected:
-        struct RowOverlay
-        {
-            const fheroes2::RGBAImage * image;
-            int32_t x;
-            int32_t y;
-        };
-        std::vector<RowOverlay> _rowOverlays;
-
-        void removeOwnedOverlays()
-        {
-            fheroes2::Display & display = fheroes2::Display::instance();
-            for ( const RowOverlay & row : _rowOverlays ) {
-                display.removeRGBAOverlayAt( row.image, row.x, row.y );
-                display.removeRGBABufferPaintAt( row.image, row.x, row.y );
-            }
-            _rowOverlays.clear();
         }
 
     private:

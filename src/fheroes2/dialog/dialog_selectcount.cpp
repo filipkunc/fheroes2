@@ -252,10 +252,9 @@ bool Dialog::SelectCount( std::string header, const int32_t min, const int32_t m
 
     selectedValue = ( result == Dialog::OK ) ? valueSelectionElement.getValue() : 0;
 
-    // A top/bottom element may have added a hi-res RGBA overlay (e.g. MonsterDialogElement for
-    // custom monsters). Clear it so it doesn't linger after the dialog closes.
-    // The surface/forwarding cleanup is handled by dialogSurfaceGuard's destructor.
-    fheroes2::AGG::ClearAllCustomMonsterRGBAOverlays();
+    // No explicit custom-monster overlay cleanup needed: post-Phase 6 every monster portrait
+    // flows through renderHiResMonsterPortrait → buffer paint into this dialog's RGBA, which
+    // is torn down by dialogSurfaceGuard's destructor (removeRGBABufferPaintsForTarget).
 
     return result == Dialog::OK;
 }

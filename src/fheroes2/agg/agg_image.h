@@ -53,19 +53,13 @@ namespace fheroes2
         // nullptr if no RGBA PNGs are available for this monster.
         const RGBAImage * GetRGBACustomPortrait( const int monsterId );
 
-        // Remove any RGBA overlays from the Display that point into any custom monster's hi-res
-        // frame cache or portrait cache. Call this on dialog close so overlays don't leak,
-        // without touching overlays owned by other subsystems (battle interface, etc.).
-        void ClearAllCustomMonsterRGBAOverlays();
-
         // Paint a hi-res monster portrait / frame at (gameX, gameY) with logical width gameWidth
-        // in game-space pixels. If a dialog-forwarding RGBA target is active, the portrait is
-        // blitted directly into it via BlitRGBAScaled (no overlay registered, correct Z-order
-        // by construction). Otherwise it falls back to Display::addRGBAOverlay for callers whose
-        // host screen has not yet been migrated to own an RGBA surface.
+        // in game-space pixels. Direct-paints into the currently active forwarding target via
+        // registerRGBABufferPaint — no SDL overlay is added, Z-order is correct by construction.
         //
-        // Use this everywhere that currently calls Display::addRGBAOverlay for a custom-monster
-        // portrait (ArmyBar, MonsterDialogElement, drawMiniMonsters, SelectEnumMonster, ...).
+        // Post-Phase 6 contract: every call site runs inside a scope that has pushed a
+        // forwarding frame (AdventureMap root, dialog, or battle). If no frame is active the
+        // call is a silent no-op.
         void renderHiResMonsterPortrait( const RGBAImage & portrait, int32_t gameX, int32_t gameY, int32_t gameWidth, bool flip = false, uint8_t alpha = 255 );
     }
 }

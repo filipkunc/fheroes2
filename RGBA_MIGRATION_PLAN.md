@@ -148,16 +148,54 @@ through a Phase 2–migrated modal (`Dialog::selectMonsterType`,
 — those modals install and tear down their own screen-RGBA frames, so the
 editor caller needs no further work.
 
-### Phase 6 — Cleanup (only after everything above is migrated and verified)
+### ✅ Done — Phase 6 Cleanup
 
-Once the fallback path is no longer exercised:
+Every custom-monster portrait path now goes through `renderHiResMonsterPortrait`
+→ buffer paint into the active forwarding surface. `addRGBAOverlay` is only
+called for the root compositing surface of each scope (adventure-map
+`screenRGBA`, dialog `dialogRGBA`, battle `_mainSurfaceRGBA`, Battle::Only
+`setupRGBA`). Fallback code is gone.
 
-1. Delete the fallback branch in `renderHiResMonsterPortrait` that calls `Display::addRGBAOverlay`. Every caller must have an active forwarding target by then.
-2. Remove `ArmyBar::_slotOverlays` tracking — slots don't need to track overlays anymore because `_rgbaBufferPaints` keyed on `(src, gameX, gameY)` is self-managing via the RAII dtor in `removeRGBABufferPaintsForTarget`. Still need `removeRGBABufferPaintAt` in `ArmyBar::Redraw` pre-pass for the dismissal case.
-3. Remove `SelectEnumMonster::_rowOverlays` tracking for the same reason.
-4. Remove `Display::removeRGBAOverlayAt` (no consumers left once `ArmyBar` doesn't call it).
-5. Audit `AGG::ClearAllCustomMonsterRGBAOverlays` — once no one registers custom-monster `addRGBAOverlay` entries, this becomes a no-op. Can be deleted along with its call sites in dialogs.
-6. `addRGBAOverlay` / `removeRGBAOverlay` / `_rgbaOverlays` stays on `Display` — it's still used for each screen's single root overlay (the `screenRGBA`) plus battle's `_mainSurfaceRGBA`.
+Concretely removed:
+
+1. `renderHiResMonsterPortrait` fallback branch. The helper now silently
+   no-ops if no forwarding frame is active — every legitimate caller runs
+   inside a scope that has pushed one (AdventureMap at the root, dialogs or
+   battle on top).
+2. `ArmyBar::_slotOverlays` tracking + its RAII dtor logic. Per-frame stale
+   paints are wiped via a single `removeRGBABufferPaintsInRect( active->target,
+   GetArea() )` at the start of `ArmyBar::Redraw`, scoped to the bar's own
+   rect so peer bars are not disturbed. The host screen's forwarding-guard
+   handles surface-wide cleanup on dialog close.
+3. `SelectEnumMonster::_rowOverlays` tracking. Replaced with the same
+   `removeRGBABufferPaintsInRect` pattern scoped to `rtAreaItems`.
+4. `Display::removeRGBAOverlayAt`. Zero callers once the trackers above are
+   gone.
+5. `AGG::ClearAllCustomMonsterRGBAOverlays` + all call sites in
+   `battle_only.cpp`, `dialog_selectcount.cpp`, `army_ui_helper.cpp`, and
+   battle's `redrawPreRender` / dtor.
+6. `Battle::TurnOrder::addCustomMonsterOverlays` now calls
+   `renderHiResMonsterPortrait` (direct-paints into `_mainSurfaceRGBA`
+   instead of registering overlays). `redrawPreRender` clears any previous
+   paints on `_mainSurfaceRGBA` before re-registering, so unit-position
+   changes don't ghost.
+7. `MonsterDialogElement::redraw` and `Dialog::ArmyInfo::DrawMonster` route
+   through the helper; the latter uses `removeRGBABufferPaintsInRect` to
+   clear the previous animation frame (cycling frames don't share src
+   pointers so dedupe doesn't catch them).
+
+Kept:
+
+- `Display::addRGBAOverlay` / `removeRGBAOverlay` / `_rgbaOverlays` — still
+  used for each scope's single root surface (`screenRGBA`, `dialogRGBA`,
+  `_mainSurfaceRGBA`, `setupRGBA`).
+- `_rgbaBufferPaints` + `registerRGBABufferPaint` / `removeRGBABufferPaintAt`
+  / `removeRGBABufferPaintsForTarget` / `removeRGBABufferPaintsInRect` on
+  `Display`.
+- `Image::suspendDialogForwarding` / `resumeDialogForwarding` for battle's
+  mid-fade transitions.
+- Overlay depth-based filtering in `_renderRGBAOverlays`: only the deepest-
+  depth overlays composite so a nested scope shadows its parent's root.
 
 ## Key file locations
 

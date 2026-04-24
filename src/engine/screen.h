@@ -293,20 +293,6 @@ namespace fheroes2
                                  _rgbaOverlays.end() );
         }
 
-        // Remove the overlay entry for a specific image at a specific position. Use this
-        // when the same image is registered in multiple places (e.g. an army with several
-        // slots of the same monster type, or two ArmyBars sharing a portrait) and you only
-        // want to drop the one you own. Matches on (image, x, y).
-        void removeRGBAOverlayAt( const RGBAImage * image, const int32_t x, const int32_t y )
-        {
-            if ( image == nullptr ) {
-                return;
-            }
-            _rgbaOverlays.erase( std::remove_if( _rgbaOverlays.begin(), _rgbaOverlays.end(),
-                                                 [image, x, y]( const RGBAOverlay & o ) { return o.image == image && o.x == x && o.y == y; } ),
-                                 _rgbaOverlays.end() );
-        }
-
         // Direct-paint-into-RGBA-buffer registrations. These are the RGBA-space analogue of
         // addRGBAOverlay: persistent entries (not cleared per frame) that Display::render()
         // applies AFTER the palette→RGBA forwarding loop. Widgets register once, keep the

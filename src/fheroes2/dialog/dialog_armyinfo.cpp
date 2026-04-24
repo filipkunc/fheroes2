@@ -507,16 +507,19 @@ namespace
                                     && !( *rgbaFrames )[animFrame].empty() && !troop.isModes( Battle::CAP_MIRRORIMAGE );
 
             if ( canUseRGBA ) {
-                // Drop only our own prior frame to avoid accumulation. A wholesale
-                // clearRGBAOverlays() would also wipe battle's _mainSurfaceRGBA overlay when
-                // this dialog is opened mid-battle — iterating every cached frame and removing
-                // entries that match keeps other subsystems' overlays intact.
-                for ( const fheroes2::RGBAImage & frame : *rgbaFrames ) {
-                    display.removeRGBAOverlay( &frame );
+                // The sprite animation cycles through frames each call; consecutive frames are
+                // different RGBAImage src pointers so the (src, dst, gameX, gameY) dedupe in
+                // registerRGBABufferPaint doesn't catch them. Wipe any paint at this sprite's
+                // position on the active dialog RGBA before re-registering, so frames don't
+                // accumulate as stacked paints.
+                const fheroes2::Image::DialogForwardingFrame * active = fheroes2::Image::getActiveDialogForwarding();
+                if ( active != nullptr && active->target != nullptr ) {
+                    display.removeRGBABufferPaintsInRect( active->target, outPos.x, outPos.y, inSize.width, inSize.height );
                 }
-                // Add the RGBA overlay at the sprite's game-pixel footprint; the overlay renderer
-                // scales the hi-res PNG down to match the rest of the UI's scale.
-                display.addRGBAOverlay( ( *rgbaFrames )[animFrame], outPos.x, outPos.y, inSize.width, isReflected );
+                // Hi-res PNG direct-paints into the dialog's RGBA surface via the helper —
+                // Phase 2 installed the DialogSurfaceGuard forwarding frame in Dialog::ArmyInfo
+                // below, and the helper picks it up automatically.
+                fheroes2::AGG::renderHiResMonsterPortrait( ( *rgbaFrames )[animFrame], outPos.x, outPos.y, inSize.width, isReflected );
             }
             else if ( troop.isModes( Battle::CAP_MIRRORIMAGE ) ) {
                 fheroes2::Sprite outMonsterSprite = monsterSprite;

@@ -25,7 +25,6 @@
 
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #include "image.h"
 #include "interface_itemsbar.h"
@@ -43,9 +42,10 @@ public:
 
     ArmyBar( Army *, const bool miniSprites, const bool readOnly, const bool isEditMode = false, const bool saveLastTroop = true );
 
-    // Drops any hi-res RGBA overlays the bar registered for custom monsters so they don't leak
-    // onto whatever UI sits behind this bar once it goes out of scope.
-    ~ArmyBar() override;
+    // Hi-res monster portrait paints are cleaned up by the host screen's forwarding-guard RAII
+    // on dialog close (removeRGBABufferPaintsForTarget). Per-frame stale paints from a removed
+    // slot are wiped at the start of Redraw via removeRGBABufferPaintsInRect.
+    ~ArmyBar() override = default;
 
     void RedrawBackground( const fheroes2::Rect &, fheroes2::Image & ) override;
     void RedrawItem( ArmyTroop &, const fheroes2::Rect &, bool, fheroes2::Image & ) override;
@@ -95,18 +95,4 @@ private:
     bool _saveLastTroop{ true };
     std::string msg;
     int32_t _troopWindowOffsetY{ 0 };
-
-    // Hi-res RGBA overlays we registered on the previous Redraw, stored as
-    // (image, x, y) so we can remove EXACTLY those on the next pre-pass — not
-    // wiping peer ArmyBars' overlays that happen to share the same image pointer
-    // (e.g. two armies each containing the same monster type), nor wiping other
-    // slots in this bar with the same monster type (armies can legitimately hold
-    // multiple stacks of one monster).
-    struct SlotOverlay
-    {
-        const fheroes2::RGBAImage * image;
-        int32_t x;
-        int32_t y;
-    };
-    std::vector<SlotOverlay> _slotOverlays;
 };

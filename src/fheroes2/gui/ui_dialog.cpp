@@ -927,10 +927,6 @@ namespace fheroes2
         Copy( sprite, 0, 0, output, offset.x, offset.y, sprite.width(), sprite.height() );
 
         if ( useCustomPortrait ) {
-            Display & display = Display::instance();
-            // Drop the prior frame of this monster so repeated draws don't stack overlays.
-            display.removeRGBAOverlay( portrait );
-
             // Fit the cropped portrait inside the indexed MONH region (offset + (6,6) + MONH's
             // own offset). Scale uniformly to whichever dimension (width or height) is the
             // binding constraint, then centre it within the portrait box.
@@ -947,7 +943,11 @@ namespace fheroes2
             }
             const int32_t overlayX = offset.x + 6 + monh.x() + ( boxW - overlayW ) / 2;
             const int32_t overlayY = offset.y + 6 + monh.y() + ( boxH - overlayH );
-            display.addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+            // Hosts of MonsterDialogElement (SelectCount, Recruit, selectMonster, etc.) push
+            // their own forwarding frame in Phase 2, so the helper direct-paints into that
+            // dialog's RGBA. Repeat draws at the same coords dedupe via the (src, dst, gameX,
+            // gameY) identity; the host's RAII guard clears all paints on dialog close.
+            AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
         }
     }
 
