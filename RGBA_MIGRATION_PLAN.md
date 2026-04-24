@@ -134,11 +134,20 @@ then covers the main event loop, the mid-loop mage-guild early return
 Kingdom Overview and Hero Meeting have single exit paths; the RAII guard is
 still used there so future early returns pick up the cleanup for free.
 
-### Phase 5 — Editor
+### ✅ Done — Phase 5 Editor
 
-`src/fheroes2/editor/...` hosts `selectMonsterType` via `MonsterTypeSelection`. Verify that each editor screen that shows monster previews is either:
-- already working fine in the overlay-fallback path, **or**
-- wrapped in the same screen-RGBA pattern if it hosts an `ArmyBar`.
+Audit: the only editor screen that hosts an `ArmyBar` directly is
+`Editor::castleDetailsDialog` in
+`src/fheroes2/editor/editor_castle_details_window.cpp`. That function now
+has a `CastleDetailsForwardingGuard` installed immediately after the
+`StandardWindow` construction, covering both exit paths (the Exit button's
+`return false` and the normal `return true` at end of function).
+
+Everywhere else in `src/fheroes2/editor/` that shows a monster preview goes
+through a Phase 2–migrated modal (`Dialog::selectMonsterType`,
+`Dialog::SelectCount`, `Dialog::RecruitMonster`, `Dialog::multiSelectMonsters`)
+— those modals install and tear down their own screen-RGBA frames, so the
+editor caller needs no further work.
 
 ### Phase 6 — Cleanup (only after everything above is migrated and verified)
 
