@@ -3750,25 +3750,63 @@ namespace fheroes2
         const uint8_t * srcData = in.data();
         uint8_t * dstData = out.data();
 
+        // Alpha-weighted box-average sampling. For each destination pixel, average every
+        // source pixel that falls into its source-space footprint. Nearest-neighbour
+        // sampling (the previous implementation) looks crunchy at large downscale ratios
+        // (e.g. 460→101 for a MONH-size portrait) because each dst pixel picks one random
+        // src pixel and neighbouring dst pixels sample from wildly different src locations.
+        // At dstW >= srcW / dstH >= srcH the box collapses to one pixel per dst, giving
+        // the same result as nearest-neighbour for upscales.
         for ( int32_t y = startY; y < endY; ++y ) {
-            const int32_t srcY = ( ( y - outY ) * srcH ) / dstH;
-            const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcY ) * srcW * 4 );
+            const int32_t relY = y - outY;
+            const int32_t sy0 = ( relY * srcH ) / dstH;
+            const int32_t sy1 = std::max( sy0 + 1, ( ( relY + 1 ) * srcH ) / dstH );
             uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( y ) * outW * 4 );
 
             for ( int32_t x = startX; x < endX; ++x ) {
                 const int32_t relX = x - outX;
-                const int32_t srcX = ( ( flip ? ( dstW - 1 - relX ) : relX ) * srcW ) / dstW;
-                const uint8_t * srcPx = srcRow + ( static_cast<ptrdiff_t>( srcX ) * 4 );
+                const int32_t flippedX = flip ? ( dstW - 1 - relX ) : relX;
+                const int32_t sx0 = ( flippedX * srcW ) / dstW;
+                const int32_t sx1 = std::max( sx0 + 1, ( ( flippedX + 1 ) * srcW ) / dstW );
 
-                if ( srcPx[3] == 0 ) {
+                uint32_t rSum = 0;
+                uint32_t gSum = 0;
+                uint32_t bSum = 0;
+                uint32_t aSum = 0;
+                uint32_t rgbCount = 0;
+                uint32_t totalCount = 0;
+                for ( int32_t sy = sy0; sy < sy1; ++sy ) {
+                    const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( sy ) * srcW * 4 );
+                    for ( int32_t sx = sx0; sx < sx1; ++sx ) {
+                        const uint8_t * srcPx = srcRow + ( static_cast<ptrdiff_t>( sx ) * 4 );
+                        const uint8_t alpha = srcPx[3];
+                        aSum += alpha;
+                        ++totalCount;
+                        if ( alpha > 0 ) {
+                            rSum += srcPx[0];
+                            gSum += srcPx[1];
+                            bSum += srcPx[2];
+                            ++rgbCount;
+                        }
+                    }
+                }
+
+                if ( totalCount == 0 ) {
+                    continue;
+                }
+
+                const uint8_t avgAlpha = static_cast<uint8_t>( aSum / totalCount );
+                if ( avgAlpha == 0 ) {
                     continue;
                 }
 
                 uint8_t * dstPx = dstRow + ( static_cast<ptrdiff_t>( x ) * 4 );
-                dstPx[0] = srcPx[0];
-                dstPx[1] = srcPx[1];
-                dstPx[2] = srcPx[2];
-                dstPx[3] = srcPx[3];
+                if ( rgbCount > 0 ) {
+                    dstPx[0] = static_cast<uint8_t>( rSum / rgbCount );
+                    dstPx[1] = static_cast<uint8_t>( gSum / rgbCount );
+                    dstPx[2] = static_cast<uint8_t>( bSum / rgbCount );
+                }
+                dstPx[3] = avgAlpha;
             }
         }
     }
