@@ -321,6 +321,28 @@ void Heroes::MeetingDialog( Heroes & otherHero )
         fheroes2::fadeOutDisplay();
     }
 
+    // Screen-level RGBA composition: snapshot the dialog area into an RGBA surface, register it
+    // as the single overlay for the dialog, and push a forwarding frame. Hi-res custom-monster
+    // portraits drawn by the two MeetingArmyBar instances route through renderHiResMonsterPortrait
+    // and direct-paint into this surface, correctly Z-ordered above the swap-window background
+    // and surviving partial redraws (army count splits, slot drag/swap, etc.).
+    const fheroes2::Rect meetingRect( cur_pt.x, cur_pt.y, backSprite.width(), backSprite.height() );
+    fheroes2::RGBAImage meetingRGBA( meetingRect.width, meetingRect.height );
+    fheroes2::BlitIndexedToRGBAScaledRegion( display, meetingRect.x, meetingRect.y, meetingRect.width, meetingRect.height, meetingRGBA, 0, 0, 1.0f );
+    display.addRGBAOverlay( meetingRGBA, meetingRect.x, meetingRect.y, meetingRect.width );
+    fheroes2::Image::pushDialogForwarding( &meetingRGBA, meetingRect.x, meetingRect.y, 1.0f );
+
+    struct MeetingForwardingGuard
+    {
+        fheroes2::RGBAImage * rgba;
+        ~MeetingForwardingGuard()
+        {
+            fheroes2::Image::popDialogForwarding();
+            fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
+            fheroes2::Display::instance().removeRGBAOverlay( rgba );
+        }
+    } forwardingGuard{ &meetingRGBA };
+
     // background
     fheroes2::Point dst_pt( cur_pt );
     fheroes2::Blit( backSprite, src_rt.x, src_rt.y, display, dst_pt.x, dst_pt.y, src_rt.width, src_rt.height );

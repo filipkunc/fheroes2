@@ -112,10 +112,11 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
 
         const int32_t posX = isRightToLeftRender ? ( cx + static_cast<int32_t>( chunk * ( count - 1 ) ) ) : ( cx - static_cast<int32_t>( chunk * count ) );
 
-        // For custom monsters with hi-res PNGs (Thor, Succubus, ...), paint the portrait as an
-        // RGBA overlay instead of the palette-quantised MONS32 so the tiny 32px icon doesn't
-        // render as dither noise. Overlay is positioned to match where the MONS32 blit would
-        // have landed.
+        // For custom monsters with hi-res PNGs (Thor, Succubus, ...), route the portrait through
+        // renderHiResMonsterPortrait so that when a host screen later installs RGBA forwarding the
+        // portrait direct-paints into the surface instead of registering a separate SDL overlay.
+        // Today on the adventure map no forwarding is active and the helper falls back to
+        // Display::addRGBAOverlay — same behaviour as before, new plumbing.
         const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop->GetID() );
         const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
@@ -141,7 +142,7 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
                 }
                 const int32_t overlayX = blitX + ( boxW - overlayW ) / 2;
                 const int32_t overlayY = blitY + ( boxH - overlayH );
-                fheroes2::Display::instance().addRGBAOverlay( *portrait, overlayX, overlayY, overlayW );
+                fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
             }
             else {
                 fheroes2::Blit( monster, output, blitX, blitY );
@@ -149,6 +150,12 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
             text.draw( posX - text.width() - offset + static_cast<int32_t>( chunk ), cy + 23, output );
         }
         else {
+            // Non-compact path is used by quickinfo popups, which do not currently push their
+            // own RGBA forwarding. Routing through renderHiResMonsterPortrait here would leak
+            // fallback-path addRGBAOverlay registrations when the popup closes. Until the
+            // quickinfo host is migrated (deferred follow-up), keep the indexed MONS32 blit.
+            // Dachshund's MONS32 entry was overwritten with a quantised hi-res PNG during
+            // load (see agg_image.cpp), so custom monsters still look reasonable in this path.
             const int32_t offsetY = 28 - monster.height() + monster.y();
             fheroes2::Blit( monster, output, posX - monster.width() / 2 + monster.x() + 2, cy + offsetY );
             text.draw( posX - text.width() / 2, cy + 29, output );

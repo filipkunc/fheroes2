@@ -57,28 +57,82 @@ Historical example: `Dialog::ArmyInfo` had a `return Dialog::ZERO;` in the right
 
 ### Phase 3 — Adventure map + status panel
 
-- **File**: `src/fheroes2/gui/interface_gamearea.cpp` or wherever the main adventure-map loop lives, plus `src/fheroes2/army/army_ui_helper.cpp`.
-- Install a screen-sized RGBA on adventure map entry, RAII-guard it, push forwarding.
-- `drawMiniMonsters` (compact + full) → replace `addRGBAOverlay` with `renderHiResMonsterPortrait`.
-- Notes:
-  - Adventure map scrolls — every scroll step redraws the map palette, which forwards into the RGBA. That's fine.
-  - Animations (flags, monster frame cycles) forward automatically.
-  - Hero-on-tile mini portraits in the status panel have been reported missing after certain transitions — this is the place to validate fix.
+#### ✅ Partial — compact `drawMiniMonsters` routed through helper
 
-### Phase 4 — Other ArmyBar hosts
+`src/fheroes2/army/army_ui_helper.cpp` compact branch (status panel portraits)
+now calls `renderHiResMonsterPortrait` instead of `Display::addRGBAOverlay`
+directly. Behaviourally identical today — no forwarding is active on the
+adventure map, so the helper takes the fallback path — but every call is now
+upgrade-ready: the moment a screen-sized RGBA is installed on `AdventureMap`,
+the compact path direct-paints into it with no further changes to the caller.
 
-| Host | File |
-|---|---|
-| Castle dialog (garrison + visitor) | `src/fheroes2/castle/castle_dialog.cpp` + related |
-| Kingdom Overview | `src/fheroes2/kingdom/kingdom_overview.cpp` |
-| Hero Meeting | `src/fheroes2/heroes/heroes_meeting.cpp` |
+Per-frame `ClearAllCustomMonsterRGBAOverlays()` on the compact branch is kept
+as-is; it's a sledgehammer but is not breaking anything.
 
-All use `ArmyBar`. Each host should:
-1. Create a screen-sized `RGBAImage` (or dialog-sized; whichever matches the ImageRestorer footprint).
-2. Snapshot its current palette into it (`BlitIndexedToRGBAScaledRegion`).
-3. Register one `addRGBAOverlay(&rgba, …)`.
-4. `pushDialogForwarding(&rgba, …)`.
-5. Use a RAII guard — see existing examples — that handles pop + `removeRGBABufferPaintsForTarget` + `removeRGBAOverlay` on all exit paths.
+#### 🚧 Deferred — screen-wide RGBA install on `AdventureMap`
+
+The full plan was: install a screen-sized `RGBAImage` on `AdventureMap`, push
+forwarding across the whole adventure-map session, and let every palette write
+forward into it.
+
+Blocker: `Battle::Interface` is entered **from inside** the adventure-map
+session (not from a caller above it). On entry, the battle ctor calls
+`Display::clearRGBAOverlays()` and `Image::setDialogForwarding()` (which
+*replaces* the stack top rather than pushing) — both of which would wipe any
+adventure-map RGBA state we installed before the battle. On exit, the battle
+dtor calls `clearDialogForwarding()` and `clearRGBAOverlays()` again. End
+result: whatever we install on the adventure-map side gets wiped by every
+combat.
+
+Making this work end-to-end requires cooperation from `battle_interface.cpp`
+— roughly:
+- Convert the ctor/dtor `setDialogForwarding` / `clearDialogForwarding` pair
+  to `pushDialogForwarding` / `popDialogForwarding` so the adventure-map
+  frame underneath survives.
+- Convert the two mid-battle `clearDialogForwarding` / `setDialogForwarding`
+  "suspend-during-fade" pairs to something that doesn't touch the stack
+  below battle's own frame (likely a `suspendForwarding()` /
+  `resumeForwarding()` pair that flips `_dialogFwdTarget` to `nullptr`
+  without popping).
+- Replace `Display::clearRGBAOverlays()` in the battle entry/exit with
+  `removeRGBAOverlay(&_mainSurfaceRGBA)` so the adventure-map overlay stays
+  registered across the battle.
+
+That's a cohesive follow-up refactor and deserves its own pass. Track as
+**Phase 3b**. Notes that still apply when it's picked up:
+
+- Adventure map scrolls — every scroll step redraws the map palette, which
+  forwards into the RGBA. That's fine.
+- Animations (flags, monster frame cycles) forward automatically.
+- Hero-on-tile mini portraits in the status panel have been reported missing
+  after certain transitions — validate the fix here.
+- Non-compact `drawMiniMonsters` (quickinfo popups) currently keeps the
+  indexed MONS32 blit. Migrating it to `renderHiResMonsterPortrait` needs
+  `dialog_quickinfo.cpp` to push its own forwarding frame first, otherwise
+  the fallback `addRGBAOverlay` registration leaks when the popup closes.
+
+### ✅ Done — Phase 4 ArmyBar hosts
+
+| Host | File | Guard name |
+|---|---|---|
+| Castle dialog (garrison + visiting hero) | `src/fheroes2/castle/castle_dialog.cpp` | `CastleDialogForwardingGuard` |
+| Kingdom Overview | `src/fheroes2/kingdom/kingdom_overview.cpp` | `KingdomOverviewForwardingGuard` |
+| Hero Meeting | `src/fheroes2/heroes/heroes_meeting.cpp` | `MeetingForwardingGuard` |
+
+Each host follows the Phase 2 recipe verbatim: allocate an `RGBAImage` sized
+to the dialog footprint, snapshot the current palette via
+`BlitIndexedToRGBAScaledRegion`, register one root `addRGBAOverlay`, push a
+forwarding frame, and declare an RAII guard that pops the frame and removes
+the overlay / buffer-paint registrations before the `RGBAImage` destructs.
+
+Castle dialog subtlety: install goes *after* the construction / mage-guild
+early-return branches (which chain to a sibling `OpenDialog` for a different
+castle and must not leave a forwarding frame on the stack). The RAII guard
+then covers the main event loop, the mid-loop mage-guild early return
+(`return mageGuildResult;`), and the normal end-of-function return.
+
+Kingdom Overview and Hero Meeting have single exit paths; the RAII guard is
+still used there so future early returns pick up the cleanup for free.
 
 ### Phase 5 — Editor
 
