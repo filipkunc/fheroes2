@@ -1761,7 +1761,11 @@ void Battle::Interface::redrawPreRender()
     // now belongs to a different unit.
     display.removeRGBAOverlay( &_mainSurfaceRGBA );
     display.removeRGBABufferPaintsForTarget( &_mainSurfaceRGBA );
-    display.addRGBAOverlay( _mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width );
+    // shadowsParent=true: battle is a fullscreen takeover, so the adventure-map root overlay
+    // (and its stale status-panel content) stops compositing while combat is running — palette
+    // UI battle draws outside _mainSurfaceRGBA's footprint (status bar, action buttons at the
+    // bottom) is visible instead of being covered by the shallower screenRGBA.
+    display.addRGBAOverlay( _mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width, false, 255, true );
 
     // Layer hi-res portraits for custom monsters (Thor, Succubus, ...) in the turn order. They
     // direct-paint into _mainSurfaceRGBA via the helper, so Z-order is correct by construction.

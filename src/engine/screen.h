@@ -266,13 +266,15 @@ namespace fheroes2
 
         // RGBA overlay support for true-color rendering.
         //
-        // Each overlay is tagged with the current forwarding-stack depth so that when a deeper
-        // scope (e.g. a battle nested inside the adventure map) registers its own overlays, the
-        // shallower scope's overlays automatically stop compositing. See _renderRGBAOverlays.
+        // Each overlay is tagged with the current forwarding-stack depth. `shadowsParent=true`
+        // means this overlay takes over the screen — shallower overlays stop compositing while
+        // it's registered (used by battle's _mainSurfaceRGBA so the stale adventure-map root
+        // doesn't obscure battle UI). Default false for regular dialogs, which composite on top
+        // of their parent so the parent remains visible outside the dialog rect.
         void addRGBAOverlay( const RGBAImage & overlay, const int32_t x, const int32_t y, const int32_t gameWidth = 0, const bool flip = false,
-                             const uint8_t alpha = 255 )
+                             const uint8_t alpha = 255, const bool shadowsParent = false )
         {
-            _rgbaOverlays.push_back( { &overlay, x, y, gameWidth, flip, alpha, Image::getDialogFwdDepth() } );
+            _rgbaOverlays.push_back( { &overlay, x, y, gameWidth, flip, alpha, Image::getDialogFwdDepth(), shadowsParent } );
         }
 
         void clearRGBAOverlays()

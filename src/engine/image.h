@@ -560,10 +560,15 @@ namespace fheroes2
         int32_t gameWidth{ 0 };
         bool flip{ false };
         uint8_t alpha{ 255 };
-        // Forwarding-stack depth at registration. render() composites only the deepest-depth
-        // overlays currently in the list, so a nested scope (battle on top of adventure map)
-        // automatically shadows the parent scope's full-screen overlay without compile-time
-        // coupling between the two.
+        // Forwarding-stack depth at registration. Used by the render order to decide whether
+        // shallower overlays are visible when a `shadowsParent` overlay is registered above.
         int32_t depth{ 0 };
+        // True when this overlay semantically takes over the screen (battle's _mainSurfaceRGBA).
+        // render() then skips any overlay whose depth is shallower than this one's, so the
+        // parent scope's stale RGBA content (e.g. adventure map's screenRGBA during combat)
+        // stops obscuring palette UI the child draws outside its own RGBA footprint. Regular
+        // modal dialogs leave this false — they composite naturally on top of their parent so
+        // the parent remains visible outside the dialog rect.
+        bool shadowsParent{ false };
     };
 }

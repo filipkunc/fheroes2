@@ -1275,15 +1275,15 @@ namespace
             const int32_t offsetX = ( outputW - viewportW ) / 2;
             const int32_t offsetY = ( outputH - viewportH ) / 2;
 
-            // Composite only the deepest-depth overlays currently registered. A parent scope's
-            // full-screen root (e.g. adventure map) registers at a shallower depth; once a child
-            // scope (battle, modal dialog) registers its own deeper overlays, we skip the parent
-            // so the palette UI it drew outside its own RGBA surface (battle status bar, dialog
-            // frame shadow, etc.) is not obscured by stale shallow-scope RGBA content.
-            int32_t maxDepth = 0;
+            // Opt-in shadowing: if any overlay is marked `shadowsParent` (battle's fullscreen
+            // _mainSurfaceRGBA does this), every shallower overlay stops compositing. Regular
+            // modal dialogs do NOT shadow — they composite on top of their parent via natural
+            // alpha ordering so the parent screen stays visible outside the dialog rect (e.g.
+            // Battle::Only setup army bars remain visible around a Set-Count dialog).
+            int32_t shadowDepth = 0;
             for ( const fheroes2::RGBAOverlay & overlay : overlays ) {
-                if ( overlay.image != nullptr && !overlay.image->empty() && overlay.depth > maxDepth ) {
-                    maxDepth = overlay.depth;
+                if ( overlay.image != nullptr && !overlay.image->empty() && overlay.shadowsParent && overlay.depth > shadowDepth ) {
+                    shadowDepth = overlay.depth;
                 }
             }
 
@@ -1294,8 +1294,9 @@ namespace
                 if ( overlay.image == nullptr || overlay.image->empty() ) {
                     continue;
                 }
-                if ( overlay.depth < maxDepth ) {
-                    // Parent-scope overlay shadowed by a deeper scope.
+                if ( overlay.depth < shadowDepth ) {
+                    // Shallower than a shadowing overlay — skipped so the shadower's scope fully
+                    // takes over the screen (battle shadowing adventure-map root).
                     continue;
                 }
 
