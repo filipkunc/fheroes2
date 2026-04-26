@@ -29,6 +29,7 @@
 #include <stdexcept>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "agg_image.h"
 #include "cursor.h"
@@ -69,11 +70,32 @@ namespace
 
         const fheroes2::Rect fadeRoi( roi ^ fheroes2::Rect( 0, 0, display.width(), display.height() ) );
 
-        // Save the display region in its native format (RGBA for the pure-RGBA Display) so the
-        // round-trip is lossless. Quantising to an indexed temp here would snap every pixel to
-        // the nearest palette colour and leave dithering noise on the display after the fade ends.
-        fheroes2::Image temp( fadeRoi.width, fadeRoi.height, display.format() );
-        Copy( display, fadeRoi.x, fadeRoi.y, temp, 0, 0, fadeRoi.width, fadeRoi.height );
+        // Save the display region directly at physical-pixel resolution and operate on those
+        // bytes for every fade frame. Going through Copy/ApplyAlpha here would round-trip the
+        // capture through a game-resolution Image (because temp has physicalScale == 1), which
+        // downsamples away the hi-res content (Thor / Succubus PNGs blitted by BlitRGBAScaled).
+        // The final fully-bright frame would then write that downsampled snapshot back over
+        // the physical buffer, giving a low-resolution flash of the monster on every fade-in.
+        const float scale = display.physicalScale();
+        const int32_t bufStride = display.bufferStride();
+        const int32_t bufHeight = display.bufferHeight();
+
+        const int32_t physX = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( fadeRoi.x ) * scale ) );
+        const int32_t physY = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( fadeRoi.y ) * scale ) );
+        const int32_t physRight = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( fadeRoi.x + fadeRoi.width ) * scale ) );
+        const int32_t physBottom = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( fadeRoi.y + fadeRoi.height ) * scale ) );
+        const int32_t physW = physRight - physX;
+        const int32_t physH = physBottom - physY;
+        if ( physW <= 0 || physH <= 0 ) {
+            return;
+        }
+
+        std::vector<uint8_t> snapshot( static_cast<size_t>( physW ) * physH * 4 );
+        uint8_t * displayBase = display.image();
+        for ( int32_t row = 0; row < physH; ++row ) {
+            memcpy( snapshot.data() + static_cast<size_t>( row ) * physW * 4,
+                    displayBase + ( static_cast<ptrdiff_t>( physY + row ) * bufStride + physX ) * 4, static_cast<size_t>( physW ) * 4 );
+        }
 
         double alpha = startAlpha;
         const uint32_t delay = fadeTimeMs / frameCount;
@@ -95,16 +117,37 @@ namespace
                 const uint8_t fadeAlpha = static_cast<uint8_t>( std::round( alpha ) );
 
                 if ( fadeAlpha == 255 ) {
-                    // This alpha is for fully bright image so there is no need to apply alpha.
-                    Copy( temp, 0, 0, display, fadeRoi.x, fadeRoi.y, fadeRoi.width, fadeRoi.height );
+                    // Fully bright — restore the original physical bytes verbatim.
+                    for ( int32_t row = 0; row < physH; ++row ) {
+                        memcpy( displayBase + ( static_cast<ptrdiff_t>( physY + row ) * bufStride + physX ) * 4,
+                                snapshot.data() + static_cast<size_t>( row ) * physW * 4, static_cast<size_t>( physW ) * 4 );
+                    }
                 }
                 else if ( fadeAlpha == 0 ) {
-                    // This alpha is for fully dark image so fill it with the black color.
-                    // Color index '0' in all game palettes (including videos) corresponds to the black color.
-                    Fill( display, fadeRoi.x, fadeRoi.y, fadeRoi.width, fadeRoi.height, 0 );
+                    // Fully dark — opaque black across the physical rect.
+                    for ( int32_t row = 0; row < physH; ++row ) {
+                        uint8_t * dstRow = displayBase + ( static_cast<ptrdiff_t>( physY + row ) * bufStride + physX ) * 4;
+                        for ( int32_t col = 0; col < physW; ++col, dstRow += 4 ) {
+                            dstRow[0] = 0;
+                            dstRow[1] = 0;
+                            dstRow[2] = 0;
+                            dstRow[3] = 255;
+                        }
+                    }
                 }
                 else {
-                    ApplyAlpha( temp, 0, 0, display, fadeRoi.x, fadeRoi.y, fadeRoi.width, fadeRoi.height, fadeAlpha );
+                    // Alpha-blend the snapshot back over black, per physical pixel.
+                    const uint32_t a = fadeAlpha;
+                    for ( int32_t row = 0; row < physH; ++row ) {
+                        const uint8_t * srcRow = snapshot.data() + static_cast<size_t>( row ) * physW * 4;
+                        uint8_t * dstRow = displayBase + ( static_cast<ptrdiff_t>( physY + row ) * bufStride + physX ) * 4;
+                        for ( int32_t col = 0; col < physW; ++col, srcRow += 4, dstRow += 4 ) {
+                            dstRow[0] = static_cast<uint8_t>( ( srcRow[0] * a ) / 255 );
+                            dstRow[1] = static_cast<uint8_t>( ( srcRow[1] * a ) / 255 );
+                            dstRow[2] = static_cast<uint8_t>( ( srcRow[2] * a ) / 255 );
+                            dstRow[3] = 255;
+                        }
+                    }
                 }
 
                 display.render( fadeRoi );

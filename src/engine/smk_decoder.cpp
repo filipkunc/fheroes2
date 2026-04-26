@@ -268,17 +268,35 @@ void SMKVideoSequence::getCurrentFrame( fheroes2::Image & image, const int32_t x
     if ( isRGBA ) {
         // Pure-RGBA Display: convert SMK's indexed pixels to RGBA per pixel using the SMK palette.
         // The SMK palette is already 8-bit per channel (unlike the game palette which is 6-bit).
+        // For the physical-resolution Display, each game pixel expands to a scale x scale block in
+        // the backing buffer; row stride is bufferStride() (physical width), not width().
+        const float scale = image.physicalScale();
+        const int32_t bufStride = image.bufferStride();
+        const int32_t bufHeight = image.bufferHeight();
+        uint8_t * imgBase = image.image();
         const int32_t copiedHeight = ( height / _heightScaleFactor ) * _heightScaleFactor;
         for ( int32_t row = 0; row < copiedHeight; ++row ) {
             const int32_t srcRow = row / _heightScaleFactor;
             const uint8_t * src = data + static_cast<ptrdiff_t>( srcRow ) * _width;
-            uint8_t * dst = image.image() + ( ( static_cast<ptrdiff_t>( y + row ) * imageWidth ) + x ) * 4;
-            for ( int32_t col = 0; col < width; ++col, ++src, dst += 4 ) {
+            // Physical-pixel Y span for this game row.
+            const int32_t pYStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( y + row ) * scale ) );
+            const int32_t pYEnd = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( y + row + 1 ) * scale ) );
+            for ( int32_t col = 0; col < width; ++col, ++src ) {
                 const uint8_t * pal = paletteData + static_cast<ptrdiff_t>( *src ) * 3;
-                dst[0] = pal[0];
-                dst[1] = pal[1];
-                dst[2] = pal[2];
-                dst[3] = 255;
+                const uint8_t r = pal[0];
+                const uint8_t g = pal[1];
+                const uint8_t b = pal[2];
+                const int32_t pXStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( x + col ) * scale ) );
+                const int32_t pXEnd = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( x + col + 1 ) * scale ) );
+                for ( int32_t py = pYStart; py < pYEnd; ++py ) {
+                    uint8_t * dstRow = imgBase + ( static_cast<ptrdiff_t>( py ) * bufStride + pXStart ) * 4;
+                    for ( int32_t px = pXStart; px < pXEnd; ++px, dstRow += 4 ) {
+                        dstRow[0] = r;
+                        dstRow[1] = g;
+                        dstRow[2] = b;
+                        dstRow[3] = 255;
+                    }
+                }
             }
         }
     }
