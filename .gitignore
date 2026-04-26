@@ -137,3 +137,6 @@ files/data/sprites/sheets/*.png
 
 # Claude Code local settings
 /.claude/
+
+# CMake
+CMakeUserPresets.json
