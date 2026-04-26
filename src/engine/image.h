@@ -1,6 +1,6 @@
 /***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
- *   Copyright (C) 2020 - 2025                                             *
+ *   Copyright (C) 2020 - 2026                                             *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -22,7 +22,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -37,12 +36,10 @@ namespace fheroes2
         RGBA_32BIT = 1
     };
 
-    class RGBAImage; // Forward declaration for RGBA mirror.
-
     // Image always contains an image layer and if image is not a single-layer then also a transform layer.
     // - image layer contains visible pixels which are copy to a destination image
     // - transform layer is used to apply some transformation to an image on which we draw the current one. For example, shadowing
-    // - for RGBA_32BIT format: data is 4 bytes per pixel (R,G,B,A), no transform layer
+    // - for RGBA_32BIT format: data is 4 bytes per pixel (R,G,B,A), no transform layer; image() returns the RGBA bytes.
     class Image
     {
     public:
@@ -136,25 +133,6 @@ namespace fheroes2
             _singleLayer = true;
         }
 
-        // Write hook: invoked at the end of every drawing primitive that mutates this image's
-        // pixel data. The argument is the rectangle that was just written (in image-local coords).
-        // Used by Display to mirror its indexed buffer into _screenRGBA at physical scale on the
-        // fly — the painter algorithm: order of execution is order of pixel writes. Default is
-        // unset (null), so Sprites and intermediate buffers pay only a null check.
-        using WriteHook = std::function<void( int32_t x, int32_t y, int32_t w, int32_t h )>;
-
-        void _setWriteHook( WriteHook hook )
-        {
-            _onWrite = std::move( hook );
-        }
-
-        void _notifyWrite( const int32_t x, const int32_t y, const int32_t w, const int32_t h )
-        {
-            if ( _onWrite && w > 0 && h > 0 ) {
-                _onWrite( x, y, w, h );
-            }
-        }
-
     private:
         void copy( const Image & image );
 
@@ -166,58 +144,6 @@ namespace fheroes2
         bool _singleLayer{ false };
 
         ImageFormat _format{ ImageFormat::INDEXED_8BIT };
-
-        // Set by Display only. Drawing primitives invoke this through _notifyWrite at the end of
-        // any write to _data. Sprites leave it null and pay one branch per write.
-        WriteHook _onWrite;
-    };
-
-    // RGBA image with 4 bytes per pixel (R, G, B, A). Used for true-color rendering.
-    class RGBAImage
-    {
-    public:
-        RGBAImage() = default;
-        RGBAImage( const int32_t width, const int32_t height );
-
-        RGBAImage( const RGBAImage & ) = delete;
-        RGBAImage & operator=( const RGBAImage & ) = delete;
-
-        ~RGBAImage() = default;
-
-        RGBAImage( RGBAImage && image ) noexcept;
-        RGBAImage & operator=( RGBAImage && image ) noexcept;
-
-        int32_t width() const
-        {
-            return _width;
-        }
-
-        int32_t height() const
-        {
-            return _height;
-        }
-
-        bool empty() const
-        {
-            return !_data;
-        }
-
-        uint8_t * data()
-        {
-            return _data.get();
-        }
-
-        const uint8_t * data() const
-        {
-            return _data.get();
-        }
-
-        void resize( int32_t width, int32_t height );
-
-    private:
-        int32_t _width{ 0 };
-        int32_t _height{ 0 };
-        std::unique_ptr<uint8_t[]> _data; // RGBA, 4 bytes per pixel
     };
 
     class Sprite : public Image
@@ -275,7 +201,9 @@ namespace fheroes2
         int32_t _y{ 0 };
     };
 
-    // This class is used in situations when we draw a window within another window
+    // Save / restore a region of an image. With the pure-RGBA Display, _copy is RGBA when
+    // _image is the RGBA Display (or any RGBA-format target); a single Copy() call restores
+    // both palette and hi-res content because they live in the same buffer.
     class ImageRestorer final
     {
     public:
@@ -285,7 +213,6 @@ namespace fheroes2
         ImageRestorer( const ImageRestorer & ) = delete;
         ImageRestorer & operator=( const ImageRestorer & ) = delete;
 
-        // Restores the original image if necessary, see the implementation for details
         ~ImageRestorer()
         {
             if ( !_isRestored ) {
@@ -331,22 +258,12 @@ namespace fheroes2
         Image & _image;
         Image _copy;
 
-        // Snapshot of Display::screenRGBA() in the same rect at construction/update time.
-        // Restored alongside the indexed buffer so any hi-res RGBA paint (custom monster
-        // portrait, battle scene RGBA-direct write, etc.) on top of palette content is
-        // preserved through save/restore. Empty for non-Display targets.
-        RGBAImage _rgbaCopy;
-
         int32_t _x{ 0 };
         int32_t _y{ 0 };
         int32_t _width{ 0 };
         int32_t _height{ 0 };
 
         void _updateRoi();
-        // Capture screenRGBA region into _rgbaCopy if _image is the Display singleton.
-        void _captureRGBA();
-        // Write _rgbaCopy back into screenRGBA at the equivalent physical-pixel rect.
-        void _restoreRGBA();
 
         bool _isRestored{ false };
     };
@@ -472,45 +389,23 @@ namespace fheroes2
 
     void updateShadow( Image & image, const Point & shadowOffset, const uint8_t transformId, const bool connectCorners );
 
-    // (RGBAImage class moved earlier in this header so ImageRestorer can hold it as a value member.)
+    // ----- RGBA-only helpers (Image must be in RGBA_32BIT format) -----
+    // These operate on the raw RGBA byte buffer of an Image. Used for hi-res monster portraits
+    // (BlitRGBAScaled[Alpha], DrawLineRGBA) and battle spell effects (CopyRGBA, DimRGBA, BlitRGBAAlpha).
 
-    // Blit an RGBAImage onto another RGBAImage with optional horizontal flip. Clips to destination bounds.
-    void BlitRGBA( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, bool flip = false );
+    // Blit a sub-region of an RGBA Image onto another RGBA Image, scaled to dstW x dstH, with optional flip.
+    void BlitRGBAScaled( const Image & in, Image & out, int32_t outX, int32_t outY, int32_t dstW, int32_t dstH, bool flip = false );
+    // Same with global alpha multiplier (0..255).
+    void BlitRGBAScaledAlpha( const Image & in, Image & out, int32_t outX, int32_t outY, int32_t dstW, int32_t dstH, uint8_t alpha, bool flip = false );
+    // src_over alpha blend of two same-sized RGBA Images at (outX, outY) with global alpha multiplier.
+    void BlitRGBAAlpha( const Image & in, Image & out, int32_t outX, int32_t outY, uint8_t alpha, bool flip = false );
 
-    // Blit an RGBAImage onto another RGBAImage, scaled to fit dstW x dstH game pixels, with optional flip.
-    void BlitRGBAScaled( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, int32_t dstW, int32_t dstH, bool flip = false );
+    // Bresenham line on an RGBA Image.
+    void DrawLineRGBA( Image & image, const Point & start, const Point & end, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255 );
 
-    // Clear a rectangular region of an RGBAImage (set alpha to 0).
-    void ClearRGBARegion( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height );
+    // Memcpy a rectangular RGBA region from one Image to another.
+    void CopyRGBA( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t w, int32_t h );
 
-    // Convert an 8-bit indexed Image to an RGBAImage using the game palette.
-    // Transparent pixels (transform==1) get alpha=0. Shadow pixels (transform>1) also get alpha=0.
-    void ConvertIndexedToRGBA( const Image & indexed, RGBAImage & out );
-
-    // Blit an 8-bit indexed Image directly to an RGBAImage at a given scale.
-    // Transparent pixels (transform==1) are skipped. Shadow pixels (transform 2-5) darken the destination.
-    // Coordinates are in game-pixel space and are internally scaled by 'scale'.
-    void BlitIndexedToRGBAScaled( const Image & in, RGBAImage & out, int32_t gameX, int32_t gameY, float scale, bool flip = false );
-
-    // Same as above but with a global alpha multiplier (0-255) for semi-transparent rendering.
-    void BlitIndexedToRGBAScaledAlpha( const Image & in, RGBAImage & out, int32_t gameX, int32_t gameY, float scale, uint8_t alpha, bool flip = false );
-
-    // Blit a sub-region of an 8-bit indexed Image to an RGBAImage at a given scale.
-    void BlitIndexedToRGBAScaledRegion( const Image & in, int32_t inX, int32_t inY, int32_t w, int32_t h, RGBAImage & out, int32_t gameX, int32_t gameY, float scale,
-                                        uint8_t alpha = 255, bool flip = false );
-
-    // Blit RGBAImage onto another with proper src_over alpha compositing and a global alpha multiplier.
-    void BlitRGBAAlpha( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, uint8_t alpha, bool flip = false );
-
-    // Scaled version of BlitRGBAAlpha.
-    void BlitRGBAScaledAlpha( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, int32_t dstW, int32_t dstH, uint8_t alpha, bool flip = false );
-
-    // Draw a line on an RGBAImage using Bresenham's algorithm.
-    void DrawLineRGBA( RGBAImage & image, const Point & start, const Point & end, uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255 );
-
-    // Copy a rectangular region between RGBAImages.
-    void CopyRGBA( const RGBAImage & in, int32_t inX, int32_t inY, RGBAImage & out, int32_t outX, int32_t outY, int32_t w, int32_t h );
-
-    // Darken a rectangular region of an RGBAImage by multiplying RGB by factor (0.0-1.0).
-    void DimRGBA( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height, float factor );
+    // Multiply RGB by factor (0.0..1.0), preserve alpha.
+    void DimRGBA( Image & image, int32_t x, int32_t y, int32_t width, int32_t height, float factor );
 }

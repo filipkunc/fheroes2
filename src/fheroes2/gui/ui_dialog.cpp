@@ -916,7 +916,7 @@ namespace fheroes2
         // noisy at portrait sizes, so we bypass it for these monsters. Use the pre-cropped
         // portrait (frame 1 minus transparent margins) so the figure fills the portrait area
         // instead of rattling around inside empty space.
-        const RGBAImage * portrait = AGG::GetRGBACustomPortrait( _monster.GetID() );
+        const Image * portrait = AGG::GetRGBACustomPortrait( _monster.GetID() );
         const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
         Sprite sprite = AGG::GetICN( ICN::STRIP, 12 );

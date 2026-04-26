@@ -1085,8 +1085,9 @@ namespace
 
         bool _isVSyncEnabled{ false };
 
-        // Streaming RGBA32 texture sized to Display::_screenRGBA dimensions. Painter compositor's
-        // single SDL upload target — one SDL_UpdateTexture + SDL_RenderCopy per frame.
+        // Streaming RGBA32 texture sized to Display dimensions. Pure-RGBA Display upload target —
+        // one SDL_UpdateTexture + SDL_RenderCopy per frame, with SDL_RenderSetLogicalSize handling
+        // the upscale to the physical window.
         SDL_Texture * _screenTexture{ nullptr };
         int32_t _screenTextureW{ 0 };
         int32_t _screenTextureH{ 0 };
@@ -1177,24 +1178,21 @@ namespace
             SDL_RenderPresent( _renderer );
         }
 
-        // Painter compositor: upload Display::screenRGBA() to _screenTexture and present in a single
-        // SDL_RenderCopy. Bypasses the palette-texture and overlay paths entirely. Temporarily
-        // disables SDL logical-size scaling so the texture renders at physical-pixel resolution
-        // letterboxed to the renderer's actual output size; restores logical size at the end so
-        // mouse-event coordinate translation continues to use game-pixel space.
+        // Pure-RGBA Display path: upload display.image() (RGBA bytes at game resolution) to the
+        // streaming texture, then RenderCopy under SDL_RenderSetLogicalSize so SDL handles the
+        // upscale-to-window with the configured filter (linear or nearest).
         void renderScreenRGBA( const fheroes2::Display & display ) override
         {
             if ( _renderer == nullptr || _screenTexture == nullptr ) {
                 return;
             }
 
-            const fheroes2::RGBAImage & screenRGBA = display.screenRGBA();
-            if ( screenRGBA.empty() ) {
+            if ( display.empty() ) {
                 return;
             }
 
-            const int32_t w = screenRGBA.width();
-            const int32_t h = screenRGBA.height();
+            const int32_t w = display.width();
+            const int32_t h = display.height();
             if ( w != _screenTextureW || h != _screenTextureH ) {
                 // Reallocate the streaming texture to match the framebuffer (e.g. resolution change).
                 SDL_DestroyTexture( _screenTexture );
@@ -1210,41 +1208,11 @@ namespace
                 _screenTextureH = h;
             }
 
-            const int updateCode = SDL_UpdateTexture( _screenTexture, nullptr, screenRGBA.data(), w * 4 );
+            const int updateCode = SDL_UpdateTexture( _screenTexture, nullptr, display.image(), w * 4 );
             if ( updateCode < 0 ) {
                 ERROR_LOG( "Failed to update screen RGBA texture. Error: " << SDL_GetError() )
                 return;
             }
-
-            // Determine the actual output (window) size.
-            int outputW = 0;
-            int outputH = 0;
-            SDL_GetRendererOutputSize( _renderer, &outputW, &outputH );
-
-            // Compute letterboxed destination rect at physical resolution. Pillarbox if window is
-            // wider than the texture's aspect ratio, letterbox if taller.
-            SDL_Rect dstRect = { 0, 0, outputW, outputH };
-            if ( outputW > 0 && outputH > 0 && w > 0 && h > 0 ) {
-                const float texAspect = static_cast<float>( w ) / static_cast<float>( h );
-                const float winAspect = static_cast<float>( outputW ) / static_cast<float>( outputH );
-                if ( winAspect > texAspect ) {
-                    dstRect.h = outputH;
-                    dstRect.w = static_cast<int>( static_cast<float>( outputH ) * texAspect );
-                    dstRect.x = ( outputW - dstRect.w ) / 2;
-                    dstRect.y = 0;
-                }
-                else {
-                    dstRect.w = outputW;
-                    dstRect.h = static_cast<int>( static_cast<float>( outputW ) / texAspect );
-                    dstRect.x = 0;
-                    dstRect.y = ( outputH - dstRect.h ) / 2;
-                }
-            }
-
-            // Disable logical size for this render so the dst rect is interpreted as physical pixels.
-            // Restore at the end so mouse events stay in game-pixel coords.
-            const fheroes2::Size gameSize{ static_cast<int>( display.width() ), static_cast<int>( display.height() ) };
-            SDL_RenderSetLogicalSize( _renderer, 0, 0 );
 
             SDL_SetRenderDrawColor( _renderer, 0, 0, 0, 255 );
             const int clearCode = SDL_RenderClear( _renderer );
@@ -1252,14 +1220,12 @@ namespace
                 ERROR_LOG( "Failed to clear renderer. Error: " << SDL_GetError() )
             }
 
-            const int copyCode = SDL_RenderCopy( _renderer, _screenTexture, nullptr, &dstRect );
+            const int copyCode = SDL_RenderCopy( _renderer, _screenTexture, nullptr, nullptr );
             if ( copyCode < 0 ) {
                 ERROR_LOG( "Failed to copy screen RGBA texture. Error: " << SDL_GetError() )
             }
 
             SDL_RenderPresent( _renderer );
-
-            SDL_RenderSetLogicalSize( _renderer, gameSize.width, gameSize.height );
         }
 
         bool allocate( fheroes2::ResolutionInfo & resolutionInfo, bool isFullScreen ) override
@@ -1409,23 +1375,19 @@ namespace
                 return false;
             }
 
-            // Painter compositor's screen RGBA texture, sized to match Display::_screenRGBA's
-            // physical-scale dimensions (gameDim * physicalScale). Reallocates lazily in
+            // Pure-RGBA Display upload texture, sized at game resolution. SDL_RenderSetLogicalSize
+            // (called above) handles the upscale to the physical window. Reallocates lazily in
             // renderScreenRGBA() if the framebuffer ever changes size at runtime.
-            const float screenScaleX = static_cast<float>( resolutionInfo.screenWidth ) / static_cast<float>( resolutionInfo.gameWidth );
-            const float screenScaleY = static_cast<float>( resolutionInfo.screenHeight ) / static_cast<float>( resolutionInfo.gameHeight );
-            const float screenScale = std::max( 1.0f, std::min( screenScaleX, screenScaleY ) );
-            const int32_t screenTexW = static_cast<int32_t>( static_cast<float>( resolutionInfo.gameWidth ) * screenScale );
-            const int32_t screenTexH = static_cast<int32_t>( static_cast<float>( resolutionInfo.gameHeight ) * screenScale );
-            _screenTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, screenTexW, screenTexH );
+            _screenTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, resolutionInfo.gameWidth, resolutionInfo.gameHeight );
             if ( _screenTexture == nullptr ) {
-                ERROR_LOG( "Failed to create the screen RGBA texture of " << screenTexW << " x " << screenTexH << " size. The error: " << SDL_GetError() )
+                ERROR_LOG( "Failed to create the screen RGBA texture of " << resolutionInfo.gameWidth << " x " << resolutionInfo.gameHeight
+                                                                          << " size. The error: " << SDL_GetError() )
                 clear();
                 return false;
             }
             SDL_SetTextureBlendMode( _screenTexture, SDL_BLENDMODE_NONE );
-            _screenTextureW = screenTexW;
-            _screenTextureH = screenTexH;
+            _screenTextureW = resolutionInfo.gameWidth;
+            _screenTextureH = resolutionInfo.gameHeight;
 
             if ( !_retrieveWindowInfo() ) {
                 clear();
@@ -1463,21 +1425,8 @@ namespace
                 return;
 
             updatePalette( StandardPaletteIndexes() );
-
-            if ( _surface->format->BitsPerPixel == 8 ) {
-                if ( !SDL_MUSTLOCK( _surface ) ) {
-                    // copy the image from display buffer to SDL surface
-                    const fheroes2::Display & display = fheroes2::Display::instance();
-                    if ( _surface->w == display.width() && _surface->h == display.height() ) {
-                        memcpy( _surface->pixels, display.image(), static_cast<size_t>( display.width() * display.height() ) );
-                    }
-
-                    // Display class doesn't have support for image pitch so we mustn't link display to surface if width is not divisible by 4.
-                    if ( _surface->w % 4 == 0 ) {
-                        linkRenderSurface( static_cast<uint8_t *>( _surface->pixels ) );
-                    }
-                }
-            }
+            // Pure-RGBA Display: no longer link the indexed render surface to the SDL palette
+            // surface. The legacy 8-bit palette path is dead.
         }
 
         bool _retrieveWindowInfo()
@@ -1551,16 +1500,14 @@ namespace
 
 namespace fheroes2
 {
-    void BaseRenderEngine::linkRenderSurface( uint8_t * surface ) const
-    {
-        Display::instance().linkRenderSurface( surface );
-    }
-
     Display::Display()
         : _engine( RenderEngine::create() )
         , _cursor( RenderCursor::create() )
     {
+        // Display is the single RGBA framebuffer. No transform layer, no separate _screenRGBA.
         _disableTransformLayer();
+        // The Image::format() field is private; we set it via constructor in resize() below
+        // by reconfiguring through a typed helper.
     }
 
     void Display::resize( int32_t width_, int32_t height_ )
@@ -1572,8 +1519,6 @@ namespace fheroes2
         (void)height_;
 #endif
     }
-
-    static void mirrorIndexedRectToScreenRGBA( Display & display, const int32_t x, const int32_t y, const int32_t w, const int32_t h );
 
     void Display::setResolution( ResolutionInfo info )
     {
@@ -1593,60 +1538,28 @@ namespace fheroes2
             clear();
         }
 
-        Image::resize( info.gameWidth, info.gameHeight );
-        Image::reset();
+        // Reinitialise as RGBA-format Image at game resolution. We move-assign a fresh RGBA
+        // Image so Image::format() picks up RGBA_32BIT and Image::resize allocates 4 bytes
+        // per pixel.
+        Image fresh( info.gameWidth, info.gameHeight, ImageFormat::RGBA_32BIT );
+        fresh.reset(); // Zero out so the framebuffer starts black/transparent.
+        Image::operator=( std::move( fresh ) );
 
         _screenSize = { info.screenWidth, info.screenHeight };
-
-        // (Re)allocate the screen RGBA framebuffer at physical pixel dimensions so the painter
-        // compositor and engine upload paths can use it directly. getPhysicalScale() reads
-        // width()/height() (game) and _screenSize (physical), so call it after both are set.
-        const float physicalScale = getPhysicalScale();
-        const int32_t physW = static_cast<int32_t>( static_cast<float>( info.gameWidth ) * physicalScale );
-        const int32_t physH = static_cast<int32_t>( static_cast<float>( info.gameHeight ) * physicalScale );
-        _screenRGBA.resize( physW, physH );
-        if ( !_screenRGBA.empty() ) {
-            std::memset( _screenRGBA.data(), 0, static_cast<size_t>( physW ) * physH * 4 );
-        }
-
-        // Install the indexed-buffer write hook now that _screenRGBA is sized. Every drawing
-        // primitive that mutates Display's indexed buffer immediately mirrors the rect into
-        // _screenRGBA at physical scale (the painter algorithm — order of execution = order of
-        // pixel writes). Sprites and intermediate images keep a null hook (one branch per write).
-        _setWriteHook( []( const int32_t x, const int32_t y, const int32_t w, const int32_t h ) {
-            mirrorIndexedRectToScreenRGBA( Display::instance(), x, y, w, h );
-        } );
     }
 
     void Display::resetRenderer()
     {
         const bool isFullScreen = _engine->isFullScreen();
 
-        // deallocate engine resources
         _engine->clear();
-
         _prevRoi = {};
 
         ResolutionInfo res( width(), height(), _screenSize.width, _screenSize.height );
 
-        // allocate engine resources
         if ( !_engine->allocate( res, isFullScreen ) ) {
             clear();
         }
-
-        const float physicalScale = getPhysicalScale();
-        const int32_t physW = static_cast<int32_t>( static_cast<float>( width() ) * physicalScale );
-        const int32_t physH = static_cast<int32_t>( static_cast<float>( height() ) * physicalScale );
-        _screenRGBA.resize( physW, physH );
-        if ( !_screenRGBA.empty() ) {
-            std::memset( _screenRGBA.data(), 0, static_cast<size_t>( physW ) * physH * 4 );
-        }
-
-        // Re-install the hook in case Image::resize cleared it (it doesn't currently, but be
-        // defensive — the buffer just got reallocated). See setResolution for the rationale.
-        _setWriteHook( []( const int32_t x, const int32_t y, const int32_t w, const int32_t h ) {
-            mirrorIndexedRectToScreenRGBA( Display::instance(), x, y, w, h );
-        } );
     }
 
     void Display::setWindowPos( const Point point )
@@ -1660,141 +1573,6 @@ namespace fheroes2
         return display;
     }
 
-    // Per-rect indexed → _screenRGBA mirror at physical scale. Installed by Display as the
-    // Image::WriteHook so every drawing primitive that writes to Display's indexed buffer
-    // (Blit, Fill, ApplyAlpha, ...) immediately mirrors the just-written rect into _screenRGBA.
-    //
-    // Index 0 is skipped so battle's `Fill(..., 0)` redrawPreRender clear (a transparency gate
-    // for the legacy per-frame palette mirror) doesn't paint opaque black over the battle scene
-    // before step 5 of the migration drops _mainSurfaceRGBA. Once battle composites directly
-    // into _screenRGBA the index-0 skip is harmless — there is no Fill(0) anymore.
-    static void mirrorIndexedRectToScreenRGBA( Display & display, const int32_t x, const int32_t y, const int32_t w, const int32_t h )
-    {
-        RGBAImage & target = display.screenRGBA();
-        if ( target.empty() ) {
-            return;
-        }
-
-        const uint8_t * dispImage = display.image();
-        const int32_t dispW = display.width();
-        const int32_t dispH = display.height();
-        if ( dispImage == nullptr || dispW <= 0 || dispH <= 0 ) {
-            return;
-        }
-
-        const int32_t startCol = std::max<int32_t>( 0, x );
-        const int32_t startRow = std::max<int32_t>( 0, y );
-        const int32_t endCol = std::min<int32_t>( dispW, x + w );
-        const int32_t endRow = std::min<int32_t>( dispH, y + h );
-        if ( startCol >= endCol || startRow >= endRow ) {
-            return;
-        }
-
-        const int32_t dstW = target.width();
-        const int32_t dstH = target.height();
-        const float scale = display.getPhysicalScale();
-        const uint8_t * gamePalette = getGamePalette();
-        uint8_t * dstData = target.data();
-
-        for ( int32_t row = startRow; row < endRow; ++row ) {
-            const uint8_t * dispRow = dispImage + ( static_cast<ptrdiff_t>( row ) * dispW );
-
-            const int32_t physRowStart = static_cast<int32_t>( static_cast<float>( row ) * scale );
-            const int32_t physRowEnd = std::min( static_cast<int32_t>( static_cast<float>( row + 1 ) * scale ), dstH );
-            if ( physRowStart >= physRowEnd ) {
-                continue;
-            }
-
-            for ( int32_t col = startCol; col < endCol; ++col ) {
-                const uint8_t dispPx = dispRow[col];
-                if ( dispPx == 0 ) {
-                    continue;
-                }
-
-                const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( dispPx ) * 3 );
-                const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
-                const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
-                const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
-
-                const int32_t physColStart = static_cast<int32_t>( static_cast<float>( col ) * scale );
-                const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( col + 1 ) * scale ), dstW );
-
-                for ( int32_t dy = physRowStart; dy < physRowEnd; ++dy ) {
-                    uint8_t * dstRow2 = dstData + ( static_cast<ptrdiff_t>( dy ) * dstW * 4 );
-                    for ( int32_t dx = physColStart; dx < physColEnd; ++dx ) {
-                        uint8_t * dst = dstRow2 + ( static_cast<ptrdiff_t>( dx ) * 4 );
-                        dst[0] = r;
-                        dst[1] = g;
-                        dst[2] = b;
-                        dst[3] = 255;
-                    }
-                }
-            }
-        }
-    }
-
-    // Full-screen palette → RGBA mirror into Display's screen framebuffer at physical pixel scale.
-    // Index 0 is skipped (transparent in palette convention) so any per-scope target already
-    // composited into _screenRGBA — most notably battle's _mainSurfaceRGBA inside the area where
-    // Battle::Interface::redrawPreRender has Fill'd palette zeros — survives the mirror.
-    static void paintPaletteToScreenRGBA( Display & display )
-    {
-        RGBAImage & target = display.screenRGBA();
-        if ( target.empty() ) {
-            return;
-        }
-
-        const uint8_t * dispImage = display.image();
-        const int32_t dispW = display.width();
-        const int32_t dispH = display.height();
-        const int32_t dstW = target.width();
-        const int32_t dstH = target.height();
-        const float scale = display.getPhysicalScale();
-
-        if ( dispImage == nullptr || dispW <= 0 || dispH <= 0 || dstW <= 0 || dstH <= 0 ) {
-            return;
-        }
-
-        const uint8_t * gamePalette = getGamePalette();
-        uint8_t * dstData = target.data();
-
-        for ( int32_t row = 0; row < dispH; ++row ) {
-            const uint8_t * dispRow = dispImage + ( static_cast<ptrdiff_t>( row ) * dispW );
-
-            const int32_t physRowStart = static_cast<int32_t>( static_cast<float>( row ) * scale );
-            const int32_t physRowEnd = std::min( static_cast<int32_t>( static_cast<float>( row + 1 ) * scale ), dstH );
-            if ( physRowStart >= physRowEnd ) {
-                continue;
-            }
-
-            for ( int32_t col = 0; col < dispW; ++col ) {
-                const uint8_t dispPx = dispRow[col];
-                if ( dispPx == 0 ) {
-                    continue;
-                }
-
-                const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( dispPx ) * 3 );
-                const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
-                const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
-                const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
-
-                const int32_t physColStart = static_cast<int32_t>( static_cast<float>( col ) * scale );
-                const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( col + 1 ) * scale ), dstW );
-
-                for ( int32_t dy = physRowStart; dy < physRowEnd; ++dy ) {
-                    uint8_t * dstRow2 = dstData + ( static_cast<ptrdiff_t>( dy ) * dstW * 4 );
-                    for ( int32_t dx = physColStart; dx < physColEnd; ++dx ) {
-                        uint8_t * dst = dstRow2 + ( static_cast<ptrdiff_t>( dx ) * 4 );
-                        dst[0] = r;
-                        dst[1] = g;
-                        dst[2] = b;
-                        dst[3] = 255;
-                    }
-                }
-            }
-        }
-    }
-
     void Display::render( const Rect & roi )
     {
         Rect temp( roi );
@@ -1802,10 +1580,8 @@ namespace fheroes2
             return;
         }
 
-        if ( _screenRGBA.empty() ) {
-            // No screen framebuffer yet (pre-resolution-set). Fall back to the legacy palette path
-            // so early renders during engine init don't crash.
-            _renderFrame( temp );
+        if ( empty() ) {
+            // No framebuffer yet (pre-resolution-set).
             if ( _postprocessing ) {
                 _postprocessing();
             }
@@ -1820,11 +1596,8 @@ namespace fheroes2
             }
         }
 
-        // _screenRGBA is already current — every indexed draw was mirrored on the way in by the
-        // Image::WriteHook, every hi-res RGBA paint (renderHiResMonsterPortrait, battle scene)
-        // wrote directly to _screenRGBA at absolute coords. Paint the cursor on top, then upload.
-
-        // Software cursor — last paint, on top of everything.
+        // Software cursor — last paint, on top of everything. Cursor is an indexed Sprite;
+        // Blit() takes the indexed-to-RGBA branch automatically since Display is RGBA.
         if ( _cursor->isVisible() && _cursor->isSoftwareEmulation() && !_cursor->_image.empty() ) {
             const Sprite & cursorImage = _cursor->_image;
             int32_t cursorX = cursorImage.x();
@@ -1833,7 +1606,7 @@ namespace fheroes2
                 cursorX = std::clamp( cursorX, 0, width() - cursorImage.width() );
                 cursorY = std::clamp( cursorY, 0, height() - cursorImage.height() );
             }
-            BlitIndexedToRGBAScaled( cursorImage, _screenRGBA, cursorX, cursorY, getPhysicalScale() );
+            Blit( cursorImage, *this, cursorX, cursorY );
         }
 
         _engine->renderScreenRGBA( *this );
@@ -1849,39 +1622,6 @@ namespace fheroes2
     {
         _prevRoi = getBoundaryRect( _prevRoi, roi );
         getActiveArea( _prevRoi, width(), height() );
-    }
-
-    void Display::_renderFrame( const Rect & roi ) const
-    {
-        bool updateImage = true;
-        if ( _preprocessing ) {
-            std::vector<uint8_t> palette;
-            if ( _preprocessing( palette ) ) {
-                _engine->updatePalette( palette );
-                // when we change a palette for 8-bit image we unwillingly call render so we don't need to re-render the same frame again
-                updateImage = ( _renderSurface == nullptr );
-                if ( updateImage ) {
-                    // Pre-processing step is applied to the whole image so we forcefully render the full frame.
-                    _engine->render( *this, { 0, 0, width(), height() } );
-                    return;
-                }
-            }
-        }
-
-        if ( updateImage ) {
-            // Make sure that we update the previously rendered area to avoid any ghost effect artefacts.
-            _engine->render( *this, getBoundaryRect( roi, _prevRoi ) );
-        }
-    }
-
-    uint8_t * Display::image()
-    {
-        return _renderSurface != nullptr ? _renderSurface : Image::image();
-    }
-
-    const uint8_t * Display::image() const
-    {
-        return _renderSurface != nullptr ? _renderSurface : Image::image();
     }
 
     void Display::release()
@@ -1902,14 +1642,11 @@ namespace fheroes2
 
         _engine->updatePalette( StandardPaletteIndexes() );
 
-        // The indexed buffer hasn't changed, but the palette table it indexes into has — every
-        // pixel in _screenRGBA mirrored from the indexed buffer is now stale. Re-mirror the whole
-        // screen under the new palette so color cycling (gold/water/lava) and other palette
-        // swaps update on screen. Cycling fires roughly every 150ms (AGG::ApplyICNCycling), much
-        // less often than per-frame, so the cost is amortised.
-        if ( !_screenRGBA.empty() ) {
-            paintPaletteToScreenRGBA( *this );
-        }
+        // POSTPONED: with the pure-RGBA Display we have no indexed buffer to re-mirror under
+        // the new palette. Color cycling animations (gold/water/lava) won't update on screen
+        // until a shader-LUT path lands. The currentPalette is kept up to date so newly drawn
+        // primitives use the latest colours, but already-drawn pixels stay at the old colours
+        // until the affected widgets redraw themselves.
     }
 
     bool Cursor::isFocusActive() const

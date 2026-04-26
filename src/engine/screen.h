@@ -82,6 +82,7 @@ namespace fheroes2
         int32_t screenHeight{ 0 };
     };
 
+    // Forward declaration so BaseRenderEngine can refer to Display.
     class BaseRenderEngine
     {
     public:
@@ -168,9 +169,9 @@ namespace fheroes2
             // Do nothing.
         }
 
-        // Painter compositor: upload Display::screenRGBA() to the engine's screen texture and present
-        // the frame in a single SDL_RenderCopy. Replaces the palette-texture path during the migration;
-        // returns immediately when not yet wired.
+        // Pure-RGBA Display path: upload display.image() (game-resolution RGBA bytes) to the engine's
+        // screen texture and present the frame in a single SDL_RenderCopy. The engine handles the
+        // upscale-to-window via SDL_RenderSetLogicalSize / SDL filtering.
         virtual void renderScreenRGBA( const Display & )
         {
             // Do nothing.
@@ -192,14 +193,17 @@ namespace fheroes2
             // Do nothing.
         }
 
-        void linkRenderSurface( uint8_t * surface ) const; // declaration of this method is in source file
-
     private:
         bool _isFullScreen;
 
         bool _nearestScaling;
     };
 
+    // Pure-RGBA Display: a single Image with format=RGBA_32BIT at game resolution. No separate
+    // _screenRGBA, no WriteHook, no mirroring. All drawing primitives target this RGBA buffer
+    // directly via their RGBA-output paths in image.cpp. The engine reads display.image() and
+    // uploads RGBA bytes to a streaming texture; SDL_RenderSetLogicalSize handles upscale to
+    // the physical window.
     class Display final : public Image
     {
     public:
@@ -257,16 +261,12 @@ namespace fheroes2
             _postprocessing = postprocessing;
         }
 
-        // For 8-bit mode we return a pointer to direct surface which we draw on screen
-        uint8_t * image() override;
-        const uint8_t * image() const override;
-
         void release(); // to release all allocated resources. Should be used at the end of the application
 
         // Change the whole color representation on the screen. Make sure that palette exists all the time!!!
         // nullptr input parameter is used to reset palette to default one.
-        // Re-mirrors the indexed buffer into _screenRGBA under the new palette so color cycling
-        // animations (gold/water/lava) and other palette swaps update on screen.
+        // NOTE: with the pure-RGBA Display, this only updates the palette table. Color cycling
+        // animations (gold/water/lava) are postponed until a shader-LUT path lands.
         void changePalette( const uint8_t * palette = nullptr, const bool forceDefaultPaletteUpdate = false );
 
         Size screenSize() const
@@ -274,13 +274,9 @@ namespace fheroes2
             return _screenSize;
         }
 
-        // Ratio of physical screen pixels to game pixels. An RGBA surface sized to
-        // (gameDim * scale) forwards and direct-paints at full display resolution, so
-        // hi-res source art (e.g. 460px monster PNGs) downscales once straight to the
-        // physical target (say 303 physical pixels for a 101-game-pixel portrait on a
-        // 3x display) instead of twice (460→101 game, then 101→303 when the overlay
-        // SDL texture is upscaled to screen). Bottoms out at 1.0 for same-resolution
-        // or windowed-mode setups where game and physical pixels match.
+        // Ratio of physical screen pixels to game pixels. Kept around for callers that still
+        // think in physical-pixel terms; with the pure-RGBA Display at game resolution, most
+        // primitives no longer need it.
         float getPhysicalScale() const
         {
             const int32_t gameW = width();
@@ -303,42 +299,12 @@ namespace fheroes2
         PreRenderProcessing _preprocessing{ nullptr };
         PostRenderProcessing _postprocessing{ nullptr };
 
-        uint8_t * _renderSurface{ nullptr };
-
         // Previous area drawn on the screen.
         Rect _prevRoi;
 
         Size _screenSize;
 
-        // Single Display-owned screen RGBA framebuffer at physical resolution. Every drawing
-        // primitive that mutates the indexed buffer mirrors the just-written rect into here via
-        // the Image::WriteHook (painter algorithm — order of execution = order of pixel writes).
-        // The engine does one SDL_UpdateTexture + SDL_RenderCopy per frame and SDL handles
-        // letterbox to the actual window output.
-        RGBAImage _screenRGBA;
-
-    public:
-        // Render-side accessor for the screen RGBA framebuffer. Engine layer reads this to upload to SDL.
-        RGBAImage & screenRGBA()
-        {
-            return _screenRGBA;
-        }
-        const RGBAImage & screenRGBA() const
-        {
-            return _screenRGBA;
-        }
-
-    private:
-
-        // Only for cases of direct drawing on rendered 8-bit image.
-        void linkRenderSurface( uint8_t * surface )
-        {
-            _renderSurface = surface;
-        }
-
         Display();
-
-        void _renderFrame( const Rect & roi ) const; // prepare and render a frame
     };
 
     class Cursor

@@ -38,13 +38,13 @@ namespace fheroes2
 
     bool Load( const std::string & path, Image & image );
 
-    // Load a PNG file into an RGBAImage preserving full 32-bit RGBA data.
-    bool LoadRGBA( const std::string & path, RGBAImage & image );
+    // Load a PNG file into an Image with RGBA_32BIT format preserving full 32-bit RGBA data.
+    bool LoadRGBA( const std::string & path, Image & image );
 
-    // Load a PNG file into an RGBAImage, scaled to the given target dimensions.
-    bool LoadRGBA( const std::string & path, RGBAImage & image, int32_t targetWidth, int32_t targetHeight );
+    // Load a PNG file into an Image with RGBA_32BIT format, scaled to the given target dimensions.
+    bool LoadRGBA( const std::string & path, Image & image, int32_t targetWidth, int32_t targetHeight );
 
-    // Load a PNG file into an Image with RGBA_32BIT format.
+    // Load a PNG file into an Image with RGBA_32BIT format. (Alias retained for compatibility.)
     bool LoadAsRGBA( const std::string & path, Image & image );
 
     // Load a PNG file into an Image with RGBA_32BIT format, scaled to the given target dimensions.

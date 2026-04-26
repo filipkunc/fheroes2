@@ -108,7 +108,7 @@ namespace
             // For custom monsters with hi-res PNGs, direct-blit the cropped portrait into
             // Display::screenRGBA(). The palette icon and the row redraw are mirrored to
             // _screenRGBA by the WriteHook first, then the hi-res RGBA paint lands on top.
-            const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( index );
+            const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( index );
             if ( portrait != nullptr && !portrait->empty() ) {
                 // Icon is centred within the 43x43 STRIP background blitted at (dstx+1, dsty).
                 const int32_t iconBoxSize = 32;

@@ -110,7 +110,7 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
         // For custom monsters with hi-res PNGs (Thor, Succubus, ...), route the portrait through
         // renderHiResMonsterPortrait so it direct-paints into the active forwarding RGBA surface.
         // The painter compositor alpha-composites that surface onto the screen framebuffer.
-        const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop->GetID() );
+        const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop->GetID() );
         const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
         // This is the drawing of army troops in compact form in the small info window beneath resources

@@ -501,7 +501,7 @@ namespace
             // For custom monsters with hi-res RGBA PNGs (Thor, Succubus, ...), render the original
             // high-quality PNG via an RGBA overlay on top of the indexed dialog, bypassing the
             // palette-quantised downscaled indexed sprite.
-            const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( troop.GetID() );
+            const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( troop.GetID() );
             const int32_t animFrame = monsterAnimation.frameId();
             const bool canUseRGBA = rgbaFrames != nullptr && animFrame >= 0 && animFrame < static_cast<int32_t>( rgbaFrames->size() )
                                     && !( *rgbaFrames )[animFrame].empty() && !troop.isModes( Battle::CAP_MIRRORIMAGE );

@@ -747,15 +747,16 @@ namespace
     // matters hugely at large downscale ratios (e.g. 460→32): nearest-neighbour sampling picks one
     // random source pixel per block and neighbouring block samples often land on very different
     // palette colours, producing dither-noise. Averaging first keeps neighbours stable.
-    void writeIndexedSpriteFromRGBA( const fheroes2::RGBAImage & src, const int32_t targetW, const int32_t targetH, fheroes2::Sprite & out )
+    void writeIndexedSpriteFromRGBA( const fheroes2::Image & src, const int32_t targetW, const int32_t targetH, fheroes2::Sprite & out )
     {
         if ( src.empty() || targetW <= 0 || targetH <= 0 ) {
             return;
         }
+        assert( src.format() == fheroes2::ImageFormat::RGBA_32BIT );
 
         const int32_t srcW = src.width();
         const int32_t srcH = src.height();
-        const uint8_t * srcData = src.data();
+        const uint8_t * srcData = src.image();
 
         // Preserve the caller's position/offset on the sprite — size is replaced.
         const int32_t posX = out.x();
@@ -2883,7 +2884,7 @@ namespace
             _icnVsSprite[id].clear();
             CopyICNWithPalette( id, ICN::MONH0046, PAL::PaletteType::THOR );
 
-            const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::THOR );
+            const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::THOR );
             if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() && !_icnVsSprite[id].empty() ) {
                 fheroes2::Sprite & portrait = _icnVsSprite[id][0];
                 writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], portrait.width(), portrait.height(), portrait );
@@ -2945,7 +2946,7 @@ namespace
             // dimensions/offset), then overwrite pixels with a downscaled hi-res frame 1 PNG if
             // the custom battle PNGs are available. Gargoyle ID 31, so portrait index 30.
             CopyICNWithPalette( id, ICN::MONH0030, PAL::PaletteType::BLOOD_DRAGON );
-            const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::SUCCUBUS );
+            const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::SUCCUBUS );
             if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() && !_icnVsSprite[id].empty() ) {
                 fheroes2::Sprite & portrait = _icnVsSprite[id][0];
                 writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], portrait.width(), portrait.height(), portrait );
@@ -2974,7 +2975,7 @@ namespace
             // 1-based index 15 - 1 = 14, but MONH0000 is PEASANT so Wolf uses MONH0014). Then
             // overwrite with the hi-res PNG frame 1 when custom sprites are available.
             CopyICNWithPalette( id, ICN::MONH0014, PAL::PaletteType::STANDARD );
-            const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::DACHSHUND );
+            const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::DACHSHUND );
             if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() && !_icnVsSprite[id].empty() ) {
                 fheroes2::Sprite & portrait = _icnVsSprite[id][0];
                 writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], portrait.width(), portrait.height(), portrait );
@@ -3553,7 +3554,7 @@ namespace
                     ApplyPalette( _icnVsSprite[id][thorSpriteIndex], PAL::GetPalette( PAL::PaletteType::THOR ) );
 
                     // If hi-res PNGs exist, downscale frame 1 to 32x32 for a crisper icon.
-                    const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::THOR );
+                    const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::THOR );
                     if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
                         fheroes2::Sprite & icon = _icnVsSprite[id][thorSpriteIndex];
                         writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
@@ -3585,7 +3586,7 @@ namespace
                 ApplyPalette( _icnVsSprite[id][succubusSpriteIndex], PAL::GetPalette( PAL::PaletteType::BLOOD_DRAGON ) );
 
                 // If hi-res PNGs exist, downscale frame 1 to 32x32 for a crisper icon.
-                const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::SUCCUBUS );
+                const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::SUCCUBUS );
                 if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
                     fheroes2::Sprite & icon = _icnVsSprite[id][succubusSpriteIndex];
                     writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
@@ -3602,7 +3603,7 @@ namespace
                 }
                 _icnVsSprite[id][dachshundSpriteIndex] = _icnVsSprite[id][wolfSpriteIndex];
 
-                const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::DACHSHUND );
+                const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::DACHSHUND );
                 if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
                     fheroes2::Sprite & icon = _icnVsSprite[id][dachshundSpriteIndex];
                     writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
@@ -6478,11 +6479,8 @@ namespace fheroes2::AGG
         return static_cast<uint32_t>( GetMaximumICNIndex( icnId ) );
     }
 
-    const std::vector<RGBAImage> * GetRGBACustomFrames( const int monsterId )
+    const std::vector<Image> * GetRGBACustomFrames( const int monsterId )
     {
-        // Every custom monster with hi-res PNGs registers here. The frame count must match
-        // the monster's ICN frame count exactly — a single missing file disables the RGBA
-        // path for that monster and callers fall back to the indexed ICN.
         struct RGBACustomEntry
         {
             int monsterId;
@@ -6495,13 +6493,17 @@ namespace fheroes2::AGG
             { Monster::DACHSHUND, "dachshund", 33 },
         };
 
-        static std::map<int, std::vector<RGBAImage>> cache;
+        static std::map<int, std::vector<Image>> cache;
         static bool initialized = false;
         if ( !initialized ) {
             initialized = true;
             const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
             for ( const RGBACustomEntry & entry : registry ) {
-                std::vector<RGBAImage> frames( entry.frameCount );
+                std::vector<Image> frames;
+                frames.reserve( entry.frameCount );
+                for ( int i = 0; i < entry.frameCount; ++i ) {
+                    frames.emplace_back();
+                }
                 bool ok = true;
                 for ( int i = 0; i < entry.frameCount; ++i ) {
                     char filename[64];
@@ -6522,25 +6524,24 @@ namespace fheroes2::AGG
         return ( it == cache.end() ) ? nullptr : &it->second;
     }
 
-    const RGBAImage * GetRGBACustomPortrait( const int monsterId )
+    const Image * GetRGBACustomPortrait( const int monsterId )
     {
-        static std::map<int, RGBAImage> portraits;
+        static std::map<int, Image> portraits;
         static std::set<int> attempted;
 
         if ( attempted.count( monsterId ) == 0 ) {
             attempted.insert( monsterId );
 
-            const std::vector<RGBAImage> * frames = GetRGBACustomFrames( monsterId );
+            const std::vector<Image> * frames = GetRGBACustomFrames( monsterId );
             if ( frames == nullptr || frames->size() < 2 || ( *frames )[1].empty() ) {
                 return nullptr;
             }
 
-            const RGBAImage & src = ( *frames )[1];
+            const Image & src = ( *frames )[1];
             const int32_t srcW = src.width();
             const int32_t srcH = src.height();
-            const uint8_t * srcData = src.data();
+            const uint8_t * srcData = src.image();
 
-            // Tight bounding box of opaque pixels.
             int32_t minX = srcW;
             int32_t minY = srcH;
             int32_t maxX = -1;
@@ -6548,18 +6549,10 @@ namespace fheroes2::AGG
             for ( int32_t y = 0; y < srcH; ++y ) {
                 for ( int32_t x = 0; x < srcW; ++x ) {
                     if ( srcData[( static_cast<ptrdiff_t>( y ) * srcW + x ) * 4 + 3] > 0 ) {
-                        if ( x < minX ) {
-                            minX = x;
-                        }
-                        if ( x > maxX ) {
-                            maxX = x;
-                        }
-                        if ( y < minY ) {
-                            minY = y;
-                        }
-                        if ( y > maxY ) {
-                            maxY = y;
-                        }
+                        if ( x < minX ) minX = x;
+                        if ( x > maxX ) maxX = x;
+                        if ( y < minY ) minY = y;
+                        if ( y > maxY ) maxY = y;
                     }
                 }
             }
@@ -6567,7 +6560,6 @@ namespace fheroes2::AGG
                 return nullptr;
             }
 
-            // Small margin around the figure — avoids clipping anti-aliased edges.
             const int32_t margin = 4;
             minX = std::max( 0, minX - margin );
             minY = std::max( 0, minY - margin );
@@ -6577,8 +6569,8 @@ namespace fheroes2::AGG
             const int32_t cropW = maxX - minX + 1;
             const int32_t cropH = maxY - minY + 1;
 
-            RGBAImage cropped( cropW, cropH );
-            uint8_t * dstData = cropped.data();
+            Image cropped( cropW, cropH, ImageFormat::RGBA_32BIT );
+            uint8_t * dstData = cropped.image();
             for ( int32_t y = 0; y < cropH; ++y ) {
                 memcpy( dstData + static_cast<ptrdiff_t>( y ) * cropW * 4,
                         srcData + ( ( static_cast<ptrdiff_t>( minY + y ) * srcW + minX ) * 4 ),
@@ -6592,7 +6584,7 @@ namespace fheroes2::AGG
         return ( it == portraits.end() ) ? nullptr : &it->second;
     }
 
-    void renderHiResMonsterPortrait( const RGBAImage & portrait, const int32_t gameX, const int32_t gameY, const int32_t gameWidth, const bool flip,
+    void renderHiResMonsterPortrait( const Image & portrait, const int32_t gameX, const int32_t gameY, const int32_t gameWidth, const bool flip,
                                      const uint8_t alpha )
     {
         if ( portrait.empty() || gameWidth <= 0 ) {
@@ -6605,33 +6597,22 @@ namespace fheroes2::AGG
             return;
         }
 
-        // Direct paint into Display::screenRGBA() at absolute screen coords. Order of execution
-        // is order of pixel writes — the WriteHook has already mirrored the palette MONH at this
-        // slot into _screenRGBA, so the hi-res RGBA paint lands on top.
         Display & display = Display::instance();
-        RGBAImage & target = display.screenRGBA();
-        if ( target.empty() ) {
+        if ( display.empty() ) {
             return;
         }
 
-        const float scale = display.getPhysicalScale();
-        const int32_t dstX = static_cast<int32_t>( static_cast<float>( gameX ) * scale );
-        const int32_t dstY = static_cast<int32_t>( static_cast<float>( gameY ) * scale );
-        const int32_t dstW = static_cast<int32_t>( static_cast<float>( gameWidth ) * scale );
-        if ( dstW <= 0 ) {
-            return;
-        }
-        // Preserve aspect ratio when scaling into the target.
+        const int32_t dstW = gameWidth;
         const int32_t dstH = static_cast<int32_t>( ( static_cast<int64_t>( srcH ) * dstW ) / srcW );
         if ( dstH <= 0 ) {
             return;
         }
 
         if ( alpha >= 255 ) {
-            BlitRGBAScaled( portrait, target, dstX, dstY, dstW, dstH, flip );
+            BlitRGBAScaled( portrait, display, gameX, gameY, dstW, dstH, flip );
         }
         else {
-            BlitRGBAScaledAlpha( portrait, target, dstX, dstY, dstW, dstH, alpha, flip );
+            BlitRGBAScaledAlpha( portrait, display, gameX, gameY, dstW, dstH, alpha, flip );
         }
     }
 

@@ -275,7 +275,7 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
     const fheroes2::Text text( std::to_string( troop.GetCount() ), use_mini_sprite ? fheroes2::FontType::smallWhite() : fheroes2::FontType::normalWhite() );
 
     if ( use_mini_sprite ) {
-        const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop.GetID() );
+        const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop.GetID() );
         const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
         if ( useCustomPortrait ) {
@@ -321,7 +321,7 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
         // For custom monsters with hi-res PNGs (Thor, Succubus, ...), skip the palette MONH blit
         // inside renderMonsterFrame and paint the portrait with an RGBA overlay so the army slot
         // shows the actual character art instead of the noisy palette-quantised downscale.
-        const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop.GetID() );
+        const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop.GetID() );
         const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
         fheroes2::renderMonsterFrame( troop, dstsf, pos.getPosition(), !useCustomPortrait );

@@ -311,7 +311,7 @@ namespace fheroes2
         return true;
     }
 
-    bool LoadRGBA( const std::string & path, RGBAImage & image )
+    bool LoadRGBA( const std::string & path, Image & image )
     {
 #if !defined( WITH_IMAGE )
         // Without SDL_image, use stb_image for PNG files.
@@ -349,8 +349,8 @@ namespace fheroes2
                 return false;
             }
 
-            image.resize( w, h );
-            memcpy( image.data(), pixels, static_cast<size_t>( w ) * h * 4 );
+            image = Image( w, h, ImageFormat::RGBA_32BIT );
+            memcpy( image.image(), pixels, static_cast<size_t>( w ) * h * 4 );
             stbi_image_free( pixels );
             return true;
         }
@@ -367,7 +367,6 @@ namespace fheroes2
             return false;
         }
 
-        // Convert to RGBA32 format.
         const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
         if ( !pixelFormat ) {
             return false;
@@ -380,10 +379,10 @@ namespace fheroes2
 
         assert( surface->format->BytesPerPixel == 4 );
 
-        image.resize( surface->w, surface->h );
+        image = Image( surface->w, surface->h, ImageFormat::RGBA_32BIT );
 
         const uint8_t * srcRow = static_cast<const uint8_t *>( surface->pixels );
-        uint8_t * dstRow = image.data();
+        uint8_t * dstRow = image.image();
 
         for ( int32_t y = 0; y < surface->h; ++y ) {
             memcpy( dstRow, srcRow, static_cast<size_t>( surface->w ) * 4 );
@@ -394,7 +393,7 @@ namespace fheroes2
         return true;
     }
 
-    bool LoadRGBA( const std::string & path, RGBAImage & image, const int32_t targetWidth, const int32_t targetHeight )
+    bool LoadRGBA( const std::string & path, Image & image, const int32_t targetWidth, const int32_t targetHeight )
     {
         if ( targetWidth <= 0 || targetHeight <= 0 ) {
             return false;
@@ -431,10 +430,10 @@ namespace fheroes2
             return false;
         }
 
-        image.resize( targetWidth, targetHeight );
+        image = Image( targetWidth, targetHeight, ImageFormat::RGBA_32BIT );
 
         const uint8_t * srcRow = static_cast<const uint8_t *>( scaledSurface->pixels );
-        uint8_t * dstRow = image.data();
+        uint8_t * dstRow = image.image();
 
         for ( int32_t y = 0; y < targetHeight; ++y ) {
             memcpy( dstRow, srcRow, static_cast<size_t>( targetWidth ) * 4 );

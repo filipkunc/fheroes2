@@ -503,7 +503,7 @@ namespace Battle
 
         fheroes2::Rect _interfacePosition;
         fheroes2::Rect _surfaceInnerArea{ 0, 0, fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT };
-        fheroes2::RGBAImage _battleGroundRGBA;  // Pre-converted background at physical resolution.
+        fheroes2::Image _battleGroundRGBA;  // RGBA-format Image: pre-converted battlefield background at game resolution.
         fheroes2::Image * _battleGroundBuildTarget{ nullptr };  // Temporary target for _redrawGroundObjects during _redrawBattleGround.
         fheroes2::Image _hexagonGrid;
         fheroes2::Image _hexagonShadow;
@@ -643,9 +643,8 @@ namespace Battle
             }
         };
 
-        // Central wrappers that draw battle-local pixels into Display::screenRGBA() at physical
-        // resolution. (outX/outY) are battle-local game-pixel coords; the helpers add
-        // _interfacePosition.{x,y} to land at the correct absolute screen position.
+        // Central wrappers that draw battle-local pixels into Display at game-pixel coords.
+        // (outX/outY) are battle-local; the helpers add _interfacePosition.{x,y} for absolute coords.
         void _blitOnSurface( const fheroes2::Image & in, int32_t outX, int32_t outY, bool flip = false );
         void _alphaBlitOnSurface( const fheroes2::Image & in, int32_t outX, int32_t outY, uint8_t alpha, bool flip = false );
         void _alphaBlitOnSurface( const fheroes2::Image & in, int32_t inX, int32_t inY, int32_t outX, int32_t outY, int32_t w, int32_t h, uint8_t alpha,
@@ -656,15 +655,14 @@ namespace Battle
         // High-res RGBA animation frames for custom monsters are loaded and cached by
         // fheroes2::AGG::GetRGBACustomFrames().
 
-        // Battle area dimensions cached at construction time. The battle scene occupies
-        // (_interfacePosition.x, _interfacePosition.y, _battleAreaWidthPx, _battleAreaHeightPx)
-        // in PHYSICAL pixels of Display::screenRGBA(). Excludes the lower status-log strip.
+        // Battle area dimensions cached at construction time, in GAME pixels (the pure-RGBA Display
+        // is at game resolution). Excludes the lower status-log strip.
         int32_t _battleAreaWidthPx{ 0 };
         int32_t _battleAreaHeightPx{ 0 };
 
-        // Cache for palette-to-RGBA converted sprites. Key = (icnId << 32) | frameIndex.
-        std::map<uint64_t, fheroes2::RGBAImage> _rgbaSpriteCache;
-        const fheroes2::RGBAImage & _getOrConvertToRGBA( const fheroes2::Sprite & sprite, int icnId, int frameIndex );
+        // Cache for palette-to-RGBA converted sprites (RGBA-format Image). Key = (icnId << 32) | frameIndex.
+        std::map<uint64_t, fheroes2::Image> _rgbaSpriteCache;
+        const fheroes2::Image & _getOrConvertToRGBA( const fheroes2::Sprite & sprite, int icnId, int frameIndex );
 
         // Intents are used to confirm actions in combat performed using touch gestures
         BoardActionIntent _boardActionIntent;

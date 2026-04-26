@@ -69,10 +69,10 @@ namespace
 
         const fheroes2::Rect fadeRoi( roi ^ fheroes2::Rect( 0, 0, display.width(), display.height() ) );
 
-        fheroes2::Image temp;
-        temp._disableTransformLayer();
-        temp.resize( fadeRoi.width, fadeRoi.height );
-
+        // Save the display region in its native format (RGBA for the pure-RGBA Display) so the
+        // round-trip is lossless. Quantising to an indexed temp here would snap every pixel to
+        // the nearest palette colour and leave dithering noise on the display after the fade ends.
+        fheroes2::Image temp( fadeRoi.width, fadeRoi.height, display.format() );
         Copy( display, fadeRoi.x, fadeRoi.y, temp, 0, 0, fadeRoi.width, fadeRoi.height );
 
         double alpha = startAlpha;
@@ -582,11 +582,12 @@ namespace fheroes2
         return out;
     }
 
-    void CreateDeathWaveEffectRGBA( RGBAImage & out, const RGBAImage & in, const int32_t x, const std::vector<int32_t> & deathWaveCurve )
+    void CreateDeathWaveEffectRGBA( Image & out, const Image & in, const int32_t x, const std::vector<int32_t> & deathWaveCurve )
     {
         if ( in.empty() ) {
             return;
         }
+        assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
 
         const int32_t inWidth = in.width();
         const int32_t waveLength = static_cast<int32_t>( deathWaveCurve.size() );
@@ -599,15 +600,14 @@ namespace fheroes2
         const int32_t outWaveWidth = x > waveLength ? ( x > inWidth ? ( waveLength - x + inWidth ) : waveLength ) : x;
 
         if ( out.width() < outWaveWidth || out.height() < inHeight ) {
-            out.resize( outWaveWidth, inHeight );
+            out = Image( outWaveWidth, inHeight, ImageFormat::RGBA_32BIT );
         }
 
         const int32_t outWidth = out.width();
         const int32_t offsetX = x < waveLength ? 0 : x - waveLength;
 
-        // 4 bytes per pixel for RGBA.
-        const uint8_t * inData = in.data() + ( static_cast<ptrdiff_t>( offsetX ) * 4 );
-        uint8_t * outData = out.data();
+        const uint8_t * inData = in.image() + ( static_cast<ptrdiff_t>( offsetX ) * 4 );
+        uint8_t * outData = out.image();
 
         std::vector<int32_t>::const_iterator pntX = deathWaveCurve.begin() + ( x < waveLength ? waveLength - x : 0 );
         const std::vector<int32_t>::const_iterator endX = deathWaveCurve.end() - ( x > inWidth ? x - inWidth : 0 );
@@ -638,24 +638,23 @@ namespace fheroes2
         }
     }
 
-    RGBAImage CreateHolyShoutEffectRGBA( const RGBAImage & in, const int32_t blurRadius, const uint8_t darkredStrength )
+    Image CreateHolyShoutEffectRGBA( const Image & in, const int32_t blurRadius, const uint8_t darkredStrength )
     {
         if ( in.empty() || blurRadius < 1 ) {
             return {};
         }
+        assert( in.format() == ImageFormat::RGBA_32BIT );
 
         const int32_t width = in.width();
         const int32_t height = in.height();
 
-        // Darkening/reddening coefficients applied after averaging.
         const double redCoeff = 1.0 - ( darkredStrength / 1120.0 );
         const double greenBlueCoeff = 1.0 - ( darkredStrength / 320.0 );
 
-        RGBAImage out;
-        out.resize( width, height );
+        Image out( width, height, ImageFormat::RGBA_32BIT );
 
-        const uint8_t * inData = in.data();
-        uint8_t * outPtr = out.data();
+        const uint8_t * inData = in.image();
+        uint8_t * outPtr = out.image();
 
         const ptrdiff_t pixelStride = static_cast<ptrdiff_t>( width ) * 4;
 
@@ -704,13 +703,14 @@ namespace fheroes2
         return out;
     }
 
-    void WhitenRGBA( RGBAImage & image, const float factor )
+    void WhitenRGBA( Image & image, const float factor )
     {
         if ( image.empty() || factor <= 0.0F ) {
             return;
         }
+        assert( image.format() == ImageFormat::RGBA_32BIT );
 
-        uint8_t * data = image.data();
+        uint8_t * data = image.image();
         const int32_t total = image.width() * image.height();
 
         for ( int32_t i = 0; i < total; ++i ) {

@@ -254,41 +254,41 @@ void SMKVideoSequence::getCurrentFrame( fheroes2::Image & image, const int32_t x
     assert( _heightScaleFactor == 1 || _heightScaleFactor == 2 );
     assert( ( _height % _heightScaleFactor ) == 0 );
 
-    if ( image.width() == _width && image.height() == _height && x == 0 && y == 0 ) {
-        const size_t size = static_cast<size_t>( _width ) * _height;
+    // Bounds clip first.
+    if ( x + width > image.width() ) {
+        width = image.width() - x;
+    }
+    if ( y + height > image.height() ) {
+        height = image.height() - y;
+    }
 
-        if ( _heightScaleFactor == 2 ) {
-            assert( ( height % _heightScaleFactor ) == 0 );
+    const int32_t imageWidth = image.width();
+    const bool isRGBA = ( image.format() == fheroes2::ImageFormat::RGBA_32BIT );
 
-            const uint8_t * inY = data;
-            uint8_t * outY = image.image();
-            const uint8_t * outYEnd = outY + height * _width;
-
-            for ( ; outY != outYEnd; outY += _heightScaleFactor * _width, inY += _width ) {
-                std::copy( inY, inY + width, outY );
+    if ( isRGBA ) {
+        // Pure-RGBA Display: convert SMK's indexed pixels to RGBA per pixel using the SMK palette.
+        // The SMK palette is already 8-bit per channel (unlike the game palette which is 6-bit).
+        const int32_t copiedHeight = ( height / _heightScaleFactor ) * _heightScaleFactor;
+        for ( int32_t row = 0; row < copiedHeight; ++row ) {
+            const int32_t srcRow = row / _heightScaleFactor;
+            const uint8_t * src = data + static_cast<ptrdiff_t>( srcRow ) * _width;
+            uint8_t * dst = image.image() + ( ( static_cast<ptrdiff_t>( y + row ) * imageWidth ) + x ) * 4;
+            for ( int32_t col = 0; col < width; ++col, ++src, dst += 4 ) {
+                const uint8_t * pal = paletteData + static_cast<ptrdiff_t>( *src ) * 3;
+                dst[0] = pal[0];
+                dst[1] = pal[1];
+                dst[2] = pal[2];
+                dst[3] = 255;
             }
-        }
-        else {
-            std::copy( data, data + size, image.image() );
         }
     }
     else {
-        if ( x + width > image.width() ) {
-            width = image.width() - x;
-        }
-        if ( y + height > image.height() ) {
-            height = image.height() - y;
-        }
-
         const uint8_t * inY = data;
-
-        const int32_t imageWidth = image.width();
         uint8_t * outY = image.image() + x + y * imageWidth;
         const uint8_t * outYEnd = outY + ( height / _heightScaleFactor ) * _heightScaleFactor * imageWidth;
 
         if ( _heightScaleFactor == 2 ) {
             assert( ( height % _heightScaleFactor ) == 0 );
-
             for ( ; outY != outYEnd; outY += _heightScaleFactor * imageWidth, inY += _width ) {
                 std::copy( inY, inY + width, outY );
             }
@@ -299,10 +299,6 @@ void SMKVideoSequence::getCurrentFrame( fheroes2::Image & image, const int32_t x
             }
         }
     }
-
-    // The decoder writes raw pixel bytes directly to image.image(); fire the WriteHook so
-    // Display::screenRGBA() (or any other consumer) mirrors the just-written rect.
-    image._notifyWrite( x, y, width, height );
 
     palette.resize( 256 * 3 );
     memcpy( palette.data(), paletteData, 256 * 3 );

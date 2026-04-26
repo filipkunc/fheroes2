@@ -175,14 +175,8 @@ namespace Video
         // Hide mouse cursor.
         const CursorRestorer cursorRestorer( false );
 
+        // Pure-RGBA Display: fill paints opaque palette[0] (black) across the whole RGBA buffer.
         display.fill( 0 );
-        // The WriteHook installed on Display skips palette index 0 (legacy gate that preserves
-        // RGBA-direct content like battle scenes). Video clears the entire indexed buffer to 0
-        // intending an opaque-black screen, so explicitly zero out screenRGBA too — black areas
-        // of the video would otherwise show menu content from the previous render.
-        if ( !display.screenRGBA().empty() ) {
-            fheroes2::ClearRGBARegion( display.screenRGBA(), 0, 0, display.screenRGBA().width(), display.screenRGBA().height() );
-        }
         display.updateNextRenderRoi( { 0, 0, display.width(), display.height() } );
 
         std::vector<uint8_t> currPalette;
@@ -304,10 +298,6 @@ namespace Video
         }
         else {
             display.fill( 0 );
-            // Mirror the index-0 fill into screenRGBA — the WriteHook would otherwise skip it.
-            if ( !display.screenRGBA().empty() ) {
-                fheroes2::ClearRGBARegion( display.screenRGBA(), 0, 0, display.screenRGBA().width(), display.screenRGBA().height() );
-            }
         }
         display.updateNextRenderRoi( { 0, 0, display.width(), display.height() } );
 

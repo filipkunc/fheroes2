@@ -1637,15 +1637,19 @@ void LocalEvent::onRenderDeviceResetEvent()
 {
     // All textures has to be recreated. The only way to do it is to reset everything and render it back.
     fheroes2::Display & display = fheroes2::Display::instance();
-    fheroes2::Image temp;
 
     assert( display.singleLayer() );
 
-    temp._disableTransformLayer();
+    // Use the display's own format (RGBA) for the temp so the round-trip is lossless. A default
+    // INDEXED temp would quantise every pixel through the palette and leave dithering noise.
+    fheroes2::Image temp( display.width(), display.height(), display.format() );
+    if ( display.singleLayer() ) {
+        temp._disableTransformLayer();
+    }
 
-    fheroes2::Copy( display, temp );
+    fheroes2::Copy( display, 0, 0, temp, 0, 0, display.width(), display.height() );
     display.release();
-    fheroes2::Copy( temp, display );
+    fheroes2::Copy( temp, 0, 0, display, 0, 0, temp.width(), temp.height() );
 }
 
 void LocalEvent::onKeyboardEvent( const fheroes2::Key key, const int32_t keyModifier, const KeyboardEventState keyState )

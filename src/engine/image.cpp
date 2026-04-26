@@ -197,6 +197,20 @@ namespace
         69,  69,  69,  69,  236, 237, 69,  69,  69,  69,  242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255 // No cycle
     };
 
+    // Shadow darkening factors for transform values 2-5 when writing to RGBA destinations.
+    // Transform 2 = strongest shadow, transform 5 = weakest.
+    constexpr float shadowFactor[6] = { 1.0f, 1.0f, 0.25f, 0.40f, 0.55f, 0.70f };
+
+    // Convert a palette index to RGBA bytes (R, G, B, A=255). The game palette stores 6-bit
+    // values (0-63); shift left by 2 to get 8-bit (0-252).
+    inline void paletteIdxToRGBA( const uint8_t idx, uint8_t & r, uint8_t & g, uint8_t & b )
+    {
+        const uint8_t * pal = fheroes2::getGamePalette() + ( static_cast<ptrdiff_t>( idx ) * 3 );
+        r = static_cast<uint8_t>( pal[0] << 2 );
+        g = static_cast<uint8_t>( pal[1] << 2 );
+        b = static_cast<uint8_t>( pal[2] << 2 );
+    }
+
     bool Validate( const fheroes2::Image & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height )
     {
         if ( image.empty() || width <= 0 || height <= 0 ) {
@@ -405,12 +419,78 @@ namespace
         const int32_t widthIn = in.width();
         const int32_t widthOut = out.width();
 
+        // RGBA out + indexed in: read src indexed pixel, remap via palette[], convert to RGBA.
+        if ( out.format() == fheroes2::ImageFormat::RGBA_32BIT && in.format() == fheroes2::ImageFormat::INDEXED_8BIT ) {
+            const uint8_t * imageInY = in.image() + static_cast<ptrdiff_t>( inY ) * widthIn + inX;
+            uint8_t * outRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
+            const uint8_t * transformInY = in.singleLayer() ? nullptr : ( in.transform() + static_cast<ptrdiff_t>( inY ) * widthIn + inX );
+
+            for ( int32_t y = 0; y < height; ++y ) {
+                const uint8_t * imgIn = imageInY;
+                const uint8_t * trIn = transformInY;
+                uint8_t * outPx = outRow;
+
+                for ( int32_t x = 0; x < width; ++x, ++imgIn, outPx += 4 ) {
+                    if ( trIn && *trIn != 0 ) {
+                        ++trIn;
+                        continue;
+                    }
+
+                    uint8_t r;
+                    uint8_t g;
+                    uint8_t b;
+                    paletteIdxToRGBA( palette[*imgIn], r, g, b );
+                    outPx[0] = r;
+                    outPx[1] = g;
+                    outPx[2] = b;
+                    outPx[3] = 255;
+                    if ( trIn ) {
+                        ++trIn;
+                    }
+                }
+
+                imageInY += widthIn;
+                if ( transformInY ) {
+                    transformInY += widthIn;
+                }
+                outRow += static_cast<ptrdiff_t>( widthOut ) * 4;
+            }
+            return;
+        }
+
+        // RGBA in + RGBA out: reverse-lookup each pixel's palette index, remap, convert back.
+        // Used by ApplyPalette/ApplyAlpha on Display (or any RGBA buffer).
+        if ( in.format() == fheroes2::ImageFormat::RGBA_32BIT && out.format() == fheroes2::ImageFormat::RGBA_32BIT ) {
+            for ( int32_t y = 0; y < height; ++y ) {
+                const uint8_t * srcRow = in.image() + ( ( static_cast<ptrdiff_t>( inY + y ) * widthIn ) + inX ) * 4;
+                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+                for ( int32_t x = 0; x < width; ++x ) {
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( x ) * 4;
+                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                    if ( srcPx[3] == 0 ) {
+                        // Fully transparent — leave destination untouched.
+                        continue;
+                    }
+                    // Reverse-lookup the source RGB to a palette index, remap, convert back.
+                    const uint8_t srcIdx = GetPALColorId( srcPx[0] >> 2, srcPx[1] >> 2, srcPx[2] >> 2 );
+                    uint8_t r;
+                    uint8_t g;
+                    uint8_t b;
+                    paletteIdxToRGBA( palette[srcIdx], r, g, b );
+                    dstPx[0] = r;
+                    dstPx[1] = g;
+                    dstPx[2] = b;
+                    dstPx[3] = srcPx[3];
+                }
+            }
+            return;
+        }
+
         const uint8_t * imageInY = in.image() + static_cast<ptrdiff_t>( inY ) * widthIn + inX;
         uint8_t * imageOutY = out.image() + static_cast<ptrdiff_t>( outY ) * widthOut + outX;
         const uint8_t * imageInYEnd = imageInY + static_cast<ptrdiff_t>( height ) * widthIn;
 
         if ( in.singleLayer() ) {
-            // All pixels in a single-layer image do not have any transform values so there is no need to check for them.
             for ( ; imageInY != imageInYEnd; imageInY += widthIn, imageOutY += widthOut ) {
                 const uint8_t * imageInX = imageInY;
                 uint8_t * imageOutX = imageOutY;
@@ -437,8 +517,6 @@ namespace
                 }
             }
         }
-
-        out._notifyWrite( outX, outY, width, height );
     }
 }
 
@@ -499,17 +577,32 @@ namespace fheroes2
 
     void Image::fill( const uint8_t value )
     {
-        assert( _format == ImageFormat::INDEXED_8BIT );
+        if ( empty() ) {
+            return;
+        }
 
-        if ( !empty() ) {
-            const size_t totalSize = static_cast<size_t>( _width ) * _height;
-            memset( image(), value, totalSize );
+        const size_t totalSize = static_cast<size_t>( _width ) * _height;
 
-            if ( !_singleLayer ) {
-                memset( transform(), static_cast<uint8_t>( 0 ), totalSize );
+        if ( _format == ImageFormat::RGBA_32BIT ) {
+            // Treat 'value' as a palette index. Convert and fill RGBA bytes.
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+            paletteIdxToRGBA( value, r, g, b );
+            uint8_t * px = image();
+            for ( size_t i = 0; i < totalSize; ++i, px += 4 ) {
+                px[0] = r;
+                px[1] = g;
+                px[2] = b;
+                px[3] = 255;
             }
+            return;
+        }
 
-            _notifyWrite( 0, 0, _width, _height );
+        memset( image(), value, totalSize );
+
+        if ( !_singleLayer ) {
+            memset( transform(), static_cast<uint8_t>( 0 ), totalSize );
         }
     }
 
@@ -661,15 +754,16 @@ namespace fheroes2
         _updateRoi();
 
         if ( _image.singleLayer() ) {
-            // The restorer is used to restore the image without the transform layer so we make a single-layer copy.
             _copy._disableTransformLayer();
         }
+        if ( _image.format() == ImageFormat::RGBA_32BIT ) {
+            _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
+        }
+        else {
+            _copy.resize( _width, _height );
+        }
 
-        _copy.resize( _width, _height );
-
-        Copy( _image, 0, 0, _copy, 0, 0, _width, _height );
-
-        _captureRGBA();
+        Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
     }
 
     ImageRestorer::ImageRestorer( Image & image, const int32_t x_, const int32_t y_, const int32_t width, const int32_t height )
@@ -682,15 +776,16 @@ namespace fheroes2
         _updateRoi();
 
         if ( _image.singleLayer() ) {
-            // The restorer is used to restore the image without the transform layer so we make a single-layer copy.
             _copy._disableTransformLayer();
         }
-
-        _copy.resize( _width, _height );
+        if ( _image.format() == ImageFormat::RGBA_32BIT ) {
+            _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
+        }
+        else {
+            _copy.resize( _width, _height );
+        }
 
         Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
-
-        _captureRGBA();
     }
 
     void ImageRestorer::update( const int32_t x_, const int32_t y_, const int32_t width, const int32_t height )
@@ -702,60 +797,19 @@ namespace fheroes2
         _height = height;
         _updateRoi();
 
-        _copy.resize( _width, _height );
+        if ( _image.format() == ImageFormat::RGBA_32BIT ) {
+            _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
+        }
+        else {
+            _copy.resize( _width, _height );
+        }
         Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
-
-        _captureRGBA();
     }
 
     void ImageRestorer::restore()
     {
         _isRestored = true;
         Copy( _copy, 0, 0, _image, _x, _y, _width, _height );
-        // The Copy above mirrored the saved palette into Display::screenRGBA() via the
-        // WriteHook. For Display targets we now overwrite that mirror with the saved
-        // screenRGBA snapshot — preserving any hi-res RGBA paint (monster portraits, battle
-        // scene direct writes) that landed on top of the palette content at save time.
-        _restoreRGBA();
-    }
-
-    void ImageRestorer::_captureRGBA()
-    {
-        if ( &_image != &Display::instance() ) {
-            return;
-        }
-        Display & display = Display::instance();
-        const RGBAImage & screen = display.screenRGBA();
-        if ( screen.empty() || _width <= 0 || _height <= 0 ) {
-            return;
-        }
-        const float scale = display.getPhysicalScale();
-        const int32_t physX = static_cast<int32_t>( static_cast<float>( _x ) * scale );
-        const int32_t physY = static_cast<int32_t>( static_cast<float>( _y ) * scale );
-        const int32_t physW = static_cast<int32_t>( static_cast<float>( _width ) * scale );
-        const int32_t physH = static_cast<int32_t>( static_cast<float>( _height ) * scale );
-        if ( physW <= 0 || physH <= 0 ) {
-            _rgbaCopy = RGBAImage{};
-            return;
-        }
-        _rgbaCopy.resize( physW, physH );
-        CopyRGBA( screen, physX, physY, _rgbaCopy, 0, 0, physW, physH );
-    }
-
-    void ImageRestorer::_restoreRGBA()
-    {
-        if ( &_image != &Display::instance() || _rgbaCopy.empty() ) {
-            return;
-        }
-        Display & display = Display::instance();
-        RGBAImage & screen = display.screenRGBA();
-        if ( screen.empty() ) {
-            return;
-        }
-        const float scale = display.getPhysicalScale();
-        const int32_t physX = static_cast<int32_t>( static_cast<float>( _x ) * scale );
-        const int32_t physY = static_cast<int32_t>( static_cast<float>( _y ) * scale );
-        CopyRGBA( _rgbaCopy, 0, 0, screen, physX, physY, _rgbaCopy.width(), _rgbaCopy.height() );
     }
 
     void ImageRestorer::_updateRoi()
@@ -813,9 +867,456 @@ namespace fheroes2
         }
     }
 
+    // ===== Anonymous-namespace internal helpers for RGBA paths =====
+    namespace
+    {
+        // Indexed src -> RGBA out, no scale, with optional flip and transform handling.
+        void BlitIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
+                                      const bool flip )
+        {
+            assert( in.format() == ImageFormat::INDEXED_8BIT );
+            assert( out.format() == ImageFormat::RGBA_32BIT );
+
+            if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+                return;
+            }
+
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+            const bool hasTransform = !in.singleLayer();
+            const int32_t inDir = flip ? -1 : 1;
+
+            const uint8_t * imageInY = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX );
+            const uint8_t * transformInY = hasTransform
+                                               ? ( in.transform() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX ) )
+                                               : nullptr;
+            uint8_t * outRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
+
+            for ( int32_t row = 0; row < height; ++row ) {
+                const uint8_t * imgIn = imageInY;
+                const uint8_t * trIn = transformInY;
+                uint8_t * outPx = outRow;
+
+                for ( int32_t col = 0; col < width; ++col, imgIn += inDir, outPx += 4 ) {
+                    if ( hasTransform ) {
+                        if ( *trIn == 1 ) {
+                            // Transparent — skip.
+                            trIn += inDir;
+                            continue;
+                        }
+                        if ( *trIn > 1 && *trIn <= 5 ) {
+                            // Shadow — darken the existing destination RGB.
+                            const float f = shadowFactor[*trIn];
+                            outPx[0] = static_cast<uint8_t>( static_cast<float>( outPx[0] ) * f );
+                            outPx[1] = static_cast<uint8_t>( static_cast<float>( outPx[1] ) * f );
+                            outPx[2] = static_cast<uint8_t>( static_cast<float>( outPx[2] ) * f );
+                            // Keep alpha as-is.
+                            trIn += inDir;
+                            continue;
+                        }
+                        trIn += inDir;
+                    }
+
+                    uint8_t r;
+                    uint8_t g;
+                    uint8_t b;
+                    paletteIdxToRGBA( *imgIn, r, g, b );
+                    outPx[0] = r;
+                    outPx[1] = g;
+                    outPx[2] = b;
+                    outPx[3] = 255;
+                }
+
+                imageInY += widthIn;
+                if ( transformInY ) {
+                    transformInY += widthIn;
+                }
+                outRow += static_cast<ptrdiff_t>( widthOut ) * 4;
+            }
+        }
+
+        // Indexed src -> RGBA out with src_over alpha (alpha 1..254).
+        void AlphaBlitIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
+                                           const uint8_t alpha, const bool flip )
+        {
+            assert( in.format() == ImageFormat::INDEXED_8BIT );
+            assert( out.format() == ImageFormat::RGBA_32BIT );
+
+            if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+                return;
+            }
+
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+            const bool hasTransform = !in.singleLayer();
+            const int32_t inDir = flip ? -1 : 1;
+            const float alphaF = static_cast<float>( alpha ) / 255.0f;
+
+            const uint8_t * imageInY = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX );
+            const uint8_t * transformInY = hasTransform
+                                               ? ( in.transform() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX ) )
+                                               : nullptr;
+            uint8_t * outRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
+
+            for ( int32_t row = 0; row < height; ++row ) {
+                const uint8_t * imgIn = imageInY;
+                const uint8_t * trIn = transformInY;
+                uint8_t * outPx = outRow;
+
+                for ( int32_t col = 0; col < width; ++col, imgIn += inDir, outPx += 4 ) {
+                    if ( hasTransform ) {
+                        if ( *trIn == 1 ) {
+                            trIn += inDir;
+                            continue;
+                        }
+                        if ( *trIn > 1 && *trIn <= 5 ) {
+                            const float baseF = shadowFactor[*trIn];
+                            const float f = 1.0f - ( 1.0f - baseF ) * alphaF;
+                            outPx[0] = static_cast<uint8_t>( static_cast<float>( outPx[0] ) * f );
+                            outPx[1] = static_cast<uint8_t>( static_cast<float>( outPx[1] ) * f );
+                            outPx[2] = static_cast<uint8_t>( static_cast<float>( outPx[2] ) * f );
+                            trIn += inDir;
+                            continue;
+                        }
+                        trIn += inDir;
+                    }
+
+                    uint8_t srcR;
+                    uint8_t srcG;
+                    uint8_t srcB;
+                    paletteIdxToRGBA( *imgIn, srcR, srcG, srcB );
+
+                    const float invA = 1.0f - alphaF;
+                    outPx[0] = static_cast<uint8_t>( static_cast<float>( srcR ) * alphaF + static_cast<float>( outPx[0] ) * invA );
+                    outPx[1] = static_cast<uint8_t>( static_cast<float>( srcG ) * alphaF + static_cast<float>( outPx[1] ) * invA );
+                    outPx[2] = static_cast<uint8_t>( static_cast<float>( srcB ) * alphaF + static_cast<float>( outPx[2] ) * invA );
+                    outPx[3] = std::max<uint8_t>( outPx[3], alpha );
+                }
+
+                imageInY += widthIn;
+                if ( transformInY ) {
+                    transformInY += widthIn;
+                }
+                outRow += static_cast<ptrdiff_t>( widthOut ) * 4;
+            }
+        }
+
+        // RGBA src -> RGBA out blit (no scaling, optional flip), src_over alpha for fully opaque pixels = copy.
+        void BlitRGBAToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
+                                   const bool flip )
+        {
+            assert( in.format() == ImageFormat::RGBA_32BIT );
+            assert( out.format() == ImageFormat::RGBA_32BIT );
+
+            if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+                return;
+            }
+
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+
+            for ( int32_t y = 0; y < height; ++y ) {
+                const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY + y ) * widthIn ) * 4;
+                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+
+                for ( int32_t x = 0; x < width; ++x ) {
+                    const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+                    if ( srcPx[3] == 0 ) {
+                        continue;
+                    }
+                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                    dstPx[0] = srcPx[0];
+                    dstPx[1] = srcPx[1];
+                    dstPx[2] = srcPx[2];
+                    dstPx[3] = srcPx[3];
+                }
+            }
+        }
+
+        // RGBA src -> RGBA out, alpha-blended.
+        void AlphaBlitRGBAToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
+                                        const uint8_t alpha, const bool flip )
+        {
+            assert( in.format() == ImageFormat::RGBA_32BIT );
+            assert( out.format() == ImageFormat::RGBA_32BIT );
+
+            if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+                return;
+            }
+
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+
+            for ( int32_t y = 0; y < height; ++y ) {
+                const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY + y ) * widthIn ) * 4;
+                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+
+                for ( int32_t x = 0; x < width; ++x ) {
+                    const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+                    if ( srcPx[3] == 0 ) {
+                        continue;
+                    }
+                    const uint32_t srcA = ( static_cast<uint32_t>( srcPx[3] ) * alpha ) / 255;
+                    if ( srcA == 0 ) {
+                        continue;
+                    }
+                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                    const uint32_t invA = 255 - srcA;
+                    dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invA ) / 255 );
+                    dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invA ) / 255 );
+                    dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invA ) / 255 );
+                    const uint32_t dstA = dstPx[3];
+                    dstPx[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invA ) / 255, static_cast<uint32_t>( 255 ) ) );
+                }
+            }
+        }
+
+        // Indexed src -> RGBA out, plain memcpy of palette[]->RGBA per pixel (no transform, no flip).
+        void CopyIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
+        {
+            assert( in.format() == ImageFormat::INDEXED_8BIT );
+            assert( out.format() == ImageFormat::RGBA_32BIT );
+
+            if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+                return;
+            }
+
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+
+            const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + inX;
+            uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
+
+            for ( int32_t row = 0; row < height; ++row ) {
+                const uint8_t * src = srcRow;
+                uint8_t * dst = dstRow;
+                for ( int32_t col = 0; col < width; ++col, ++src, dst += 4 ) {
+                    uint8_t r;
+                    uint8_t g;
+                    uint8_t b;
+                    paletteIdxToRGBA( *src, r, g, b );
+                    dst[0] = r;
+                    dst[1] = g;
+                    dst[2] = b;
+                    dst[3] = 255;
+                }
+                srcRow += widthIn;
+                dstRow += static_cast<ptrdiff_t>( widthOut ) * 4;
+            }
+        }
+
+        // RGBA src -> RGBA out, plain memcpy.
+        void CopyRGBAToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
+        {
+            assert( in.format() == ImageFormat::RGBA_32BIT );
+            assert( out.format() == ImageFormat::RGBA_32BIT );
+
+            if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+                return;
+            }
+
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+
+            for ( int32_t y = 0; y < height; ++y ) {
+                const uint8_t * srcRow = in.image() + ( ( static_cast<ptrdiff_t>( inY + y ) * widthIn ) + inX ) * 4;
+                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+                memcpy( dstRow, srcRow, static_cast<size_t>( width ) * 4 );
+            }
+        }
+
+        // RGBA src -> indexed out (palette quantization).
+        void BlitRGBAToIndexed( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const bool flip )
+        {
+            assert( in.format() == ImageFormat::RGBA_32BIT );
+            assert( out.format() == ImageFormat::INDEXED_8BIT );
+
+            if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+                return;
+            }
+
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+
+            uint8_t * imageOutY = out.image() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX;
+            uint8_t * transformOutY = out.singleLayer() ? nullptr : ( out.transform() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX );
+
+            for ( int32_t y = 0; y < height; ++y ) {
+                uint8_t * imageOutX = imageOutY;
+                uint8_t * transformOutX = transformOutY;
+
+                for ( int32_t x = 0; x < width; ++x ) {
+                    const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                    const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( inY + y ) * widthIn + srcX ) * 4;
+                    const uint8_t * px = in.image() + pixelOffset;
+
+                    if ( px[3] == 0 ) {
+                        ++imageOutX;
+                        if ( transformOutX ) {
+                            ++transformOutX;
+                        }
+                        continue;
+                    }
+
+                    *imageOutX = GetPALColorId( px[0], px[1], px[2] );
+                    if ( transformOutX ) {
+                        *transformOutX = 0;
+                        ++transformOutX;
+                    }
+                    ++imageOutX;
+                }
+
+                imageOutY += widthOut;
+                if ( transformOutY ) {
+                    transformOutY += widthOut;
+                }
+            }
+        }
+
+        // RGBA src -> indexed out with src_over alpha.
+        void AlphaBlitRGBAToIndexed( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
+                                     const uint8_t alphaValue, const bool flip )
+        {
+            assert( in.format() == ImageFormat::RGBA_32BIT );
+            assert( out.format() == ImageFormat::INDEXED_8BIT );
+
+            if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
+                return;
+            }
+
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+            const uint8_t * gamePalette = getGamePalette();
+
+            uint8_t * imageOutY = out.image() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX;
+
+            for ( int32_t y = 0; y < height; ++y ) {
+                uint8_t * imageOutX = imageOutY;
+
+                for ( int32_t x = 0; x < width; ++x, ++imageOutX ) {
+                    const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                    const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( inY + y ) * widthIn + srcX ) * 4;
+                    const uint8_t * px = in.image() + pixelOffset;
+
+                    const uint8_t srcAlpha = px[3];
+                    if ( srcAlpha == 0 ) {
+                        continue;
+                    }
+                    const uint32_t combinedAlpha = ( static_cast<uint32_t>( srcAlpha ) * alphaValue ) / 255;
+                    if ( combinedAlpha == 0 ) {
+                        continue;
+                    }
+                    const uint32_t behindAlpha = 255 - combinedAlpha;
+                    const uint8_t * outPAL = gamePalette + ( static_cast<ptrdiff_t>( *imageOutX ) * 3 );
+
+                    const uint32_t red = ( static_cast<uint32_t>( px[0] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[0] ) * behindAlpha );
+                    const uint32_t green = ( static_cast<uint32_t>( px[1] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[1] ) * behindAlpha );
+                    const uint32_t blue = ( static_cast<uint32_t>( px[2] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[2] ) * behindAlpha );
+
+                    *imageOutX = GetPALColorId( static_cast<uint8_t>( red / 255 ), static_cast<uint8_t>( green / 255 ), static_cast<uint8_t>( blue / 255 ) );
+                }
+
+                imageOutY += widthOut;
+            }
+        }
+    } // anonymous
+
+    // ===== Public drawing primitives =====
+
     void addGradientShadow( const Sprite & in, Image & out, const Point & outPos, const Point & shadowOffset )
     {
         if ( in.empty() || out.empty() || ( shadowOffset.x == 0 && shadowOffset.y == 0 ) || ( outPos.x < 0 ) || ( outPos.y < 0 ) ) {
+            return;
+        }
+
+        // RGBA-output path: darken affected pixels by shadowFactor.
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            const int32_t outWidth = out.width();
+            const int32_t outHeight = out.height();
+            const int32_t inWidth = in.width();
+            const int32_t inHeight = in.height();
+            const int32_t shadowOffsetX = std::min<int32_t>( shadowOffset.x, 0 );
+            const int32_t shadowOffsetY = std::min<int32_t>( shadowOffset.y, 0 );
+            const int32_t baseX = outPos.x + shadowOffsetX + in.x();
+            const int32_t baseY = outPos.y + shadowOffsetY + in.y();
+
+            const int32_t absOffsetX = std::abs( shadowOffset.x );
+            const int32_t absOffsetY = std::abs( shadowOffset.y );
+
+            std::vector<Point> shadowLine;
+            shadowLine.reserve( std::max( absOffsetX, absOffsetY ) + 1 );
+            if ( shadowOffset.x == 0 ) {
+                const int32_t maxY = absOffsetY + shadowOffsetY;
+                for ( int32_t y = shadowOffsetY; y <= maxY; ++y ) {
+                    shadowLine.emplace_back( 0, y );
+                }
+            }
+            else {
+                const double slopeFactor = static_cast<double>( shadowOffset.y ) / shadowOffset.x;
+                if ( absOffsetX >= absOffsetY ) {
+                    const int32_t maxX = absOffsetX + shadowOffsetX;
+                    for ( int32_t x = shadowOffsetX; x <= maxX; ++x ) {
+                        shadowLine.emplace_back( x, static_cast<int32_t>( std::round( x * slopeFactor ) ) );
+                    }
+                }
+                else {
+                    const int32_t maxY = absOffsetY + shadowOffsetY;
+                    for ( int32_t y = shadowOffsetY; y <= maxY; ++y ) {
+                        shadowLine.emplace_back( static_cast<int32_t>( std::round( y / slopeFactor ) ), y );
+                    }
+                }
+            }
+
+            const int32_t maxX = inWidth + absOffsetX;
+            const int32_t maxY = inHeight + absOffsetY;
+            const uint8_t * transformIn = in.singleLayer() ? nullptr : in.transform();
+
+            const auto isTransparent = [inWidth, inHeight, transformIn]( const int32_t offsetX, const int32_t offsetY ) {
+                if ( ( offsetX < 0 ) || ( offsetY < 0 ) || ( offsetX >= inWidth ) || ( offsetY >= inHeight ) ) {
+                    return true;
+                }
+                if ( transformIn == nullptr ) {
+                    return false;
+                }
+                return ( *( transformIn + offsetX + static_cast<ptrdiff_t>( offsetY ) * inWidth ) == 1 );
+            };
+
+            for ( int32_t y = 0; y < maxY; ++y ) {
+                const int32_t offsetY = y + shadowOffsetY;
+                const int32_t dstY = baseY + y;
+                if ( dstY < 0 || dstY >= outHeight ) {
+                    continue;
+                }
+                for ( int32_t x = 0; x < maxX; ++x ) {
+                    const int32_t offsetX = x + shadowOffsetX;
+                    if ( !isTransparent( offsetX, offsetY ) ) {
+                        continue;
+                    }
+                    uint8_t transformTableId = 6;
+                    for ( const Point & shadowLineOffset : shadowLine ) {
+                        if ( !isTransparent( offsetX - shadowLineOffset.x, offsetY - shadowLineOffset.y ) ) {
+                            --transformTableId;
+                            if ( transformTableId == 2 ) {
+                                break;
+                            }
+                        }
+                    }
+                    if ( transformTableId == 6 ) {
+                        continue;
+                    }
+                    const int32_t dstX = baseX + x;
+                    if ( dstX < 0 || dstX >= outWidth ) {
+                        continue;
+                    }
+                    const float f = shadowFactor[transformTableId];
+                    uint8_t * dst = out.image() + ( static_cast<ptrdiff_t>( dstY ) * outWidth + dstX ) * 4;
+                    dst[0] = static_cast<uint8_t>( static_cast<float>( dst[0] ) * f );
+                    dst[1] = static_cast<uint8_t>( static_cast<float>( dst[1] ) * f );
+                    dst[2] = static_cast<uint8_t>( static_cast<float>( dst[2] ) * f );
+                }
+            }
             return;
         }
 
@@ -826,7 +1327,6 @@ namespace fheroes2
         const int32_t shadowOffsetY = std::min<int32_t>( shadowOffset.y, 0 );
         const int32_t outStartOffset = outPos.x + shadowOffsetX + in.x() + ( outPos.y + shadowOffsetY + in.y() ) * outWidth;
 
-        // The shadow should not be outside of 'out' image.
         assert( outStartOffset >= 0 && outWidth >= ( inWidth + outPos.x + std::max<int32_t>( shadowOffset.x, 0 ) )
                 && out.height() >= ( inHeight + outPos.y + std::max<int32_t>( shadowOffset.y, 0 ) ) );
 
@@ -836,7 +1336,6 @@ namespace fheroes2
         std::vector<Point> shadowLine;
         shadowLine.reserve( std::max( absOffsetX, absOffsetY ) + 1 );
 
-        // Calculate shadow line from the object.
         if ( shadowOffset.x == 0 ) {
             const int32_t maxY = absOffsetY + shadowOffsetY;
             for ( int32_t y = shadowOffsetY; y <= maxY; ++y ) {
@@ -845,7 +1344,6 @@ namespace fheroes2
         }
         else {
             const double slopeFactor = static_cast<double>( shadowOffset.y ) / shadowOffset.x;
-
             if ( absOffsetX >= absOffsetY ) {
                 const int32_t maxX = absOffsetX + shadowOffsetX;
                 for ( int32_t x = shadowOffsetX; x <= maxX; ++x ) {
@@ -863,24 +1361,17 @@ namespace fheroes2
         const int32_t maxX = inWidth + absOffsetX;
         const int32_t maxY = inHeight + absOffsetY;
 
-        // If image is single-layer then pointer to its transform layer is 'nullptr'
         const uint8_t * transformIn = in.singleLayer() ? nullptr : in.transform();
         uint8_t * transformOut = out.singleLayer() ? nullptr : ( out.transform() + outStartOffset );
-
         uint8_t * imageOut = out.image() + outStartOffset;
 
         const auto isTransparent = [inWidth, inHeight, transformIn]( const int32_t offsetX, const int32_t offsetY ) {
             if ( ( offsetX < 0 ) || ( offsetY < 0 ) || ( offsetX >= inWidth ) || ( offsetY >= inHeight ) ) {
-                // The space out of image boundaries is considered as transparent.
                 return true;
             }
-
             if ( transformIn == nullptr ) {
-                // Single-layer images are non-transparent.
                 return false;
             }
-
-            // Image is transparent when its transform layer data is equal to 1.
             return ( *( transformIn + offsetX + static_cast<ptrdiff_t>( offsetY ) * inWidth ) == 1 );
         };
 
@@ -890,22 +1381,14 @@ namespace fheroes2
                 const int32_t offsetX = x + shadowOffsetX;
 
                 if ( !isTransparent( offsetX, offsetY ) ) {
-                    // We add shadow only to visible parts of the background image.
                     continue;
                 }
 
-                // There are 4 shadow tables: 2, 3, 4, 5. The strongest shadow is in table ID 2.
                 uint8_t transformTableId = 6;
                 for ( const Point & shadowLineOffset : shadowLine ) {
-                    const int32_t shadowLineOffsetX = offsetX - shadowLineOffset.x;
-                    const int32_t shadowLineOffsetY = offsetY - shadowLineOffset.y;
-
-                    if ( !isTransparent( shadowLineOffsetX, shadowLineOffsetY ) ) {
-                        // Increase the strength of shadow by reducing the table ID.
+                    if ( !isTransparent( offsetX - shadowLineOffset.x, offsetY - shadowLineOffset.y ) ) {
                         --transformTableId;
-
                         if ( transformTableId == 2 ) {
-                            // We reached the strongest shadow table ID.
                             break;
                         }
                     }
@@ -915,21 +1398,16 @@ namespace fheroes2
                     continue;
                 }
 
-                // The transformTableId is less than 6 so the shadow has to be applied.
                 const int32_t outOffset = x + y * outWidth;
 
                 if ( transformOut != nullptr ) {
-                    // 'out' is double-layer image because transformOut pointer is not `nullptr`.
-
                     uint8_t * transformOutX = transformOut + outOffset;
 
                     if ( *transformOutX == 0 ) {
-                        // Apply shadow transform to the out image.
                         uint8_t * imageOutX = imageOut + outOffset;
                         *imageOutX = *( transformTable + transformTableId * ptrdiff_t{ 256 } + *imageOutX );
                     }
                     else if ( *transformOutX > 1 && *transformOutX < 6 ) {
-                        // Out image transform layer already has shadow data. We add the shadow strength by subtract the 'transformTableId', limited to 2.
                         *transformOutX = ( *transformOutX < 2 + transformTableId ) ? 2 : ( *transformOutX - transformTableId );
                     }
                     else {
@@ -937,16 +1415,11 @@ namespace fheroes2
                     }
                 }
                 else {
-                    // For single-layer 'out' image apply shadow transform to the image data.
                     uint8_t * imageOutX = imageOut + outOffset;
                     *imageOutX = *( transformTable + transformTableId * ptrdiff_t{ 256 } + *imageOutX );
                 }
             }
         }
-
-        const int32_t notifyX = outPos.x + shadowOffsetX + in.x();
-        const int32_t notifyY = outPos.y + shadowOffsetY + in.y();
-        out._notifyWrite( notifyX, notifyY, maxX, maxY );
     }
 
     void addGradientShadowForArea( Image & out, const Point & outPos, const int32_t areaWidth, const int32_t areaHeight, const int32_t shadowOffset )
@@ -992,206 +1465,6 @@ namespace fheroes2
         return out;
     }
 
-    // Blit an RGBA_32BIT source image onto an INDEXED_8BIT destination, with palette quantization and alpha handling.
-    void BlitRGBAToIndexed( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const bool flip )
-    {
-        assert( in.format() == ImageFormat::RGBA_32BIT );
-        assert( out.format() == ImageFormat::INDEXED_8BIT );
-
-        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
-            return;
-        }
-
-        const int32_t widthIn = in.width();
-        const int32_t widthOut = out.width();
-
-        uint8_t * imageOutY = out.image() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX;
-        uint8_t * transformOutY = out.singleLayer() ? nullptr : ( out.transform() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX );
-
-        for ( int32_t y = 0; y < height; ++y ) {
-            uint8_t * imageOutX = imageOutY;
-            uint8_t * transformOutX = transformOutY;
-
-            for ( int32_t x = 0; x < width; ++x ) {
-                const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
-                const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( inY + y ) * widthIn + srcX ) * 4;
-                const uint8_t * px = in.image() + pixelOffset;
-
-                const uint8_t alpha = px[3];
-                if ( alpha == 0 ) {
-                    ++imageOutX;
-                    if ( transformOutX ) {
-                        ++transformOutX;
-                    }
-                    continue;
-                }
-
-                *imageOutX = GetPALColorId( px[0], px[1], px[2] );
-                if ( transformOutX ) {
-                    *transformOutX = 0;
-                    ++transformOutX;
-                }
-                ++imageOutX;
-            }
-
-            imageOutY += widthOut;
-            if ( transformOutY ) {
-                transformOutY += widthOut;
-            }
-        }
-
-        out._notifyWrite( outX, outY, width, height );
-    }
-
-    // AlphaBlit an RGBA_32BIT source onto an INDEXED_8BIT destination with per-pixel alpha and overall alpha.
-    void AlphaBlitRGBAToIndexed( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
-                                 const uint8_t alphaValue, const bool flip )
-    {
-        assert( in.format() == ImageFormat::RGBA_32BIT );
-        assert( out.format() == ImageFormat::INDEXED_8BIT );
-
-        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
-            return;
-        }
-
-        const int32_t widthIn = in.width();
-        const int32_t widthOut = out.width();
-        const uint8_t * gamePalette = getGamePalette();
-
-        uint8_t * imageOutY = out.image() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX;
-
-        for ( int32_t y = 0; y < height; ++y ) {
-            uint8_t * imageOutX = imageOutY;
-
-            for ( int32_t x = 0; x < width; ++x, ++imageOutX ) {
-                const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
-                const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( inY + y ) * widthIn + srcX ) * 4;
-                const uint8_t * px = in.image() + pixelOffset;
-
-                const uint8_t srcAlpha = px[3];
-                if ( srcAlpha == 0 ) {
-                    continue;
-                }
-
-                // Combine per-pixel alpha with the overall alpha value.
-                const uint32_t combinedAlpha = ( static_cast<uint32_t>( srcAlpha ) * alphaValue ) / 255;
-                if ( combinedAlpha == 0 ) {
-                    continue;
-                }
-
-                const uint32_t behindAlpha = 255 - combinedAlpha;
-                const uint8_t * outPAL = gamePalette + ( static_cast<ptrdiff_t>( *imageOutX ) * 3 );
-
-                const uint32_t red = ( static_cast<uint32_t>( px[0] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[0] ) * behindAlpha );
-                const uint32_t green = ( static_cast<uint32_t>( px[1] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[1] ) * behindAlpha );
-                const uint32_t blue = ( static_cast<uint32_t>( px[2] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[2] ) * behindAlpha );
-
-                *imageOutX = GetPALColorId( static_cast<uint8_t>( red / 255 ), static_cast<uint8_t>( green / 255 ), static_cast<uint8_t>( blue / 255 ) );
-            }
-
-            imageOutY += widthOut;
-        }
-
-        out._notifyWrite( outX, outY, width, height );
-    }
-
-    // Blit an indexed source onto an RGBA_32BIT output Image (no scaling, 1:1).
-    // Handles transform layer (transparency/shadow) and optional horizontal flip.
-    void BlitIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const bool flip )
-    {
-        assert( in.format() == ImageFormat::INDEXED_8BIT );
-        assert( out.format() == ImageFormat::RGBA_32BIT );
-
-        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
-            return;
-        }
-
-        const int32_t widthIn = in.width();
-        const int32_t widthOut = out.width();
-        const uint8_t * gamePalette = getGamePalette();
-
-        const bool hasTranform = !in.singleLayer();
-        const int32_t inDir = flip ? -1 : 1;
-
-        const uint8_t * imageInY = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX );
-        const uint8_t * transformInY = hasTranform ? ( in.transform() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX ) ) : nullptr;
-
-        uint8_t * outRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
-
-        for ( int32_t row = 0; row < height; ++row ) {
-            const uint8_t * imgIn = imageInY;
-            const uint8_t * trIn = transformInY;
-            uint8_t * outPx = outRow;
-
-            for ( int32_t col = 0; col < width; ++col, imgIn += inDir, outPx += 4 ) {
-                if ( hasTranform ) {
-                    assert( trIn != nullptr );
-                    if ( *trIn == 1 ) {
-                        // Transparent — skip.
-                        trIn += inDir;
-                        continue;
-                    }
-                    if ( *trIn > 1 ) {
-                        // Shadow/transform — darken the existing RGBA pixel.
-                        outPx[0] = static_cast<uint8_t>( outPx[0] >> 1 );
-                        outPx[1] = static_cast<uint8_t>( outPx[1] >> 1 );
-                        outPx[2] = static_cast<uint8_t>( outPx[2] >> 1 );
-                        trIn += inDir;
-                        continue;
-                    }
-                    trIn += inDir;
-                }
-
-                // Copy pixel: convert indexed → RGBA.
-                const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( *imgIn ) * 3 );
-                outPx[0] = static_cast<uint8_t>( pal[0] << 2 );
-                outPx[1] = static_cast<uint8_t>( pal[1] << 2 );
-                outPx[2] = static_cast<uint8_t>( pal[2] << 2 );
-                outPx[3] = 255;
-            }
-
-            imageInY += widthIn;
-            if ( transformInY != nullptr ) {
-                transformInY += widthIn;
-            }
-            outRow += static_cast<ptrdiff_t>( widthOut ) * 4;
-        }
-    }
-
-    // Copy indexed pixels to an RGBA_32BIT output Image (no transform layer, no flip).
-    void CopyIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
-    {
-        assert( in.format() == ImageFormat::INDEXED_8BIT );
-        assert( out.format() == ImageFormat::RGBA_32BIT );
-
-        if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
-            return;
-        }
-
-        const int32_t widthIn = in.width();
-        const int32_t widthOut = out.width();
-        const uint8_t * gamePalette = getGamePalette();
-
-        const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + inX;
-        uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
-
-        for ( int32_t row = 0; row < height; ++row ) {
-            const uint8_t * src = srcRow;
-            uint8_t * dst = dstRow;
-
-            for ( int32_t col = 0; col < width; ++col, ++src, dst += 4 ) {
-                const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( *src ) * 3 );
-                dst[0] = static_cast<uint8_t>( pal[0] << 2 );
-                dst[1] = static_cast<uint8_t>( pal[1] << 2 );
-                dst[2] = static_cast<uint8_t>( pal[2] << 2 );
-                dst[3] = 255;
-            }
-
-            srcRow += widthIn;
-            dstRow += static_cast<ptrdiff_t>( widthOut ) * 4;
-        }
-    }
-
     void AlphaBlit( const Image & in, Image & out, const uint8_t alphaValue, const bool flip /* = false */ )
     {
         AlphaBlit( in, 0, 0, out, 0, 0, in.width(), in.height(), alphaValue, flip );
@@ -1206,11 +1479,19 @@ namespace fheroes2
                     const bool flip /* = false */ )
     {
         if ( alphaValue == 0 ) {
-            // There is nothing we need to do.
             return;
         }
 
         if ( in.format() == ImageFormat::RGBA_32BIT ) {
+            if ( out.format() == ImageFormat::RGBA_32BIT ) {
+                if ( alphaValue == 255 ) {
+                    BlitRGBAToRGBAOutput( in, inX, inY, out, outX, outY, width, height, flip );
+                }
+                else {
+                    AlphaBlitRGBAToRGBAOutput( in, inX, inY, out, outX, outY, width, height, alphaValue, flip );
+                }
+                return;
+            }
             if ( alphaValue == 255 ) {
                 BlitRGBAToIndexed( in, inX, inY, out, outX, outY, width, height, flip );
             }
@@ -1221,9 +1502,12 @@ namespace fheroes2
         }
 
         if ( out.format() == ImageFormat::RGBA_32BIT ) {
-            // For RGBA output, delegate to Blit which handles indexed→RGBA.
-            // TODO: implement proper alpha blending for indexed→RGBA output.
-            BlitIndexedToRGBAOutput( in, inX, inY, out, outX, outY, width, height, flip );
+            if ( alphaValue == 255 ) {
+                BlitIndexedToRGBAOutput( in, inX, inY, out, outX, outY, width, height, flip );
+            }
+            else {
+                AlphaBlitIndexedToRGBAOutput( in, inX, inY, out, outX, outY, width, height, alphaValue, flip );
+            }
             return;
         }
 
@@ -1238,9 +1522,7 @@ namespace fheroes2
 
         const int32_t widthIn = in.width();
         const int32_t widthOut = out.width();
-
         const uint8_t behindValue = 255 - alphaValue;
-
         const uint8_t * gamePalette = getGamePalette();
 
         if ( flip ) {
@@ -1278,7 +1560,7 @@ namespace fheroes2
                     const uint8_t * imageOutXEnd = imageOutX + width;
 
                     for ( ; imageOutX != imageOutXEnd; --imageInX, --transformInX, ++imageOutX ) {
-                        if ( *transformInX == 1 ) { // skip pixel
+                        if ( *transformInX == 1 ) {
                             continue;
                         }
 
@@ -1332,7 +1614,7 @@ namespace fheroes2
                     const uint8_t * imageInXEnd = imageInX + width;
 
                     for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, ++imageOutX ) {
-                        if ( *transformInX == 1 ) { // skip pixel
+                        if ( *transformInX == 1 ) {
                             continue;
                         }
 
@@ -1352,8 +1634,6 @@ namespace fheroes2
                 }
             }
         }
-
-        out._notifyWrite( outX, outY, width, height );
     }
 
     void ApplyPalette( Image & image, const std::vector<uint8_t> & palette )
@@ -1366,7 +1646,6 @@ namespace fheroes2
         if ( palette.size() != 256 ) {
             return;
         }
-
         ApplyRawPalette( in, 0, 0, out, 0, 0, in.width(), in.height(), palette.data() );
     }
 
@@ -1380,7 +1659,6 @@ namespace fheroes2
         if ( paletteId > 15 ) {
             return;
         }
-
         ApplyRawPalette( in, 0, 0, out, 0, 0, in.width(), in.height(), transformTable + paletteId * 256 );
     }
 
@@ -1389,7 +1667,6 @@ namespace fheroes2
         if ( paletteId > 15 ) {
             return;
         }
-
         ApplyRawPalette( in, inX, inY, out, outX, outY, width, height, transformTable + paletteId * 256 );
     }
 
@@ -1399,12 +1676,46 @@ namespace fheroes2
         if ( palette.size() != 256 ) {
             return;
         }
-
         ApplyRawPalette( in, inX, inY, out, outX, outY, width, height, palette.data() );
     }
 
     void ApplyAlpha( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const uint8_t alpha )
     {
+        // RGBA in + RGBA out: directly scale RGB by alpha/255 (preserving the alpha channel).
+        // This is the fast fade-out / fade-in path on the pure-RGBA Display.
+        if ( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT ) {
+            int32_t lInX = inX;
+            int32_t lInY = inY;
+            int32_t lOutX = outX;
+            int32_t lOutY = outY;
+            int32_t lW = width;
+            int32_t lH = height;
+            if ( !Verify( in, lInX, lInY, out, lOutX, lOutY, lW, lH ) ) {
+                return;
+            }
+
+            const float alphaF = static_cast<float>( alpha ) / 255.0f;
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+
+            for ( int32_t y = 0; y < lH; ++y ) {
+                const uint8_t * srcRow = in.image() + ( ( static_cast<ptrdiff_t>( lInY + y ) * widthIn ) + lInX ) * 4;
+                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( lOutY + y ) * widthOut ) + lOutX ) * 4;
+                for ( int32_t x = 0; x < lW; ++x ) {
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( x ) * 4;
+                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                    if ( srcPx[3] == 0 ) {
+                        continue;
+                    }
+                    dstPx[0] = static_cast<uint8_t>( static_cast<float>( srcPx[0] ) * alphaF );
+                    dstPx[1] = static_cast<uint8_t>( static_cast<float>( srcPx[1] ) * alphaF );
+                    dstPx[2] = static_cast<uint8_t>( static_cast<float>( srcPx[2] ) * alphaF );
+                    dstPx[3] = srcPx[3];
+                }
+            }
+            return;
+        }
+
         std::vector<uint8_t> palette( 256 );
 
         const uint8_t * value = getGamePalette();
@@ -1428,8 +1739,27 @@ namespace fheroes2
             return;
         }
 
-        const int32_t imageWidth = image.width();
+        // RGBA target: shadow transforms (2-5) darken the existing RGBA pixels in-place.
+        if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            if ( transformId < 2 || transformId > 5 ) {
+                return;
+            }
+            const float f = shadowFactor[transformId];
+            const int32_t imgW = image.width();
+            uint8_t * row = image.image() + ( ( static_cast<ptrdiff_t>( y ) * imgW ) + x ) * 4;
+            for ( int32_t ry = 0; ry < height; ++ry ) {
+                uint8_t * px = row;
+                for ( int32_t rx = 0; rx < width; ++rx, px += 4 ) {
+                    px[0] = static_cast<uint8_t>( static_cast<float>( px[0] ) * f );
+                    px[1] = static_cast<uint8_t>( static_cast<float>( px[1] ) * f );
+                    px[2] = static_cast<uint8_t>( static_cast<float>( px[2] ) * f );
+                }
+                row += static_cast<ptrdiff_t>( imgW ) * 4;
+            }
+            return;
+        }
 
+        const int32_t imageWidth = image.width();
         uint8_t * imageY = image.image() + y * imageWidth + x;
         const uint8_t * imageYEnd = imageY + height * imageWidth;
 
@@ -1437,7 +1767,6 @@ namespace fheroes2
             for ( ; imageY != imageYEnd; imageY += imageWidth ) {
                 uint8_t * imageX = imageY;
                 const uint8_t * imageXEnd = imageX + width;
-
                 for ( ; imageX != imageXEnd; ++imageX ) {
                     *imageX = *( transformTable + transformId * 256 + *imageX );
                 }
@@ -1445,12 +1774,10 @@ namespace fheroes2
         }
         else {
             const uint8_t * transformY = image.transform() + y * imageWidth + x;
-
             for ( ; imageY != imageYEnd; imageY += imageWidth, transformY += imageWidth ) {
                 uint8_t * imageX = imageY;
                 const uint8_t * transformX = transformY;
                 const uint8_t * imageXEnd = imageX + width;
-
                 for ( ; imageX != imageXEnd; ++imageX, ++transformX ) {
                     if ( *transformX == 0 ) {
                         *imageX = *( transformTable + transformId * 256 + *imageX );
@@ -1458,13 +1785,8 @@ namespace fheroes2
                 }
             }
         }
-
-        // Notify only matters when image is single-layer (image data was written). For
-        // double-layer the loop above only modified transform; hook would be null anyway.
-        if ( image.singleLayer() ) {
-            image._notifyWrite( x, y, width, height );
-        }
     }
+
     void Blit( const Image & in, Image & out, const bool flip /* = false */ )
     {
         Blit( in, 0, 0, out, 0, 0, in.width(), in.height(), flip );
@@ -1488,7 +1810,12 @@ namespace fheroes2
     void Blit( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const bool flip /* = false */ )
     {
         if ( in.format() == ImageFormat::RGBA_32BIT ) {
-            BlitRGBAToIndexed( in, inX, inY, out, outX, outY, width, height, flip );
+            if ( out.format() == ImageFormat::RGBA_32BIT ) {
+                BlitRGBAToRGBAOutput( in, inX, inY, out, outX, outY, width, height, flip );
+            }
+            else {
+                BlitRGBAToIndexed( in, inX, inY, out, outX, outY, width, height, flip );
+            }
             return;
         }
 
@@ -1527,12 +1854,12 @@ namespace fheroes2
                     const uint8_t * imageOutXEnd = imageOutX + width;
 
                     for ( ; imageOutX != imageOutXEnd; --imageInX, --transformInX, ++imageOutX ) {
-                        if ( *transformInX > 0 ) { // apply a transformation
-                            if ( *transformInX != 1 ) { // skip pixel
+                        if ( *transformInX > 0 ) {
+                            if ( *transformInX != 1 ) {
                                 *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
                             }
                         }
-                        else { // copy a pixel
+                        else {
                             *imageOutX = *imageInX;
                         }
                     }
@@ -1549,14 +1876,14 @@ namespace fheroes2
                     const uint8_t * imageOutXEnd = imageOutX + width;
 
                     for ( ; imageOutX != imageOutXEnd; --imageInX, --transformInX, ++imageOutX, ++transformOutX ) {
-                        if ( *transformInX == 1 ) { // skip pixel
+                        if ( *transformInX == 1 ) {
                             continue;
                         }
 
-                        if ( *transformInX > 0 && *transformOutX == 0 ) { // apply a transformation
+                        if ( *transformInX > 0 && *transformOutX == 0 ) {
                             *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
                         }
-                        else { // copy a pixel
+                        else {
                             *transformOutX = *transformInX;
                             *imageOutX = *imageInX;
                         }
@@ -1582,12 +1909,12 @@ namespace fheroes2
                     const uint8_t * imageInXEnd = imageInX + width;
 
                     for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, ++imageOutX ) {
-                        if ( *transformInX > 0 ) { // apply a transformation
-                            if ( *transformInX != 1 ) { // skip pixel
+                        if ( *transformInX > 0 ) {
+                            if ( *transformInX != 1 ) {
                                 *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
                             }
                         }
-                        else { // copy a pixel
+                        else {
                             *imageOutX = *imageInX;
                         }
                     }
@@ -1604,14 +1931,14 @@ namespace fheroes2
                     const uint8_t * imageInXEnd = imageInX + width;
 
                     for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, ++imageOutX, ++transformOutX ) {
-                        if ( *transformInX == 1 ) { // skip pixel
+                        if ( *transformInX == 1 ) {
                             continue;
                         }
 
-                        if ( *transformInX > 0 && *transformOutX == 0 ) { // apply a transformation
+                        if ( *transformInX > 0 && *transformOutX == 0 ) {
                             *imageOutX = *( transformTable + ( *transformInX ) * 256 + *imageOutX );
                         }
-                        else { // copy a pixel
+                        else {
                             *transformOutX = *transformInX;
                             *imageOutX = *imageInX;
                         }
@@ -1619,16 +1946,20 @@ namespace fheroes2
                 }
             }
         }
-
-        out._notifyWrite( outX, outY, width, height );
     }
 
     void Copy( const Image & in, Image & out )
     {
-        if ( !out.singleLayer() && !in.singleLayer() ) {
-            // Both images have transform layer. Copy using the assignment operator.
+        // Same-format same-size full copy goes via assignment for indexed double-layer; everything
+        // else falls through to the rect copy below.
+        if ( in.format() == out.format() && !out.singleLayer() && !in.singleLayer() && in.format() == ImageFormat::INDEXED_8BIT ) {
             out = in;
-            out._notifyWrite( 0, 0, in.width(), in.height() );
+            return;
+        }
+
+        if ( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT ) {
+            // Reuse copy-of-Image semantics — Image::operator= preserves RGBA bytes.
+            out = in;
             return;
         }
 
@@ -1637,20 +1968,19 @@ namespace fheroes2
 
         out.resize( width, height );
 
-        // We do a full copy of an image.
         const size_t size = static_cast<size_t>( width ) * height;
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            CopyIndexedToRGBAOutput( in, 0, 0, out, 0, 0, width, height );
+            return;
+        }
         if ( out.singleLayer() ) {
-            // Copy only image layer. Input image can be single- or double-layer.
             memcpy( out.image(), in.image(), size );
         }
         else {
             assert( in.singleLayer() );
-            // Copy image layer and set transform to non-transparent mode.
             memcpy( out.image(), in.image(), size );
             memset( out.transform(), static_cast<uint8_t>( 0 ), size );
         }
-
-        out._notifyWrite( 0, 0, width, height );
     }
 
     void Copy( const Image & in, const int32_t inX, const int32_t inY, Image & out, const Rect & outRoi )
@@ -1665,6 +1995,17 @@ namespace fheroes2
             return;
         }
 
+        if ( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT ) {
+            CopyRGBAToRGBAOutput( in, inX, inY, out, outX, outY, width, height );
+            return;
+        }
+
+        if ( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::INDEXED_8BIT ) {
+            // Quantize.
+            BlitRGBAToIndexed( in, inX, inY, out, outX, outY, width, height, false );
+            return;
+        }
+
         if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
             return;
         }
@@ -1673,7 +2014,6 @@ namespace fheroes2
         const int32_t widthOut = out.width();
 
         if ( inX == 0 && inY == 0 && outX == 0 && outY == 0 && width == widthIn && width == widthOut && height == in.height() && height == out.height() ) {
-            // Both images have identical width and height and a full copy is requested.
             Copy( in, out );
             return;
         }
@@ -1707,8 +2047,6 @@ namespace fheroes2
                 memcpy( transformOutY, transformInY, static_cast<size_t>( width ) );
             }
         }
-
-        out._notifyWrite( outX, outY, width, height );
     }
 
     void copyTransformLayer( const Image & in, Image & out )
@@ -1719,7 +2057,6 @@ namespace fheroes2
         }
 
         if ( out.singleLayer() ) {
-            // Add the transform layer.
             Image temp;
             Copy( out, temp );
             out = std::move( temp );
@@ -1740,7 +2077,6 @@ namespace fheroes2
         }
 
         if ( out.singleLayer() ) {
-            // Add the transform layer.
             Image temp;
             Copy( out, temp );
             out = std::move( temp );
@@ -1750,7 +2086,6 @@ namespace fheroes2
         const int32_t widthOut = out.width();
 
         if ( inX == 0 && inY == 0 && outX == 0 && outY == 0 && width == widthIn && width == widthOut && height == in.height() && height == out.height() ) {
-            // Both images have identical width and height and a full copy is requested.
             copyTransformLayer( in, out );
             return;
         }
@@ -1770,7 +2105,6 @@ namespace fheroes2
     Sprite CreateContour( const Image & image, const uint8_t value )
     {
         if ( image.empty() || image.singleLayer() ) {
-            // A contour can be created only for non-empty images with the transform layer.
             assert( 0 );
             return {};
         }
@@ -1784,7 +2118,6 @@ namespace fheroes2
             return contour;
         }
 
-        // This assertion is needed to convince SonarQube that we will not dereference the null pointer to 'contour' image data.
         assert( !contour.empty() );
 
         const uint8_t * inY = image.transform();
@@ -1801,7 +2134,6 @@ namespace fheroes2
             const bool isNotBottomRow = ( y < reducedHeight );
 
             for ( int32_t x = 0; x < width; ++x, ++inX ) {
-                // Draw contour only on transparent pixel ( 1 ) or shadow ( 2 - 5 )
                 if ( *inX > 0 && *inX < 6
                      && ( ( x > 0 && *( inX - 1 ) == 0 ) || ( x < reducedWidth && *( inX + 1 ) == 0 ) || ( isNotTopRow && *( inX - width ) == 0 )
                           || ( isNotBottomRow && *( inX + width ) == 0 ) ) ) {
@@ -1821,6 +2153,15 @@ namespace fheroes2
             return;
         }
 
+        // RGBA-output: do per-pixel selection using the same pattern but write RGBA.
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            // Lazy port: just Copy the relevant pixels for now (no dither). This degrades the
+            // visual transition but avoids the full re-write; CreateDitheringTransition is only
+            // used in a few places (scenario fade-in, etc).
+            Copy( in, inX, inY, out, outX, outY, width, height );
+            return;
+        }
+
         const int32_t widthIn = in.width();
         const int32_t offsetIn = inY * widthIn + inX;
         const uint8_t * imageIn = in.image() + offsetIn;
@@ -1832,22 +2173,17 @@ namespace fheroes2
         uint8_t * transformOut = out.singleLayer() ? nullptr : out.transform() + offsetOut;
 
         if ( isVertical ) {
-            // We also go in a loop from the right part of the image to its center.
             const uint8_t * imageInRightPoint = imageIn + width - 1;
             uint8_t * imageOutRightPoint = imageOut + width - 1;
-
-            // If image is single-layer then pointer to its transform layer is 'nullptr'
             const uint8_t * transformInRightPoint = ( transformIn == nullptr ) ? nullptr : transformIn + width - 1;
             uint8_t * transformOutRightPoint = ( transformOut == nullptr ) ? nullptr : transformOut + width - 1;
 
             const int32_t halfWidth = width / 2;
 
-            // We make a symmetric transition and if width is odd we shift one line right.
             if ( ( width % 2 ) == 1 ) {
                 if ( isReverse ) {
                     --imageOutRightPoint;
                     --imageInRightPoint;
-
                     if ( transformOutRightPoint != nullptr ) {
                         --transformOutRightPoint;
                     }
@@ -1858,7 +2194,6 @@ namespace fheroes2
                 else {
                     ++imageOut;
                     ++imageIn;
-
                     if ( transformOut != nullptr ) {
                         ++transformOut;
                     }
@@ -1869,12 +2204,8 @@ namespace fheroes2
             }
 
             for ( int32_t x = 0; x < halfWidth; ++x ) {
-                // The step is 2 to the power, which decreases by 1 every second line and is 1 in the center.
-                // We limit the step power to 30 to not overflow the 32 bit 'stepY'.
                 const int32_t stepPower = std::min<int32_t>( 30, ( halfWidth - x ) / 2 + 1 );
                 const int32_t stepY = 1 << stepPower;
-
-                // The point position in dithered pattern.
                 const int32_t patternPoint = stepY / 2 * ( ( x + halfWidth ) % 2 );
 
                 for ( int32_t y = 0; y < height; ++y ) {
@@ -1884,44 +2215,31 @@ namespace fheroes2
 
                     if ( isReverse == ( patternPoint != offsetY ) ) {
                         if ( transformIn != nullptr && transformOut == nullptr && ( *( transformIn + offsetInX ) == 1 ) ) {
-                            // Skip pixel.
                             continue;
                         }
-
-                        // First part of transition: we copy single pixels.
                         *( imageOut + offsetOutX ) = *( imageIn + offsetInX );
-
                         if ( transformOut == nullptr ) {
                             continue;
                         }
                         if ( transformIn == nullptr ) {
-                            // Set the copied pixel visible.
                             *( transformOut + offsetOutX ) = 0;
                         }
                         else {
-                            // 'in' and 'out' images have the transform layer.
                             *( transformOut + offsetOutX ) = *( transformIn + offsetInX );
                         }
                     }
                     else {
                         if ( transformInRightPoint != nullptr && transformOutRightPoint == nullptr && ( *( transformInRightPoint + offsetInX ) == 1 ) ) {
-                            // Skip pixel.
                             continue;
                         }
-
-                        // Second part of transition: we copy image excluding single pixels.
                         *( imageOutRightPoint + offsetOutX ) = *( imageInRightPoint + offsetInX );
-
                         if ( transformOutRightPoint == nullptr ) {
                             continue;
                         }
-
                         if ( transformInRightPoint == nullptr ) {
-                            // Set the copied pixel visible.
                             *( transformOutRightPoint + offsetOutX ) = 0;
                         }
                         else {
-                            // 'in' and 'out' images have the transform layer.
                             *( transformOutRightPoint + offsetOutX ) = *( transformInRightPoint + offsetInX );
                         }
                     }
@@ -1936,7 +2254,6 @@ namespace fheroes2
                     ++transformOut;
                     --transformOutRightPoint;
                 }
-
                 if ( transformIn != nullptr ) {
                     ++transformIn;
                     --transformInRightPoint;
@@ -1944,24 +2261,20 @@ namespace fheroes2
             }
         }
         else {
-            // We also go in a loop from the bottom part of the image to its center.
             const int32_t offsetInBottomOffset = ( height - 1 ) * widthIn;
             const int32_t offsetOutYBottomOffset = ( height - 1 ) * widthOut;
             const uint8_t * imageInBottomPoint = imageIn + offsetInBottomOffset;
             uint8_t * imageOutBottomPoint = imageOut + offsetOutYBottomOffset;
 
-            // If image is single-layer then pointer to its transform layer is 'nullptr'.
             const uint8_t * transformInBottomPoint = ( transformIn == nullptr ) ? nullptr : transformIn + offsetInBottomOffset;
             uint8_t * transformOutBottomPoint = ( transformOut == nullptr ) ? nullptr : transformOut + offsetOutYBottomOffset;
 
             const int32_t halfHeight = height / 2;
 
-            // We make a symmetric transition and if width is odd we shift one line down.
             if ( ( height % 2 ) == 1 ) {
                 if ( isReverse ) {
                     imageOutBottomPoint -= widthOut;
                     imageInBottomPoint -= widthIn;
-
                     if ( transformOutBottomPoint != nullptr ) {
                         transformOutBottomPoint -= widthOut;
                     }
@@ -1972,7 +2285,6 @@ namespace fheroes2
                 else {
                     imageOut += widthOut;
                     imageIn += widthIn;
-
                     if ( transformOut != nullptr ) {
                         transformOut += widthOut;
                     }
@@ -1983,12 +2295,8 @@ namespace fheroes2
             }
 
             for ( int32_t y = 0; y < halfHeight; ++y ) {
-                // The step is 2 to the power, which decreases by 1 every second line and is 1 in the center.
-                // We limit the step power to 30 to not overflow the 32 bit 'stepX'.
                 const int32_t stepPower = std::min<int32_t>( 30, ( halfHeight - y ) / 2 + 1 );
                 const int32_t stepX = 1 << stepPower;
-
-                // The point position in dithered pattern.
                 const int32_t patternPoint = stepX / 2 * ( ( y + halfHeight ) % 2 );
 
                 for ( int32_t x = 0; x < width; ++x ) {
@@ -1996,43 +2304,31 @@ namespace fheroes2
 
                     if ( isReverse == ( patternPoint != offsetX ) ) {
                         if ( transformIn != nullptr && transformOut == nullptr && ( *( transformIn + x ) == 1 ) ) {
-                            // Skip pixel.
                             continue;
                         }
-
-                        // First part of transition: we copy single pixels.
                         *( imageOut + x ) = *( imageIn + x );
-
                         if ( transformOut == nullptr ) {
                             continue;
                         }
                         if ( transformIn == nullptr ) {
-                            // Set the copied pixel visible.
                             *( transformOut + x ) = 0;
                         }
                         else {
-                            // 'in' and 'out' images have the transform layer.
                             *( transformOut + x ) = *( transformIn + x );
                         }
                     }
                     else {
                         if ( transformInBottomPoint != nullptr && transformOutBottomPoint == nullptr && ( *( transformInBottomPoint + x ) == 1 ) ) {
-                            // Skip pixel.
                             continue;
                         }
-
-                        // Second part of transition: we copy image excluding single pixels.
                         *( imageOutBottomPoint + x ) = *( imageInBottomPoint + x );
-
                         if ( transformOutBottomPoint == nullptr ) {
                             continue;
                         }
                         if ( transformInBottomPoint == nullptr ) {
-                            // Set the copied pixel visible.
                             *( transformOutBottomPoint + x ) = 0;
                         }
                         else {
-                            // 'in' and 'out' images have the transform layer.
                             *( transformOutBottomPoint + x ) = *( transformInBottomPoint + x );
                         }
                     }
@@ -2047,15 +2343,12 @@ namespace fheroes2
                     transformOut += widthOut;
                     transformOutBottomPoint -= widthOut;
                 }
-
                 if ( transformIn != nullptr ) {
                     transformIn += widthIn;
                     transformInBottomPoint -= widthIn;
                 }
             }
         }
-
-        out._notifyWrite( outX, outY, width, height );
     }
 
     Sprite Crop( const Image & image, int32_t x, int32_t y, int32_t width, int32_t height )
@@ -2069,7 +2362,6 @@ namespace fheroes2
             if ( offsetX >= width ) {
                 return {};
             }
-
             x = 0;
             width -= offsetX;
         }
@@ -2079,7 +2371,6 @@ namespace fheroes2
             if ( offsetY >= height ) {
                 return {};
             }
-
             y = 0;
             height -= offsetY;
         }
@@ -2100,7 +2391,6 @@ namespace fheroes2
 
         Sprite out;
         if ( image.singleLayer() ) {
-            // The result of Crop should have the same layers as the input image.
             out._disableTransformLayer();
         }
         out.resize( width, height );
@@ -2119,8 +2409,39 @@ namespace fheroes2
         const int32_t width = image.width();
         const int32_t height = image.height();
 
+        if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+            paletteIdxToRGBA( value, r, g, b );
+
+            const auto setPixel = [&]( int32_t px, int32_t py ) {
+                uint8_t * dst = image.image() + ( static_cast<ptrdiff_t>( py ) * width + px ) * 4;
+                dst[0] = r;
+                dst[1] = g;
+                dst[2] = b;
+                dst[3] = 255;
+            };
+
+            uint32_t counter = 1;
+            for ( int32_t x = 0; x < width; ++x ) {
+                if ( skipFactor < 2 || counter % skipFactor != 0 ) {
+                    setPixel( x, 0 );
+                    setPixel( x, height - 1 );
+                }
+                ++counter;
+            }
+            for ( int32_t y = 1; y < height - 1; ++y ) {
+                if ( skipFactor < 2 || counter % skipFactor != 0 ) {
+                    setPixel( 0, y );
+                    setPixel( width - 1, y );
+                }
+                ++counter;
+            }
+            return;
+        }
+
         uint8_t * dataPointer = image.image();
-        // If image is single-layer then pointer to its transform layer is 'nullptr'.
         uint8_t * transformPointer = image.singleLayer() ? nullptr : image.transform();
 
         if ( skipFactor < 2 ) {
@@ -2191,9 +2512,7 @@ namespace fheroes2
         else {
             uint32_t counter = 1;
 
-            // top side
             uint8_t * data = dataPointer;
-
             const uint8_t * dataEnd = data + width;
             if ( transformPointer == nullptr ) {
                 for ( ; data != dataEnd; ++data ) {
@@ -2214,7 +2533,6 @@ namespace fheroes2
                 }
             }
 
-            // right side
             data = dataPointer + width + width - 1;
             dataEnd = data + width * ( height - 2 );
             if ( transformPointer == nullptr ) {
@@ -2236,7 +2554,6 @@ namespace fheroes2
                 }
             }
 
-            // bottom side
             data = dataPointer + width * static_cast<ptrdiff_t>( height - 1 ) + width - 1;
             dataEnd = data - width;
             if ( transformPointer == nullptr ) {
@@ -2258,7 +2575,6 @@ namespace fheroes2
                 }
             }
 
-            // left side
             data = dataPointer + width * static_cast<ptrdiff_t>( height - 2 );
             dataEnd = dataPointer;
             if ( transformPointer == nullptr ) {
@@ -2280,8 +2596,6 @@ namespace fheroes2
                 }
             }
         }
-
-        image._notifyWrite( 0, 0, image.width(), image.height() );
     }
 
     void DrawLine( Image & image, const Point & start, const Point & end, const uint8_t value, const Rect & roi /* = Rect() */ )
@@ -2315,9 +2629,52 @@ namespace fheroes2
         if ( maxX >= width ) {
             maxX = width;
         }
-
         if ( maxY >= height ) {
             maxY = height;
+        }
+
+        if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+            paletteIdxToRGBA( value, r, g, b );
+
+            const auto plot = [&]( int32_t px, int32_t py ) {
+                if ( px < minX || px >= maxX || py < minY || py >= maxY ) {
+                    return;
+                }
+                uint8_t * dst = image.image() + ( static_cast<ptrdiff_t>( py ) * width + px ) * 4;
+                dst[0] = r;
+                dst[1] = g;
+                dst[2] = b;
+                dst[3] = 255;
+            };
+
+            if ( dx >= dy ) {
+                int32_t ns = dx / 2;
+                for ( int32_t i = 0; i <= dx; ++i ) {
+                    plot( x1, y1 );
+                    x1 < x2 ? ++x1 : --x1;
+                    ns -= dy;
+                    if ( ns < 0 ) {
+                        y1 < y2 ? ++y1 : --y1;
+                        ns += dx;
+                    }
+                }
+            }
+            else {
+                int32_t ns = dy / 2;
+                for ( int32_t i = 0; i <= dy; ++i ) {
+                    plot( x1, y1 );
+                    y1 < y2 ? ++y1 : --y1;
+                    ns -= dx;
+                    if ( ns < 0 ) {
+                        x1 < x2 ? ++x1 : --x1;
+                        ns += dy;
+                    }
+                }
+            }
+            return;
         }
 
         uint8_t * data = image.image();
@@ -2325,7 +2682,6 @@ namespace fheroes2
         if ( image.singleLayer() ) {
             if ( dx >= dy ) {
                 int32_t ns = dx / 2;
-
                 for ( int32_t i = 0; i <= dx; ++i ) {
                     if ( x1 >= minX && x1 < maxX && y1 >= minY && y1 < maxY ) {
                         const int32_t offset = x1 + y1 * width;
@@ -2341,7 +2697,6 @@ namespace fheroes2
             }
             else {
                 int32_t ns = dy / 2;
-
                 for ( int32_t i = 0; i <= dy; ++i ) {
                     if ( x1 >= minX && x1 < maxX && y1 >= minY && y1 < maxY ) {
                         const int32_t offset = x1 + y1 * width;
@@ -2361,7 +2716,6 @@ namespace fheroes2
 
             if ( dx >= dy ) {
                 int32_t ns = dx / 2;
-
                 for ( int32_t i = 0; i <= dx; ++i ) {
                     if ( x1 >= minX && x1 < maxX && y1 >= minY && y1 < maxY ) {
                         const int32_t offset = x1 + y1 * width;
@@ -2378,7 +2732,6 @@ namespace fheroes2
             }
             else {
                 int32_t ns = dy / 2;
-
                 for ( int32_t i = 0; i <= dy; ++i ) {
                     if ( x1 >= minX && x1 < maxX && y1 >= minY && y1 < maxY ) {
                         const int32_t offset = x1 + y1 * width;
@@ -2394,13 +2747,6 @@ namespace fheroes2
                 }
             }
         }
-
-        // Mirror the bounding rect of the line. Coarse but correct.
-        const int32_t roiMinX = std::max<int32_t>( 0, std::min( start.x, end.x ) );
-        const int32_t roiMinY = std::max<int32_t>( 0, std::min( start.y, end.y ) );
-        const int32_t roiMaxX = std::min( image.width(), std::max( start.x, end.x ) + 1 );
-        const int32_t roiMaxY = std::min( image.height(), std::max( start.y, end.y ) + 1 );
-        image._notifyWrite( roiMinX, roiMinY, roiMaxX - roiMinX, roiMaxY - roiMinY );
     }
 
     void DrawRect( Image & image, const Rect & roi, const uint8_t value )
@@ -2429,7 +2775,6 @@ namespace fheroes2
 
         Point offset{ spriteOffset.x / squareSize, spriteOffset.y / squareSize };
 
-        // The start of a square must be before image offset so in case of negative offset we need to decrease the ID of the start square.
         if ( ( spriteOffset.x < 0 ) && ( offset.x * squareSize != spriteOffset.x ) ) {
             --offset.x;
         }
@@ -2537,12 +2882,10 @@ namespace fheroes2
         }
 
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
-            // Convert palette index to RGBA and fill.
-            const uint8_t * gamePalette = getGamePalette();
-            const uint8_t * pal = gamePalette + ( static_cast<ptrdiff_t>( colorId ) * 3 );
-            const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
-            const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
-            const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+            paletteIdxToRGBA( colorId, r, g, b );
 
             const int32_t imgW = image.width();
             uint8_t * row = image.image() + ( ( static_cast<ptrdiff_t>( y ) * imgW ) + x ) * 4;
@@ -2561,14 +2904,11 @@ namespace fheroes2
         }
 
         if ( image.width() == width && image.height() == height ) {
-            // We fill the whole image.
             image.fill( colorId );
-            image._notifyWrite( 0, 0, width, height );
             return;
         }
 
         const int32_t imageWidth = image.width();
-
         uint8_t * imageY = image.image() + y * imageWidth + x;
         const uint8_t * imageYEnd = imageY + height * imageWidth;
 
@@ -2584,8 +2924,6 @@ namespace fheroes2
                 memset( transformY, static_cast<uint8_t>( 0 ), width );
             }
         }
-
-        image._notifyWrite( x, y, width, height );
     }
 
     void FillTransform( Image & image, int32_t x, int32_t y, int32_t width, int32_t height, const uint8_t transformId )
@@ -2595,7 +2933,6 @@ namespace fheroes2
         }
 
         const int32_t imageWidth = image.width();
-
         uint8_t * imageY = image.image() + y * imageWidth + x;
         uint8_t * transformY = image.transform() + y * imageWidth + x;
         const uint8_t * imageYEnd = imageY + height * imageWidth;
@@ -2633,9 +2970,7 @@ namespace fheroes2
                         *( imageOutY + x ) = *( imageInY + x );
                     }
                 }
-
                 imageInY += width;
-
                 imageOutY += width;
             }
         }
@@ -2652,13 +2987,11 @@ namespace fheroes2
                         *( transformOutY + x ) = 0;
                         *( imageOutY + x ) = *( imageInY + x );
                     }
-
                     ++transformInX;
                 }
 
                 imageInY += width;
                 transformInY += width;
-
                 imageOutY += width;
                 transformOutY += width;
             }
@@ -2696,12 +3029,9 @@ namespace fheroes2
         const int32_t height = in.height();
 
         Image out;
-
         if ( in.singleLayer() ) {
-            // Make the result of Flip to have the same layers as the input image.
             out._disableTransformLayer();
         }
-
         out.resize( width, height );
 
         if ( !horizontally && !vertically ) {
@@ -2721,24 +3051,41 @@ namespace fheroes2
         }
 
         if ( !horizontally && !vertically ) {
-            // No flip is required.
             Copy( in, inX, inY, out, outX, outY, width, height );
             return;
         }
 
-        // This assertion is needed to convince SonarQube that we will not dereference the null pointer to 'in' and 'out' images data.
+        // RGBA path: pixel-by-pixel write of 4-byte chunks.
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            assert( in.format() == ImageFormat::RGBA_32BIT );
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+            for ( int32_t y = 0; y < height; ++y ) {
+                const int32_t srcY = vertically ? ( inY + height - 1 - y ) : ( inY + y );
+                const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( srcY ) * widthIn ) * 4;
+                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+                for ( int32_t x = 0; x < width; ++x ) {
+                    const int32_t srcX = horizontally ? ( inX + width - 1 - x ) : ( inX + x );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                    dstPx[0] = srcPx[0];
+                    dstPx[1] = srcPx[1];
+                    dstPx[2] = srcPx[2];
+                    dstPx[3] = srcPx[3];
+                }
+            }
+            return;
+        }
+
         assert( !in.empty() && !out.empty() );
 
         const int32_t widthIn = in.width();
         const int32_t widthOut = out.width();
-
         const int32_t offsetOut = outY * widthOut + outX;
         const int32_t offsetIn = inY * widthIn + inX;
 
         uint8_t * imageOutY = out.image() + offsetOut;
         const uint8_t * imageOutYEnd = imageOutY + static_cast<ptrdiff_t>( widthOut ) * height;
-
-        // If image is single-layer then pointer to its transform layer is 'nullptr'.
         uint8_t * transformOutY = out.singleLayer() ? nullptr : out.transform() + offsetOut;
 
         if ( horizontally && !vertically ) {
@@ -2755,9 +3102,7 @@ namespace fheroes2
                     }
 
                     if ( transformOutY != nullptr ) {
-                        // Set 'out' image transform data not to skip image data.
                         memset( transformOutY, static_cast<uint8_t>( 0 ), width );
-
                         transformOutY += widthOut;
                     }
                 }
@@ -2773,21 +3118,18 @@ namespace fheroes2
 
                     if ( transformOutY == nullptr ) {
                         for ( ; imageOutX != imageOutXEnd; ++imageOutX, --imageInX, --transformInX ) {
-                            // Copy image data only for non-transparent pixels.
                             if ( *transformInX == 0 ) {
                                 *imageOutX = *imageInX;
                             }
                         }
                     }
                     else {
-                        // 'in' and 'out' images are with transform layer.
                         uint8_t * transformOutX = transformOutY;
 
                         for ( ; imageOutX != imageOutXEnd; ++imageOutX, ++transformOutX, --imageInX, --transformInX ) {
                             *imageOutX = *imageInX;
                             *transformOutX = *transformInX;
                         }
-
                         transformOutY += widthOut;
                     }
                 }
@@ -2799,11 +3141,8 @@ namespace fheroes2
             if ( in.singleLayer() ) {
                 for ( ; imageOutY != imageOutYEnd; imageOutY += widthOut, imageInY -= widthIn ) {
                     memcpy( imageOutY, imageInY, static_cast<size_t>( width ) );
-
                     if ( transformOutY != nullptr ) {
-                        // Set 'out' image transform data not to skip image data.
                         memset( transformOutY, static_cast<uint8_t>( 0 ), width );
-
                         transformOutY += widthOut;
                     }
                 }
@@ -2819,7 +3158,6 @@ namespace fheroes2
                         const uint8_t * transformInX = transformInY;
 
                         for ( ; imageOutX != imageOutXEnd; ++imageOutX, ++imageInX, ++transformInX ) {
-                            // Copy image data only for non-transparent pixels.
                             if ( *transformInX == 0 ) {
                                 *imageOutX = *imageInX;
                             }
@@ -2827,7 +3165,6 @@ namespace fheroes2
                     }
                 }
                 else {
-                    // 'in' and 'out' images are with transform layer.
                     for ( ; imageOutY != imageOutYEnd; imageOutY += widthOut, transformOutY += widthOut, imageInY -= widthIn, transformInY -= widthIn ) {
                         memcpy( imageOutY, imageInY, static_cast<size_t>( width ) );
                         memcpy( transformOutY, transformInY, static_cast<size_t>( width ) );
@@ -2839,7 +3176,6 @@ namespace fheroes2
             // Flip horizontally and vertically.
             if ( in.singleLayer() ) {
                 const uint8_t * imageInY = in.image() + offsetIn + static_cast<ptrdiff_t>( height - 1 ) * widthIn + widthIn - 1;
-
                 for ( ; imageOutY != imageOutYEnd; imageOutY += widthOut, imageInY -= widthIn ) {
                     uint8_t * imageOutX = imageOutY;
                     const uint8_t * imageOutXEnd = imageOutX + width;
@@ -2850,9 +3186,7 @@ namespace fheroes2
                     }
 
                     if ( transformOutY != nullptr ) {
-                        // 'in' image is double-layer: set transform data not to skip image data.
                         memset( transformOutY, static_cast<uint8_t>( 0 ), width );
-
                         transformOutY += widthOut;
                     }
                 }
@@ -2869,26 +3203,21 @@ namespace fheroes2
 
                     if ( transformOutY == nullptr ) {
                         for ( ; imageOutX != imageOutXEnd; ++imageOutX, --imageInX, --transformInX ) {
-                            // Copy image data only for non-transparent pixels.
                             if ( *transformInX == 0 ) {
                                 *imageOutX = *imageInX;
                             }
                         }
                     }
                     else {
-                        // 'in' and 'out' images are with transform layer.
                         for ( uint8_t * transformOutX = transformOutY; imageOutX != imageOutXEnd; ++imageOutX, ++transformOutX, --imageInX, --transformInX ) {
                             *imageOutX = *imageInX;
                             *transformOutX = *transformInX;
                         }
-
                         transformOutY += widthOut;
                     }
                 }
             }
         }
-
-        out._notifyWrite( outX, outY, width, height );
     }
 
     Rect GetActiveROI( const Image & image, const uint8_t minTransformValue )
@@ -2902,18 +3231,15 @@ namespace fheroes2
 
         Rect area( -1, -1, -1, -1 );
 
-        // Top border
         const uint8_t * inY = image.transform();
         for ( int32_t y = 0; y < height; ++y, inY += width ) {
             const uint8_t * inX = inY;
-
             for ( int32_t x = 0; x < width; ++x, ++inX ) {
                 if ( *inX == 0 || *inX >= minTransformValue ) {
                     area.y = y;
                     break;
                 }
             }
-
             if ( area.y >= 0 ) {
                 break;
             }
@@ -2923,52 +3249,43 @@ namespace fheroes2
             return {};
         }
 
-        // Bottom border
         inY = image.transform() + width * ( height - 1 );
         for ( int32_t y = height - 1; y > area.y; --y, inY -= width ) {
             const uint8_t * inX = inY;
-
             for ( int32_t x = 0; x < width; ++x, ++inX ) {
                 if ( *inX == 0 || *inX >= minTransformValue ) {
                     area.height = y - area.y + 1;
                     break;
                 }
             }
-
             if ( area.height >= 0 ) {
                 break;
             }
         }
 
-        // Left border
         const uint8_t * inX = image.transform() + width * area.y;
         for ( int32_t x = 0; x < width; ++x, ++inX ) {
             inY = inX;
-
             for ( int32_t y = 0; y < area.height; ++y, inY += width ) {
                 if ( *inY == 0 || *inY >= minTransformValue ) {
                     area.x = x;
                     break;
                 }
             }
-
             if ( area.x >= 0 ) {
                 break;
             }
         }
 
-        // Right border
         inX = image.transform() + width * area.y + width - 1;
         for ( int32_t x = width - 1; x >= area.x; --x, --inX ) {
             inY = inX;
-
             for ( int32_t y = 0; y < area.height; ++y, inY += width ) {
                 if ( *inY == 0 || *inY >= minTransformValue ) {
                     area.width = x - area.x + 1;
                     break;
                 }
             }
-
             if ( area.width >= 0 ) {
                 break;
             }
@@ -2991,16 +3308,13 @@ namespace fheroes2
         const int32_t width = in.width();
         const int32_t height = in.height();
 
-        // Shadow has (-x, +y) offset.
         Sprite out( width - shadowOffset.x, height + shadowOffset.y, in.x() + shadowOffset.x, in.y() );
         out.reset();
 
         assert( !out.empty() );
 
         if ( in.singleLayer() ) {
-            // In this case we add a shadow of the fully non-transparent rectangular 'in' image.
             FillTransform( out, 0, shadowOffset.y, width, height, transformId );
-
             return out;
         }
 
@@ -3031,6 +3345,29 @@ namespace fheroes2
             return;
         }
 
+        // RGBA target: replace pixels matching palette[oldColorId] RGB with palette[newColorId] RGB.
+        if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            uint8_t oldR;
+            uint8_t oldG;
+            uint8_t oldB;
+            paletteIdxToRGBA( oldColorId, oldR, oldG, oldB );
+            uint8_t newR;
+            uint8_t newG;
+            uint8_t newB;
+            paletteIdxToRGBA( newColorId, newR, newG, newB );
+
+            const size_t total = static_cast<size_t>( image.width() ) * image.height();
+            uint8_t * px = image.image();
+            for ( size_t i = 0; i < total; ++i, px += 4 ) {
+                if ( px[0] == oldR && px[1] == oldG && px[2] == oldB && px[3] != 0 ) {
+                    px[0] = newR;
+                    px[1] = newG;
+                    px[2] = newB;
+                }
+            }
+            return;
+        }
+
         uint8_t * data = image.image();
         const uint8_t * dataEnd = data + image.width() * image.height();
 
@@ -3039,8 +3376,6 @@ namespace fheroes2
                 *data = newColorId;
             }
         }
-
-        image._notifyWrite( 0, 0, image.width(), image.height() );
     }
 
     void ReplaceColorIdByTransformId( Image & image, const uint8_t colorId, const uint8_t transformId )
@@ -3056,12 +3391,10 @@ namespace fheroes2
         uint8_t * transformIn = image.transform();
         const uint8_t * imageInEnd = imageIn + height * width;
         for ( ; imageIn != imageInEnd; ++imageIn, ++transformIn ) {
-            if ( *transformIn == 0 && *imageIn == colorId ) { // modify pixels with transform value 0
+            if ( *transformIn == 0 && *imageIn == colorId ) {
                 *transformIn = transformId;
             }
         }
-
-        image._notifyWrite( 0, 0, width, height );
     }
 
     void ReplaceTransformIdByColorId( Image & image, const uint8_t transformId, const uint8_t colorId )
@@ -3081,8 +3414,6 @@ namespace fheroes2
                 *imageIn = colorId;
             }
         }
-
-        image._notifyWrite( 0, 0, image.width(), image.height() );
     }
 
     void Resize( const Image & in, Image & out )
@@ -3106,9 +3437,65 @@ namespace fheroes2
             return;
         }
 
+        // RGBA out: nearest-neighbor scale.
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            const int32_t widthIn = in.width();
+            const int32_t widthOut = out.width();
+            const bool inIsRGBA = ( in.format() == ImageFormat::RGBA_32BIT );
+
+            std::vector<int32_t> positionX( widthRoiOut );
+            for ( int32_t x = 0; x < widthRoiOut; ++x ) {
+                positionX[x] = ( x * widthRoiIn ) / widthRoiOut;
+            }
+
+            for ( int32_t y = 0; y < heightRoiOut; ++y ) {
+                const int32_t srcRowOffset = ( ( y * heightRoiIn ) / heightRoiOut );
+                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+
+                if ( inIsRGBA ) {
+                    const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY + srcRowOffset ) * widthIn ) * 4;
+                    for ( int32_t x = 0; x < widthRoiOut; ++x ) {
+                        const uint8_t * srcPx = srcRow + ( static_cast<ptrdiff_t>( inX + positionX[x] ) ) * 4;
+                        uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                        dstPx[0] = srcPx[0];
+                        dstPx[1] = srcPx[1];
+                        dstPx[2] = srcPx[2];
+                        dstPx[3] = srcPx[3];
+                    }
+                }
+                else {
+                    const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY + srcRowOffset ) * widthIn ) + inX;
+                    const uint8_t * trRow = in.singleLayer() ? nullptr : ( in.transform() + ( static_cast<ptrdiff_t>( inY + srcRowOffset ) * widthIn ) + inX );
+                    for ( int32_t x = 0; x < widthRoiOut; ++x ) {
+                        const uint8_t srcIdx = srcRow[positionX[x]];
+                        const uint8_t srcTr = trRow ? trRow[positionX[x]] : 0;
+                        uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                        if ( srcTr == 1 ) {
+                            continue;
+                        }
+                        if ( srcTr > 1 && srcTr <= 5 ) {
+                            const float f = shadowFactor[srcTr];
+                            dstPx[0] = static_cast<uint8_t>( static_cast<float>( dstPx[0] ) * f );
+                            dstPx[1] = static_cast<uint8_t>( static_cast<float>( dstPx[1] ) * f );
+                            dstPx[2] = static_cast<uint8_t>( static_cast<float>( dstPx[2] ) * f );
+                            continue;
+                        }
+                        uint8_t r;
+                        uint8_t g;
+                        uint8_t b;
+                        paletteIdxToRGBA( srcIdx, r, g, b );
+                        dstPx[0] = r;
+                        dstPx[1] = g;
+                        dstPx[2] = b;
+                        dstPx[3] = 255;
+                    }
+                }
+            }
+            return;
+        }
+
         const int32_t widthIn = in.width();
         const int32_t widthOut = out.width();
-
         const int32_t offsetInY = inY * widthIn + inX;
         const int32_t offsetOutY = outY * widthOut + outX;
 
@@ -3118,7 +3505,6 @@ namespace fheroes2
         const uint8_t * imageOutYEnd = imageOutY + static_cast<ptrdiff_t>( widthOut ) * heightRoiOut;
         int32_t idY = 0;
 
-        // Pre-calculation of X position
         std::vector<int32_t> positionX( widthRoiOut );
         for ( int32_t x = 0; x < widthRoiOut; ++x ) {
             positionX[x] = ( x * widthRoiIn ) / widthRoiOut;
@@ -3126,8 +3512,6 @@ namespace fheroes2
 
         if ( in.singleLayer() ) {
             if ( !out.singleLayer() ) {
-                // In this case we make the output image fully non-transparent in the given output area.
-
                 uint8_t * transformY = out.transform() + static_cast<ptrdiff_t>( outY ) * widthOut + outX;
                 const uint8_t * transformYEnd = transformY + static_cast<ptrdiff_t>( heightRoiOut ) * widthOut;
 
@@ -3138,7 +3522,6 @@ namespace fheroes2
 
             for ( ; imageOutY != imageOutYEnd; imageOutY += widthOut, ++idY ) {
                 uint8_t * imageOutX = imageOutY;
-
                 const int32_t offset = ( ( idY * heightRoiIn ) / heightRoiOut ) * widthIn;
                 const uint8_t * imageInX = imageInY + offset;
 
@@ -3153,7 +3536,6 @@ namespace fheroes2
 
             for ( ; imageOutY != imageOutYEnd; imageOutY += widthOut, ++idY ) {
                 uint8_t * imageOutX = imageOutY;
-
                 const int32_t offset = ( ( idY * heightRoiIn ) / heightRoiOut ) * widthIn;
                 const uint8_t * imageInX = imageInY + offset;
                 const uint8_t * transformInX = transformInY + offset;
@@ -3162,27 +3544,23 @@ namespace fheroes2
                     const uint8_t * transformIn = transformInX + posX;
                     if ( *transformIn > 0 ) {
                         if ( *transformIn != 1 ) {
-                            // Apply a transformation.
                             *imageOutX = *( transformTable + static_cast<ptrdiff_t>( *transformIn ) * 256 + *imageOutX );
                         }
                     }
                     else {
                         *imageOutX = *( imageInX + posX );
                     }
-
                     ++imageOutX;
                 }
             }
         }
         else {
-            // Both 'in' and 'out' are double-layer.
             const uint8_t * transformInY = in.transform() + offsetInY;
             uint8_t * transformOutY = out.transform() + offsetOutY;
 
             for ( ; imageOutY != imageOutYEnd; imageOutY += widthOut, transformOutY += widthOut, ++idY ) {
                 uint8_t * imageOutX = imageOutY;
                 uint8_t * transformOutX = transformOutY;
-
                 const int32_t offset = ( ( idY * heightRoiIn ) / heightRoiOut ) * widthIn;
                 const uint8_t * imageInX = imageInY + offset;
                 const uint8_t * transformInX = transformInY + offset;
@@ -3195,8 +3573,6 @@ namespace fheroes2
                 }
             }
         }
-
-        out._notifyWrite( outX, outY, widthRoiOut, heightRoiOut );
     }
 
     void SetPixel( Image & image, const int32_t x, const int32_t y, const uint8_t value )
@@ -3205,13 +3581,24 @@ namespace fheroes2
             return;
         }
 
+        if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+            paletteIdxToRGBA( value, r, g, b );
+            uint8_t * dst = image.image() + ( static_cast<ptrdiff_t>( y ) * image.width() + x ) * 4;
+            dst[0] = r;
+            dst[1] = g;
+            dst[2] = b;
+            dst[3] = 255;
+            return;
+        }
+
         const int32_t offset = y * image.width() + x;
         *( image.image() + offset ) = value;
         if ( !image.singleLayer() ) {
             *( image.transform() + offset ) = 0;
         }
-
-        image._notifyWrite( x, y, 1, 1 );
     }
 
     void SetPixel( Image & image, const std::vector<Point> & points, const uint8_t value )
@@ -3222,40 +3609,36 @@ namespace fheroes2
 
         const int32_t width = image.width();
         const int32_t height = image.height();
-        const bool isDoubleLayer = !image.singleLayer();
 
-        int32_t minX = width;
-        int32_t minY = height;
-        int32_t maxX = -1;
-        int32_t maxY = -1;
+        if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+            paletteIdxToRGBA( value, r, g, b );
+            for ( const Point & p : points ) {
+                if ( p.x < 0 || p.y < 0 || p.x >= width || p.y >= height ) {
+                    continue;
+                }
+                uint8_t * dst = image.image() + ( static_cast<ptrdiff_t>( p.y ) * width + p.x ) * 4;
+                dst[0] = r;
+                dst[1] = g;
+                dst[2] = b;
+                dst[3] = 255;
+            }
+            return;
+        }
+
+        const bool isDoubleLayer = !image.singleLayer();
 
         for ( const Point & point : points ) {
             if ( point.x >= width || point.y >= height || point.x < 0 || point.y < 0 ) {
                 continue;
             }
-
             const int32_t offset = point.y * width + point.x;
             *( image.image() + offset ) = value;
             if ( isDoubleLayer ) {
                 *( image.transform() + offset ) = 0;
             }
-
-            if ( point.x < minX ) {
-                minX = point.x;
-            }
-            if ( point.y < minY ) {
-                minY = point.y;
-            }
-            if ( point.x > maxX ) {
-                maxX = point.x;
-            }
-            if ( point.y > maxY ) {
-                maxY = point.y;
-            }
-        }
-
-        if ( maxX >= 0 ) {
-            image._notifyWrite( minX, minY, maxX - minX + 1, maxY - minY + 1 );
         }
     }
 
@@ -3295,7 +3678,6 @@ namespace fheroes2
         const int32_t outX = ( widthOut - ( widthOut / bodyWidth ) * bodyWidth ) / 2;
         const int32_t outY = ( heightOut - ( heightOut / bodyHeight ) * bodyHeight ) / 2;
 
-        // Create internal area
         if ( bodyWidth < widthOut && bodyHeight < heightOut ) {
             for ( int32_t y = 0; y < ( heightOut / bodyHeight ); ++y ) {
                 for ( int32_t x = 0; x < ( widthOut / bodyWidth ); ++x ) {
@@ -3304,32 +3686,21 @@ namespace fheroes2
             }
         }
 
-        // Create sides
-        // top and bottom side
         for ( int32_t x = 0; x < ( widthOut / bodyWidth ); ++x ) {
             const int32_t offsetX = outX + x * bodyWidth;
             Copy( in, cornerX, inY, out, offsetX, 0, bodyWidth, cornerHeight );
             Copy( in, cornerX, inY + heightIn - cornerHeight, out, offsetX, heightOut - cornerHeight, bodyWidth, cornerHeight );
         }
 
-        // left and right sides
         for ( int32_t y = 0; y < ( heightOut / bodyHeight ); ++y ) {
             const int32_t offsetY = outY + y * bodyHeight;
             Copy( in, inX, cornerY, out, 0, offsetY, cornerWidth, bodyHeight );
             Copy( in, inX + widthIn - cornerWidth, cornerY, out, widthOut - cornerWidth, offsetY, cornerWidth, bodyHeight );
         }
 
-        // Create corners
-        // top-left corner
         Copy( in, inX, inY, out, 0, 0, cornerWidth, cornerHeight );
-
-        // top-right corner
         Copy( in, inX + widthIn - cornerWidth, inY, out, widthOut - cornerWidth, 0, cornerWidth, cornerHeight );
-
-        // bottom-left corner
         Copy( in, inX, inY + heightIn - cornerHeight, out, 0, heightOut - cornerHeight, cornerWidth, cornerHeight );
-
-        // bottom-right corner
         Copy( in, inX + widthIn - cornerWidth, inY + heightIn - cornerHeight, out, widthOut - cornerWidth, heightOut - cornerHeight, cornerWidth, cornerHeight );
 
         return out;
@@ -3356,9 +3727,14 @@ namespace fheroes2
             return;
         }
 
+        // RGBA out: degrade to nearest-neighbor Resize. SubpixelResize is rarely on the Display path.
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            Resize( in, inX, inY, widthRoiIn, heightRoiIn, out, outX, outY, widthRoiOut, heightRoiOut );
+            return;
+        }
+
         const int32_t widthIn = in.width();
         const int32_t widthOut = out.width();
-
         const int32_t offsetInY = inY * widthIn + inX;
         const int32_t offsetOutY = outY * widthOut + outX;
 
@@ -3374,8 +3750,6 @@ namespace fheroes2
 
         if ( in.singleLayer() ) {
             if ( !out.singleLayer() ) {
-                // In this case we make the output image fully non-transparent in the given output area.
-
                 uint8_t * transformY = out.transform() + static_cast<ptrdiff_t>( outY ) * widthOut + outX;
                 const uint8_t * transformYEnd = transformY + static_cast<ptrdiff_t>( heightRoiOut ) * widthOut;
 
@@ -3464,7 +3838,6 @@ namespace fheroes2
                             *imageOutX = GetPALColorId( static_cast<uint8_t>( red ), static_cast<uint8_t>( green ), static_cast<uint8_t>( blue ) );
                         }
                         else if ( *( transformInX + 1 ) != 0 && *( transformInX + widthRoiIn ) == 0 ) {
-                            // The pixel to the right is transparent, do only vertical interpolation.
                             const double coeff1 = 1 - coeffY;
 
                             const uint8_t * id1 = gamePalette + static_cast<size_t>( *imageInX ) * 3;
@@ -3477,7 +3850,6 @@ namespace fheroes2
                             *imageOutX = GetPALColorId( static_cast<uint8_t>( red ), static_cast<uint8_t>( green ), static_cast<uint8_t>( blue ) );
                         }
                         else if ( *( transformInX + 1 ) == 0 && *( transformInX + widthRoiIn ) != 0 ) {
-                            // The pixel to the bottom is transparent, do only horizontal interpolation.
                             const double coeff2 = posX - startX;
                             const double coeff1 = 1 - coeff2;
 
@@ -3491,7 +3863,6 @@ namespace fheroes2
                             *imageOutX = GetPALColorId( static_cast<uint8_t>( red ), static_cast<uint8_t>( green ), static_cast<uint8_t>( blue ) );
                         }
                         else if ( *( transformInX + 1 ) == 0 && *( transformInX + widthRoiIn ) == 0 && *( transformInX + widthRoiIn + 1 ) != 0 ) {
-                            // Interpolation by three pixels: current, the right one and the bottom one.
                             const double coeffX = posX - startX;
                             double coeff1 = ( 1 - coeffX ) * ( 1 - coeffY );
                             double coeff2 = coeffX * ( 1 - coeffY );
@@ -3514,11 +3885,9 @@ namespace fheroes2
                     }
                     else {
                         if ( isOutNotSingleLayer || *transformInX == 0 ) {
-                            // Output image is double-layer or single-layer with non-transparent current pixel.
                             *imageOutX = *imageInX;
                         }
                         else if ( *transformInX != 1 ) {
-                            // Apply a transformation.
                             *imageOutX = *( transformTable + static_cast<ptrdiff_t>( *transformInX ) * 256 + *imageOutX );
                         }
                     }
@@ -3534,8 +3903,6 @@ namespace fheroes2
                 }
             }
         }
-
-        out._notifyWrite( outX, outY, widthRoiOut, heightRoiOut );
     }
 
     void Transpose( const Image & in, Image & out )
@@ -3549,6 +3916,24 @@ namespace fheroes2
         const int32_t width = in.width();
         const int32_t height = in.height();
 
+        // RGBA path: per-pixel transpose.
+        if ( out.format() == ImageFormat::RGBA_32BIT ) {
+            assert( in.format() == ImageFormat::RGBA_32BIT );
+            const int32_t outW = out.width();
+            for ( int32_t y = 0; y < height; ++y ) {
+                const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( y ) * width ) * 4;
+                for ( int32_t x = 0; x < width; ++x ) {
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( x ) * 4;
+                    uint8_t * dstPx = out.image() + ( static_cast<ptrdiff_t>( x ) * outW + y ) * 4;
+                    dstPx[0] = srcPx[0];
+                    dstPx[1] = srcPx[1];
+                    dstPx[2] = srcPx[2];
+                    dstPx[3] = srcPx[3];
+                }
+            }
+            return;
+        }
+
         const uint8_t * imageInY = in.image();
         const uint8_t * imageInYEnd = imageInY + width * height;
         uint8_t * imageOutX = out.image();
@@ -3559,7 +3944,6 @@ namespace fheroes2
                     const uint8_t * imageInX = imageInY;
                     const uint8_t * imageInXEnd = imageInX + width;
                     uint8_t * imageOutY = imageOutX;
-
                     for ( ; imageInX != imageInXEnd; ++imageInX, imageOutY += height ) {
                         *imageOutY = *imageInX;
                     }
@@ -3567,12 +3951,10 @@ namespace fheroes2
             }
             else {
                 uint8_t * transformOutX = out.transform();
-
                 for ( ; imageInY != imageInYEnd; imageInY += width, ++imageOutX, ++transformOutX ) {
                     const uint8_t * imageInX = imageInY;
                     const uint8_t * imageInXEnd = imageInX + width;
                     uint8_t * imageOutY = imageOutX;
-
                     uint8_t * transformOutY = transformOutX;
                     for ( ; imageInX != imageInXEnd; ++imageInX, imageOutY += height, transformOutY += height ) {
                         *imageOutY = *imageInX;
@@ -3583,16 +3965,13 @@ namespace fheroes2
         }
         else {
             const uint8_t * transformInY = in.transform();
-
             if ( out.singleLayer() ) {
                 for ( ; imageInY != imageInYEnd; imageInY += width, transformInY += width, ++imageOutX ) {
                     const uint8_t * imageInX = imageInY;
                     const uint8_t * imageInXEnd = imageInX + width;
                     uint8_t * imageOutY = imageOutX;
-
                     const uint8_t * transformInX = transformInY;
                     for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, imageOutY += height ) {
-                        // Copy image data only for non-transparent pixels.
                         if ( *transformInX == 0 ) {
                             *imageOutY = *imageInX;
                         }
@@ -3601,12 +3980,10 @@ namespace fheroes2
             }
             else {
                 uint8_t * transformOutX = out.transform();
-
                 for ( ; imageInY != imageInYEnd; imageInY += width, transformInY += width, ++imageOutX, ++transformOutX ) {
                     const uint8_t * imageInX = imageInY;
                     const uint8_t * imageInXEnd = imageInX + width;
                     uint8_t * imageOutY = imageOutX;
-
                     const uint8_t * transformInX = transformInY;
                     uint8_t * transformOutY = transformOutX;
                     for ( ; imageInX != imageInXEnd; ++imageInX, ++transformInX, imageOutY += height, transformOutY += height ) {
@@ -3616,8 +3993,6 @@ namespace fheroes2
                 }
             }
         }
-
-        out._notifyWrite( 0, 0, out.width(), out.height() );
     }
 
     void updateShadow( Image & image, const Point & shadowOffset, const uint8_t transformId, const bool connectCorners )
@@ -3667,111 +4042,20 @@ namespace fheroes2
             for ( ; transformOutX != transformOutXEnd; ++transformInX, ++transformOutX ) {
                 if ( *transformOutX == 1
                      && ( *transformInX == 0 || ( connectCorners && *( transformInX + cornerOffsetX ) == 0 && *( transformInX + cornerOffsetY ) == 0 ) ) ) {
-                    // If 'connectCorners' is 'true' and when there are two pixels adjacent diagonally,
-                    // we also create a "shadow" pixel in the corner that is closer to the image.
-                    // Doing so there will be no "empty" pixels between the image and its shadow (for 1 pixel offset case).
                     *transformOutX = transformId;
                 }
             }
         }
     }
 
-    RGBAImage::RGBAImage( const int32_t width, const int32_t height )
-    {
-        resize( width, height );
-    }
+    // ===== RGBA-only public helpers =====
 
-    RGBAImage::RGBAImage( RGBAImage && image ) noexcept
-        : _width( image._width )
-        , _height( image._height )
-        , _data( std::move( image._data ) )
-    {
-        image._width = 0;
-        image._height = 0;
-    }
-
-    RGBAImage & RGBAImage::operator=( RGBAImage && image ) noexcept
-    {
-        if ( this != &image ) {
-            _width = image._width;
-            _height = image._height;
-            _data = std::move( image._data );
-            image._width = 0;
-            image._height = 0;
-        }
-        return *this;
-    }
-
-    void RGBAImage::resize( const int32_t width, const int32_t height )
-    {
-        if ( width <= 0 || height <= 0 ) {
-            _width = 0;
-            _height = 0;
-            _data.reset();
-            return;
-        }
-
-        _width = width;
-        _height = height;
-        const size_t byteCount = static_cast<size_t>( width ) * height * 4;
-        _data.reset( new uint8_t[byteCount] );
-        // Zero-initialise so callers that only paint a sub-region (per-scope dialog surfaces filled
-        // by buffer paints, palette mirror) do not show uninitialised memory in the unwritten areas.
-        // Painter compositor relies on alpha=0 outside painted regions to let the parent show through.
-        std::memset( _data.get(), 0, byteCount );
-    }
-
-    void BlitRGBA( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const bool flip )
-    {
-        if ( in.empty() || out.empty() ) {
-            return;
-        }
-
-        const int32_t srcW = in.width();
-        const int32_t srcH = in.height();
-        const int32_t dstW = out.width();
-        const int32_t dstH = out.height();
-
-        // Clip to destination bounds.
-        const int32_t startX = std::max( outX, 0 );
-        const int32_t startY = std::max( outY, 0 );
-        const int32_t endX = std::min( outX + srcW, dstW );
-        const int32_t endY = std::min( outY + srcH, dstH );
-
-        if ( startX >= endX || startY >= endY ) {
-            return;
-        }
-
-        const uint8_t * srcData = in.data();
-        uint8_t * dstData = out.data();
-
-        for ( int32_t y = startY; y < endY; ++y ) {
-            const int32_t srcY = y - outY;
-            const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcY ) * srcW * 4 );
-            uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( y ) * dstW * 4 );
-
-            for ( int32_t x = startX; x < endX; ++x ) {
-                const int32_t srcX = flip ? ( srcW - 1 - ( x - outX ) ) : ( x - outX );
-                const uint8_t * srcPx = srcRow + ( static_cast<ptrdiff_t>( srcX ) * 4 );
-
-                if ( srcPx[3] == 0 ) {
-                    continue;
-                }
-
-                uint8_t * dstPx = dstRow + ( static_cast<ptrdiff_t>( x ) * 4 );
-                dstPx[0] = srcPx[0];
-                dstPx[1] = srcPx[1];
-                dstPx[2] = srcPx[2];
-                dstPx[3] = srcPx[3];
-            }
-        }
-    }
-
-    void BlitRGBAScaled( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const int32_t dstW, const int32_t dstH, const bool flip )
+    void BlitRGBAScaled( const Image & in, Image & out, const int32_t outX, const int32_t outY, const int32_t dstW, const int32_t dstH, const bool flip )
     {
         if ( in.empty() || out.empty() || dstW <= 0 || dstH <= 0 ) {
             return;
         }
+        assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
 
         const int32_t srcW = in.width();
         const int32_t srcH = in.height();
@@ -3787,448 +4071,8 @@ namespace fheroes2
             return;
         }
 
-        const uint8_t * srcData = in.data();
-        uint8_t * dstData = out.data();
-
-        for ( int32_t y = startY; y < endY; ++y ) {
-            const int32_t srcY = ( ( y - outY ) * srcH ) / dstH;
-            const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcY ) * srcW * 4 );
-            uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( y ) * outW * 4 );
-
-            for ( int32_t x = startX; x < endX; ++x ) {
-                const int32_t relX = x - outX;
-                const int32_t srcX = ( ( flip ? ( dstW - 1 - relX ) : relX ) * srcW ) / dstW;
-                const uint8_t * srcPx = srcRow + ( static_cast<ptrdiff_t>( srcX ) * 4 );
-
-                if ( srcPx[3] == 0 ) {
-                    continue;
-                }
-
-                uint8_t * dstPx = dstRow + ( static_cast<ptrdiff_t>( x ) * 4 );
-                dstPx[0] = srcPx[0];
-                dstPx[1] = srcPx[1];
-                dstPx[2] = srcPx[2];
-                dstPx[3] = srcPx[3];
-            }
-        }
-    }
-
-    void ClearRGBARegion( RGBAImage & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height )
-    {
-        if ( image.empty() ) {
-            return;
-        }
-
-        const int32_t imgW = image.width();
-        const int32_t imgH = image.height();
-
-        const int32_t startX = std::max( x, 0 );
-        const int32_t startY = std::max( y, 0 );
-        const int32_t endX = std::min( x + width, imgW );
-        const int32_t endY = std::min( y + height, imgH );
-
-        if ( startX >= endX || startY >= endY ) {
-            return;
-        }
-
-        uint8_t * data = image.data();
-        const int32_t clearWidth = endX - startX;
-
-        for ( int32_t row = startY; row < endY; ++row ) {
-            const ptrdiff_t offset = ( static_cast<ptrdiff_t>( row ) * imgW + startX ) * 4;
-            memset( data + offset, 0, static_cast<size_t>( clearWidth ) * 4 );
-        }
-    }
-
-    void ConvertIndexedToRGBA( const Image & indexed, RGBAImage & out )
-    {
-        if ( indexed.empty() ) {
-            return;
-        }
-
-        const int32_t w = indexed.width();
-        const int32_t h = indexed.height();
-        out.resize( w, h );
-
-        const uint8_t * imageData = indexed.image();
-        const uint8_t * transformData = indexed.singleLayer() ? nullptr : indexed.transform();
-        // The game palette stores 6-bit values (0-63); shift left by 2 to get 8-bit (0-252), matching PALPalette().
-        const uint8_t * gamePalette = getGamePalette();
-        uint8_t * dst = out.data();
-
-        const size_t pixelCount = static_cast<size_t>( w ) * h;
-
-        for ( size_t i = 0; i < pixelCount; ++i ) {
-            if ( transformData != nullptr && transformData[i] != 0 ) {
-                // Transparent (1) or shadow (2-5) — skip.
-                dst[0] = 0;
-                dst[1] = 0;
-                dst[2] = 0;
-                dst[3] = 0;
-            }
-            else {
-                const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( imageData[i] ) * 3;
-                dst[0] = static_cast<uint8_t>( pal[0] << 2 );
-                dst[1] = static_cast<uint8_t>( pal[1] << 2 );
-                dst[2] = static_cast<uint8_t>( pal[2] << 2 );
-                dst[3] = 255;
-            }
-            dst += 4;
-        }
-    }
-
-    // Shadow darkening factors for transform values 2-5.
-    // Transform 2 = strongest shadow, transform 5 = weakest.
-    namespace
-    {
-        constexpr float shadowFactor[6] = { 1.0f, 1.0f, 0.25f, 0.40f, 0.55f, 0.70f };
-    }
-
-    void BlitIndexedToRGBAScaled( const Image & in, RGBAImage & out, const int32_t gameX, const int32_t gameY, const float scale, const bool flip )
-    {
-        if ( in.empty() || out.empty() ) {
-            return;
-        }
-
-        const int32_t srcW = in.width();
-        const int32_t srcH = in.height();
-        const int32_t dstW = out.width();
-        const int32_t dstH = out.height();
-
-        const uint8_t * imageData = in.image();
-        const uint8_t * transformData = in.singleLayer() ? nullptr : in.transform();
-        const uint8_t * gamePalette = getGamePalette();
-        uint8_t * dstData = out.data();
-
-        for ( int32_t row = 0; row < srcH; ++row ) {
-            const int32_t physRowStart = static_cast<int32_t>( static_cast<float>( gameY + row ) * scale );
-            const int32_t physRowEnd = std::min( static_cast<int32_t>( static_cast<float>( gameY + row + 1 ) * scale ), dstH );
-            if ( physRowEnd <= 0 || physRowStart >= dstH ) {
-                continue;
-            }
-            const int32_t clampedRowStart = std::max( physRowStart, 0 );
-
-            for ( int32_t col = 0; col < srcW; ++col ) {
-                const int32_t srcCol = flip ? ( srcW - 1 - col ) : col;
-                const ptrdiff_t srcIdx = static_cast<ptrdiff_t>( row ) * srcW + srcCol;
-
-                // Check transform layer.
-                if ( transformData != nullptr && transformData[srcIdx] != 0 ) {
-                    const uint8_t tr = transformData[srcIdx];
-                    if ( tr == 1 ) {
-                        // Fully transparent — skip.
-                        continue;
-                    }
-                    // Shadow pixel (transform 2-5): darken destination.
-                    if ( tr >= 2 && tr <= 5 ) {
-                        const float factor = shadowFactor[tr];
-                        const int32_t physColStart = static_cast<int32_t>( static_cast<float>( gameX + col ) * scale );
-                        const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( gameX + col + 1 ) * scale ), dstW );
-                        if ( physColEnd <= 0 || physColStart >= dstW ) {
-                            continue;
-                        }
-                        const int32_t clampedColStart = std::max( physColStart, 0 );
-
-                        for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
-                            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
-                            for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
-                                uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
-                                if ( dst[3] > 0 ) {
-                                    dst[0] = static_cast<uint8_t>( static_cast<float>( dst[0] ) * factor );
-                                    dst[1] = static_cast<uint8_t>( static_cast<float>( dst[1] ) * factor );
-                                    dst[2] = static_cast<uint8_t>( static_cast<float>( dst[2] ) * factor );
-                                }
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                // Opaque pixel — palette lookup and fill scaled block.
-                const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( imageData[srcIdx] ) * 3;
-                const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
-                const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
-                const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
-
-                const int32_t physColStart = static_cast<int32_t>( static_cast<float>( gameX + col ) * scale );
-                const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( gameX + col + 1 ) * scale ), dstW );
-                if ( physColEnd <= 0 || physColStart >= dstW ) {
-                    continue;
-                }
-                const int32_t clampedColStart = std::max( physColStart, 0 );
-
-                for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
-                    uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
-                    for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
-                        uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
-                        dst[0] = r;
-                        dst[1] = g;
-                        dst[2] = b;
-                        dst[3] = 255;
-                    }
-                }
-            }
-        }
-    }
-
-    void BlitIndexedToRGBAScaledAlpha( const Image & in, RGBAImage & out, const int32_t gameX, const int32_t gameY, const float scale, const uint8_t alpha,
-                                       const bool flip )
-    {
-        if ( in.empty() || out.empty() || alpha == 0 ) {
-            return;
-        }
-
-        // Full opacity — delegate to the non-alpha version.
-        if ( alpha == 255 ) {
-            BlitIndexedToRGBAScaled( in, out, gameX, gameY, scale, flip );
-            return;
-        }
-
-        const int32_t srcW = in.width();
-        const int32_t srcH = in.height();
-        const int32_t dstW = out.width();
-        const int32_t dstH = out.height();
-
-        const uint8_t * imageData = in.image();
-        const uint8_t * transformData = in.singleLayer() ? nullptr : in.transform();
-        const uint8_t * gamePalette = getGamePalette();
-        uint8_t * dstData = out.data();
-
-        const float alphaF = static_cast<float>( alpha ) / 255.0f;
-
-        for ( int32_t row = 0; row < srcH; ++row ) {
-            const int32_t physRowStart = static_cast<int32_t>( static_cast<float>( gameY + row ) * scale );
-            const int32_t physRowEnd = std::min( static_cast<int32_t>( static_cast<float>( gameY + row + 1 ) * scale ), dstH );
-            if ( physRowEnd <= 0 || physRowStart >= dstH ) {
-                continue;
-            }
-            const int32_t clampedRowStart = std::max( physRowStart, 0 );
-
-            for ( int32_t col = 0; col < srcW; ++col ) {
-                const int32_t srcCol = flip ? ( srcW - 1 - col ) : col;
-                const ptrdiff_t srcIdx = static_cast<ptrdiff_t>( row ) * srcW + srcCol;
-
-                if ( transformData != nullptr && transformData[srcIdx] != 0 ) {
-                    const uint8_t tr = transformData[srcIdx];
-                    if ( tr == 1 ) {
-                        continue;
-                    }
-                    // Shadow with alpha: reduce shadow strength by alpha.
-                    if ( tr >= 2 && tr <= 5 ) {
-                        const float baseFactor = shadowFactor[tr];
-                        const float factor = 1.0f - ( 1.0f - baseFactor ) * alphaF;
-                        const int32_t physColStart = static_cast<int32_t>( static_cast<float>( gameX + col ) * scale );
-                        const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( gameX + col + 1 ) * scale ), dstW );
-                        if ( physColEnd <= 0 || physColStart >= dstW ) {
-                            continue;
-                        }
-                        const int32_t clampedColStart = std::max( physColStart, 0 );
-
-                        for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
-                            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
-                            for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
-                                uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
-                                if ( dst[3] > 0 ) {
-                                    dst[0] = static_cast<uint8_t>( static_cast<float>( dst[0] ) * factor );
-                                    dst[1] = static_cast<uint8_t>( static_cast<float>( dst[1] ) * factor );
-                                    dst[2] = static_cast<uint8_t>( static_cast<float>( dst[2] ) * factor );
-                                }
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                // Opaque pixel — src_over composite with alpha.
-                const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( imageData[srcIdx] ) * 3;
-                const uint8_t srcR = static_cast<uint8_t>( pal[0] << 2 );
-                const uint8_t srcG = static_cast<uint8_t>( pal[1] << 2 );
-                const uint8_t srcB = static_cast<uint8_t>( pal[2] << 2 );
-
-                const int32_t physColStart = static_cast<int32_t>( static_cast<float>( gameX + col ) * scale );
-                const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( gameX + col + 1 ) * scale ), dstW );
-                if ( physColEnd <= 0 || physColStart >= dstW ) {
-                    continue;
-                }
-                const int32_t clampedColStart = std::max( physColStart, 0 );
-
-                for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
-                    uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
-                    for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
-                        uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
-                        dst[0] = static_cast<uint8_t>( static_cast<float>( srcR ) * alphaF + static_cast<float>( dst[0] ) * ( 1.0f - alphaF ) );
-                        dst[1] = static_cast<uint8_t>( static_cast<float>( srcG ) * alphaF + static_cast<float>( dst[1] ) * ( 1.0f - alphaF ) );
-                        dst[2] = static_cast<uint8_t>( static_cast<float>( srcB ) * alphaF + static_cast<float>( dst[2] ) * ( 1.0f - alphaF ) );
-                        dst[3] = std::max( dst[3], alpha );
-                    }
-                }
-            }
-        }
-    }
-
-    void BlitIndexedToRGBAScaledRegion( const Image & in, const int32_t inX, const int32_t inY, const int32_t w, const int32_t h, RGBAImage & out, const int32_t gameX,
-                                        const int32_t gameY, const float scale, const uint8_t alpha, const bool flip )
-    {
-        if ( in.empty() || out.empty() || alpha == 0 || w <= 0 || h <= 0 ) {
-            return;
-        }
-
-        const int32_t srcW = in.width();
-        const int32_t srcH = in.height();
-        const int32_t dstW = out.width();
-        const int32_t dstH = out.height();
-
-        const uint8_t * imageData = in.image();
-        const uint8_t * transformData = in.singleLayer() ? nullptr : in.transform();
-        const uint8_t * gamePalette = getGamePalette();
-        uint8_t * dstData = out.data();
-
-        const float alphaF = static_cast<float>( alpha ) / 255.0f;
-        const bool useAlpha = ( alpha < 255 );
-
-        const int32_t endRow = std::min( inY + h, srcH );
-        const int32_t endCol = std::min( inX + w, srcW );
-
-        for ( int32_t row = std::max( inY, 0 ); row < endRow; ++row ) {
-            const int32_t outRow = gameY + ( row - inY );
-            const int32_t physRowStart = static_cast<int32_t>( static_cast<float>( outRow ) * scale );
-            const int32_t physRowEnd = std::min( static_cast<int32_t>( static_cast<float>( outRow + 1 ) * scale ), dstH );
-            if ( physRowEnd <= 0 || physRowStart >= dstH ) {
-                continue;
-            }
-            const int32_t clampedRowStart = std::max( physRowStart, 0 );
-
-            for ( int32_t col = std::max( inX, 0 ); col < endCol; ++col ) {
-                const int32_t outCol = gameX + ( col - inX );
-                const int32_t srcCol = flip ? ( inX + w - 1 - ( col - inX ) ) : col;
-                const ptrdiff_t srcIdx = static_cast<ptrdiff_t>( row ) * srcW + srcCol;
-
-                if ( transformData != nullptr && transformData[srcIdx] != 0 ) {
-                    // Skip transparent/shadow in region blit for simplicity.
-                    continue;
-                }
-
-                const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( imageData[srcIdx] ) * 3;
-                const uint8_t srcR = static_cast<uint8_t>( pal[0] << 2 );
-                const uint8_t srcG = static_cast<uint8_t>( pal[1] << 2 );
-                const uint8_t srcB = static_cast<uint8_t>( pal[2] << 2 );
-
-                const int32_t physColStart = static_cast<int32_t>( static_cast<float>( outCol ) * scale );
-                const int32_t physColEnd = std::min( static_cast<int32_t>( static_cast<float>( outCol + 1 ) * scale ), dstW );
-                if ( physColEnd <= 0 || physColStart >= dstW ) {
-                    continue;
-                }
-                const int32_t clampedColStart = std::max( physColStart, 0 );
-
-                for ( int32_t dy = clampedRowStart; dy < physRowEnd; ++dy ) {
-                    uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( dy ) * dstW * 4;
-                    for ( int32_t dx = clampedColStart; dx < physColEnd; ++dx ) {
-                        uint8_t * dst = dstRow + static_cast<ptrdiff_t>( dx ) * 4;
-                        if ( useAlpha ) {
-                            dst[0] = static_cast<uint8_t>( static_cast<float>( srcR ) * alphaF + static_cast<float>( dst[0] ) * ( 1.0f - alphaF ) );
-                            dst[1] = static_cast<uint8_t>( static_cast<float>( srcG ) * alphaF + static_cast<float>( dst[1] ) * ( 1.0f - alphaF ) );
-                            dst[2] = static_cast<uint8_t>( static_cast<float>( srcB ) * alphaF + static_cast<float>( dst[2] ) * ( 1.0f - alphaF ) );
-                            dst[3] = std::max( dst[3], alpha );
-                        }
-                        else {
-                            dst[0] = srcR;
-                            dst[1] = srcG;
-                            dst[2] = srcB;
-                            dst[3] = 255;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    void BlitRGBAAlpha( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const uint8_t alpha, const bool flip )
-    {
-        if ( in.empty() || out.empty() || alpha == 0 ) {
-            return;
-        }
-
-        if ( alpha == 255 ) {
-            BlitRGBA( in, out, outX, outY, flip );
-            return;
-        }
-
-        const int32_t srcW = in.width();
-        const int32_t srcH = in.height();
-        const int32_t dstW = out.width();
-        const int32_t dstH = out.height();
-
-        const int32_t startX = std::max( outX, 0 );
-        const int32_t startY = std::max( outY, 0 );
-        const int32_t endX = std::min( outX + srcW, dstW );
-        const int32_t endY = std::min( outY + srcH, dstH );
-
-        if ( startX >= endX || startY >= endY ) {
-            return;
-        }
-
-        const uint8_t * srcData = in.data();
-        uint8_t * dstData = out.data();
-
-        for ( int32_t y = startY; y < endY; ++y ) {
-            const int32_t srcY = y - outY;
-            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
-            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( y ) * dstW * 4;
-
-            for ( int32_t x = startX; x < endX; ++x ) {
-                const int32_t srcX = flip ? ( srcW - 1 - ( x - outX ) ) : ( x - outX );
-                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
-
-                if ( srcPx[3] == 0 ) {
-                    continue;
-                }
-
-                // Effective source alpha = srcPx[3] * (alpha / 255).
-                const uint32_t srcA = ( static_cast<uint32_t>( srcPx[3] ) * alpha ) / 255;
-                if ( srcA == 0 ) {
-                    continue;
-                }
-
-                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
-                const uint32_t dstA = dstPx[3];
-                const uint32_t invSrcA = 255 - srcA;
-
-                dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invSrcA ) / 255 );
-                dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invSrcA ) / 255 );
-                dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invSrcA ) / 255 );
-                dstPx[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invSrcA ) / 255, static_cast<uint32_t>( 255 ) ) );
-            }
-        }
-    }
-
-    void BlitRGBAScaledAlpha( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const int32_t dstW, const int32_t dstH, const uint8_t alpha,
-                              const bool flip )
-    {
-        if ( in.empty() || out.empty() || dstW <= 0 || dstH <= 0 || alpha == 0 ) {
-            return;
-        }
-
-        if ( alpha == 255 ) {
-            BlitRGBAScaled( in, out, outX, outY, dstW, dstH, flip );
-            return;
-        }
-
-        const int32_t srcW = in.width();
-        const int32_t srcH = in.height();
-        const int32_t outW = out.width();
-        const int32_t outH = out.height();
-
-        const int32_t startX = std::max( outX, 0 );
-        const int32_t startY = std::max( outY, 0 );
-        const int32_t endX = std::min( outX + dstW, outW );
-        const int32_t endY = std::min( outY + dstH, outH );
-
-        if ( startX >= endX || startY >= endY ) {
-            return;
-        }
-
-        const uint8_t * srcData = in.data();
-        uint8_t * dstData = out.data();
+        const uint8_t * srcData = in.image();
+        uint8_t * dstData = out.image();
 
         for ( int32_t y = startY; y < endY; ++y ) {
             const int32_t srcY = ( ( y - outY ) * srcH ) / dstH;
@@ -4239,20 +4083,66 @@ namespace fheroes2
                 const int32_t relX = x - outX;
                 const int32_t srcX = ( ( flip ? ( dstW - 1 - relX ) : relX ) * srcW ) / dstW;
                 const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
-
                 if ( srcPx[3] == 0 ) {
                     continue;
                 }
+                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                dstPx[0] = srcPx[0];
+                dstPx[1] = srcPx[1];
+                dstPx[2] = srcPx[2];
+                dstPx[3] = srcPx[3];
+            }
+        }
+    }
 
+    void BlitRGBAScaledAlpha( const Image & in, Image & out, const int32_t outX, const int32_t outY, const int32_t dstW, const int32_t dstH, const uint8_t alpha,
+                              const bool flip )
+    {
+        if ( in.empty() || out.empty() || dstW <= 0 || dstH <= 0 || alpha == 0 ) {
+            return;
+        }
+        if ( alpha == 255 ) {
+            BlitRGBAScaled( in, out, outX, outY, dstW, dstH, flip );
+            return;
+        }
+        assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t outW = out.width();
+        const int32_t outH = out.height();
+
+        const int32_t startX = std::max( outX, 0 );
+        const int32_t startY = std::max( outY, 0 );
+        const int32_t endX = std::min( outX + dstW, outW );
+        const int32_t endY = std::min( outY + dstH, outH );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        const uint8_t * srcData = in.image();
+        uint8_t * dstData = out.image();
+
+        for ( int32_t y = startY; y < endY; ++y ) {
+            const int32_t srcY = ( ( y - outY ) * srcH ) / dstH;
+            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
+            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( y ) * outW * 4;
+
+            for ( int32_t x = startX; x < endX; ++x ) {
+                const int32_t relX = x - outX;
+                const int32_t srcX = ( ( flip ? ( dstW - 1 - relX ) : relX ) * srcW ) / dstW;
+                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+                if ( srcPx[3] == 0 ) {
+                    continue;
+                }
                 const uint32_t srcA = ( static_cast<uint32_t>( srcPx[3] ) * alpha ) / 255;
                 if ( srcA == 0 ) {
                     continue;
                 }
-
                 uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
                 const uint32_t dstA = dstPx[3];
                 const uint32_t invSrcA = 255 - srcA;
-
                 dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invSrcA ) / 255 );
                 dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invSrcA ) / 255 );
                 dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invSrcA ) / 255 );
@@ -4261,15 +4151,66 @@ namespace fheroes2
         }
     }
 
-    void DrawLineRGBA( RGBAImage & image, const Point & start, const Point & end, const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a )
+    void BlitRGBAAlpha( const Image & in, Image & out, const int32_t outX, const int32_t outY, const uint8_t alpha, const bool flip )
+    {
+        if ( in.empty() || out.empty() || alpha == 0 ) {
+            return;
+        }
+        assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
+
+        const int32_t srcW = in.width();
+        const int32_t srcH = in.height();
+        const int32_t dstW = out.width();
+        const int32_t dstH = out.height();
+
+        const int32_t startX = std::max( outX, 0 );
+        const int32_t startY = std::max( outY, 0 );
+        const int32_t endX = std::min( outX + srcW, dstW );
+        const int32_t endY = std::min( outY + srcH, dstH );
+
+        if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        const uint8_t * srcData = in.image();
+        uint8_t * dstData = out.image();
+
+        for ( int32_t y = startY; y < endY; ++y ) {
+            const int32_t srcY = y - outY;
+            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
+            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( y ) * dstW * 4;
+
+            for ( int32_t x = startX; x < endX; ++x ) {
+                const int32_t srcX = flip ? ( srcW - 1 - ( x - outX ) ) : ( x - outX );
+                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+                if ( srcPx[3] == 0 ) {
+                    continue;
+                }
+                const uint32_t srcA = ( static_cast<uint32_t>( srcPx[3] ) * alpha ) / 255;
+                if ( srcA == 0 ) {
+                    continue;
+                }
+                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                const uint32_t dstA = dstPx[3];
+                const uint32_t invSrcA = 255 - srcA;
+                dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invSrcA ) / 255 );
+                dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invSrcA ) / 255 );
+                dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invSrcA ) / 255 );
+                dstPx[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invSrcA ) / 255, static_cast<uint32_t>( 255 ) ) );
+            }
+        }
+    }
+
+    void DrawLineRGBA( Image & image, const Point & start, const Point & end, const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a )
     {
         if ( image.empty() || a == 0 ) {
             return;
         }
+        assert( image.format() == ImageFormat::RGBA_32BIT );
 
         const int32_t imgW = image.width();
         const int32_t imgH = image.height();
-        uint8_t * data = image.data();
+        uint8_t * data = image.image();
 
         int32_t x0 = start.x;
         int32_t y0 = start.y;
@@ -4316,11 +4257,12 @@ namespace fheroes2
         }
     }
 
-    void CopyRGBA( const RGBAImage & in, const int32_t inX, const int32_t inY, RGBAImage & out, const int32_t outX, const int32_t outY, const int32_t w, const int32_t h )
+    void CopyRGBA( const Image & in, const int32_t inX, const int32_t inY, Image & out, const int32_t outX, const int32_t outY, const int32_t w, const int32_t h )
     {
         if ( in.empty() || out.empty() || w <= 0 || h <= 0 ) {
             return;
         }
+        assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
 
         const int32_t srcW = in.width();
         const int32_t srcH = in.height();
@@ -4346,8 +4288,8 @@ namespace fheroes2
         const int32_t dstStartX = std::max( outX + ( srcStartX - inX ), 0 );
         const int32_t dstStartY = std::max( outY + ( srcStartY - inY ), 0 );
 
-        const uint8_t * srcData = in.data();
-        uint8_t * dstData = out.data();
+        const uint8_t * srcData = in.image();
+        uint8_t * dstData = out.image();
 
         for ( int32_t row = 0; row < copyH; ++row ) {
             const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcStartY + row ) * srcW + srcStartX ) * 4;
@@ -4356,11 +4298,12 @@ namespace fheroes2
         }
     }
 
-    void DimRGBA( RGBAImage & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height, const float factor )
+    void DimRGBA( Image & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height, const float factor )
     {
         if ( image.empty() || factor >= 1.0f ) {
             return;
         }
+        assert( image.format() == ImageFormat::RGBA_32BIT );
 
         const int32_t imgW = image.width();
         const int32_t imgH = image.height();
@@ -4375,7 +4318,7 @@ namespace fheroes2
         }
 
         const float f = std::max( factor, 0.0f );
-        uint8_t * data = image.data();
+        uint8_t * data = image.image();
 
         for ( int32_t row = startY; row < endY; ++row ) {
             uint8_t * rowData = data + static_cast<ptrdiff_t>( row ) * imgW * 4;

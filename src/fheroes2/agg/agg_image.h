@@ -27,7 +27,6 @@ namespace fheroes2
 {
     class Image;
     class Sprite;
-    class RGBAImage;
 
     enum class SupportedLanguage : uint8_t;
 
@@ -43,20 +42,16 @@ namespace fheroes2
         void updateLanguageDependentResources( const SupportedLanguage language, const bool loadOriginalAlphabet );
 
         // High-resolution RGBA animation frames for custom monsters (Thor, Succubus, ...).
-        // Returns nullptr if no RGBA PNGs were found for the given monster ID.
-        // Lazy-loaded on first call; frames stay resident for the process lifetime.
-        const std::vector<RGBAImage> * GetRGBACustomFrames( const int monsterId );
+        // Returns nullptr if no RGBA PNGs were found. Each Image is RGBA_32BIT format.
+        const std::vector<Image> * GetRGBACustomFrames( const int monsterId );
 
-        // A portrait-ready single image derived from the custom monster's static pose (frame 1),
-        // cropped to the opaque bounding box so the figure fills the overlay rect rather than
-        // rattling around inside transparent margins. Lazy-computed on first call. Returns
-        // nullptr if no RGBA PNGs are available for this monster.
-        const RGBAImage * GetRGBACustomPortrait( const int monsterId );
+        // Portrait-ready single image cropped to the opaque bounding box of frame 1.
+        // Returns nullptr if no RGBA PNGs are available. The Image is RGBA_32BIT format.
+        const Image * GetRGBACustomPortrait( const int monsterId );
 
         // Paint a hi-res monster portrait / frame at (gameX, gameY) with logical width gameWidth
-        // in game-space pixels. Direct-blits into Display::screenRGBA() at the moment of the
-        // call, after the WriteHook mirrored any palette art at this slot — Z-order is correct
-        // by construction (later writes cover earlier writes).
-        void renderHiResMonsterPortrait( const RGBAImage & portrait, int32_t gameX, int32_t gameY, int32_t gameWidth, bool flip = false, uint8_t alpha = 255 );
+        // in game-space pixels. Writes directly to Display (RGBA at game res). Z-order is the
+        // order in which the caller invokes drawing primitives.
+        void renderHiResMonsterPortrait( const Image & portrait, int32_t gameX, int32_t gameY, int32_t gameWidth, bool flip = false, uint8_t alpha = 255 );
     }
 }
