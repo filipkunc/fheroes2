@@ -617,30 +617,6 @@ namespace Editor
         const fheroes2::Rect dialogRoi = window.activeArea();
         const fheroes2::Rect dialogWithShadowRoi = window.totalArea();
 
-        // Screen-level RGBA composition: snapshot the dialog area into an RGBA surface, register
-        // it as the single overlay for the dialog, and push a forwarding frame. The castle army
-        // ArmyBar below routes custom-monster portraits through renderHiResMonsterPortrait and
-        // direct-paints into this surface. The RAII guard covers both exit paths — the Exit
-        // button's `return false` and the final `return true` at end of function.
-        const float rgbaScale = display.getPhysicalScale();
-        fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogWithShadowRoi.width ) * rgbaScale ),
-                                        static_cast<int32_t>( static_cast<float>( dialogWithShadowRoi.height ) * rgbaScale ) );
-        fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width, dialogWithShadowRoi.height,
-                                                 dialogRGBA, 0, 0, rgbaScale );
-        display.addRGBAOverlay( dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width );
-        fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, rgbaScale );
-
-        struct CastleDetailsForwardingGuard
-        {
-            fheroes2::RGBAImage * rgba;
-            ~CastleDetailsForwardingGuard()
-            {
-                fheroes2::Image::popDialogForwarding();
-                fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
-                fheroes2::Display::instance().removeRGBAOverlay( rgba );
-            }
-        } forwardingGuard{ &dialogRGBA };
-
         const bool isEvilInterface = Settings::Get().isEvilInterfaceEnabled();
 
         const fheroes2::Sprite & constructionBackground = fheroes2::AGG::GetICN( isEvilInterface ? ICN::CASLWIND_EVIL : ICN::CASLWIND, 0 );

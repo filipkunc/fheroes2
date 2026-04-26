@@ -27,6 +27,7 @@
 #include <cstring>
 
 #include "image_palette.h"
+#include "screen.h"
 
 namespace
 {
@@ -436,103 +437,13 @@ namespace
                 }
             }
         }
+
+        out._notifyWrite( outX, outY, width, height );
     }
 }
 
 namespace fheroes2
 {
-    RGBAImage * Image::_dialogFwdTarget = nullptr;
-    int32_t Image::_dialogFwdOffsetX = 0;
-    int32_t Image::_dialogFwdOffsetY = 0;
-    float Image::_dialogFwdScale = 1.0f;
-    int32_t Image::_dialogFwdSuspendDepth = 0;
-
-    namespace
-    {
-        std::vector<Image::DialogForwardingFrame> & getDialogFwdStack()
-        {
-            static std::vector<Image::DialogForwardingFrame> stack;
-            return stack;
-        }
-
-        void syncDialogFwdCache()
-        {
-            const auto & stack = getDialogFwdStack();
-            if ( stack.empty() ) {
-                Image::_dialogFwdTarget = nullptr;
-                Image::_dialogFwdOffsetX = 0;
-                Image::_dialogFwdOffsetY = 0;
-                Image::_dialogFwdScale = 1.0f;
-            }
-            else {
-                const Image::DialogForwardingFrame & top = stack.back();
-                Image::_dialogFwdTarget = top.target;
-                Image::_dialogFwdOffsetX = top.offsetX;
-                Image::_dialogFwdOffsetY = top.offsetY;
-                Image::_dialogFwdScale = top.scale;
-            }
-        }
-    }
-
-    void Image::pushDialogForwarding( RGBAImage * target, const int32_t offsetX, const int32_t offsetY, const float scale )
-    {
-        getDialogFwdStack().push_back( { target, offsetX, offsetY, scale } );
-        syncDialogFwdCache();
-    }
-
-    void Image::popDialogForwarding()
-    {
-        auto & stack = getDialogFwdStack();
-        if ( !stack.empty() ) {
-            stack.pop_back();
-        }
-        syncDialogFwdCache();
-    }
-
-    const Image::DialogForwardingFrame * Image::getActiveDialogForwarding()
-    {
-        const auto & stack = getDialogFwdStack();
-        return stack.empty() ? nullptr : &stack.back();
-    }
-
-    int32_t Image::getDialogFwdDepth()
-    {
-        return static_cast<int32_t>( getDialogFwdStack().size() );
-    }
-
-    void Image::setDialogForwarding( RGBAImage * target, const int32_t offsetX, const int32_t offsetY, const float scale )
-    {
-        // Legacy API: replaces the current top of stack (or pushes when empty). Battle's
-        // Interface ctor/dtor rely on this "replace" semantic across its various fade paths.
-        auto & stack = getDialogFwdStack();
-        if ( stack.empty() ) {
-            stack.push_back( { target, offsetX, offsetY, scale } );
-        }
-        else {
-            stack.back() = { target, offsetX, offsetY, scale };
-        }
-        syncDialogFwdCache();
-    }
-
-    void Image::clearDialogForwarding()
-    {
-        // Legacy API: fully clears the stack. Matches the old "no forwarding" state.
-        getDialogFwdStack().clear();
-        syncDialogFwdCache();
-    }
-
-    void Image::suspendDialogForwarding()
-    {
-        ++_dialogFwdSuspendDepth;
-    }
-
-    void Image::resumeDialogForwarding()
-    {
-        if ( _dialogFwdSuspendDepth > 0 ) {
-            --_dialogFwdSuspendDepth;
-        }
-    }
-
     Image::Image( Image && image ) noexcept
         : _data( std::move( image._data ) )
     {
@@ -597,6 +508,8 @@ namespace fheroes2
             if ( !_singleLayer ) {
                 memset( transform(), static_cast<uint8_t>( 0 ), totalSize );
             }
+
+            _notifyWrite( 0, 0, _width, _height );
         }
     }
 
@@ -755,6 +668,8 @@ namespace fheroes2
         _copy.resize( _width, _height );
 
         Copy( _image, 0, 0, _copy, 0, 0, _width, _height );
+
+        _captureRGBA();
     }
 
     ImageRestorer::ImageRestorer( Image & image, const int32_t x_, const int32_t y_, const int32_t width, const int32_t height )
@@ -774,6 +689,8 @@ namespace fheroes2
         _copy.resize( _width, _height );
 
         Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
+
+        _captureRGBA();
     }
 
     void ImageRestorer::update( const int32_t x_, const int32_t y_, const int32_t width, const int32_t height )
@@ -787,12 +704,58 @@ namespace fheroes2
 
         _copy.resize( _width, _height );
         Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
+
+        _captureRGBA();
     }
 
     void ImageRestorer::restore()
     {
         _isRestored = true;
         Copy( _copy, 0, 0, _image, _x, _y, _width, _height );
+        // The Copy above mirrored the saved palette into Display::screenRGBA() via the
+        // WriteHook. For Display targets we now overwrite that mirror with the saved
+        // screenRGBA snapshot — preserving any hi-res RGBA paint (monster portraits, battle
+        // scene direct writes) that landed on top of the palette content at save time.
+        _restoreRGBA();
+    }
+
+    void ImageRestorer::_captureRGBA()
+    {
+        if ( &_image != &Display::instance() ) {
+            return;
+        }
+        Display & display = Display::instance();
+        const RGBAImage & screen = display.screenRGBA();
+        if ( screen.empty() || _width <= 0 || _height <= 0 ) {
+            return;
+        }
+        const float scale = display.getPhysicalScale();
+        const int32_t physX = static_cast<int32_t>( static_cast<float>( _x ) * scale );
+        const int32_t physY = static_cast<int32_t>( static_cast<float>( _y ) * scale );
+        const int32_t physW = static_cast<int32_t>( static_cast<float>( _width ) * scale );
+        const int32_t physH = static_cast<int32_t>( static_cast<float>( _height ) * scale );
+        if ( physW <= 0 || physH <= 0 ) {
+            _rgbaCopy = RGBAImage{};
+            return;
+        }
+        _rgbaCopy.resize( physW, physH );
+        CopyRGBA( screen, physX, physY, _rgbaCopy, 0, 0, physW, physH );
+    }
+
+    void ImageRestorer::_restoreRGBA()
+    {
+        if ( &_image != &Display::instance() || _rgbaCopy.empty() ) {
+            return;
+        }
+        Display & display = Display::instance();
+        RGBAImage & screen = display.screenRGBA();
+        if ( screen.empty() ) {
+            return;
+        }
+        const float scale = display.getPhysicalScale();
+        const int32_t physX = static_cast<int32_t>( static_cast<float>( _x ) * scale );
+        const int32_t physY = static_cast<int32_t>( static_cast<float>( _y ) * scale );
+        CopyRGBA( _rgbaCopy, 0, 0, screen, physX, physY, _rgbaCopy.width(), _rgbaCopy.height() );
     }
 
     void ImageRestorer::_updateRoi()
@@ -980,6 +943,10 @@ namespace fheroes2
                 }
             }
         }
+
+        const int32_t notifyX = outPos.x + shadowOffsetX + in.x();
+        const int32_t notifyY = outPos.y + shadowOffsetY + in.y();
+        out._notifyWrite( notifyX, notifyY, maxX, maxY );
     }
 
     void addGradientShadowForArea( Image & out, const Point & outPos, const int32_t areaWidth, const int32_t areaHeight, const int32_t shadowOffset )
@@ -1072,6 +1039,8 @@ namespace fheroes2
                 transformOutY += widthOut;
             }
         }
+
+        out._notifyWrite( outX, outY, width, height );
     }
 
     // AlphaBlit an RGBA_32BIT source onto an INDEXED_8BIT destination with per-pixel alpha and overall alpha.
@@ -1122,6 +1091,8 @@ namespace fheroes2
 
             imageOutY += widthOut;
         }
+
+        out._notifyWrite( outX, outY, width, height );
     }
 
     // Blit an indexed source onto an RGBA_32BIT output Image (no scaling, 1:1).
@@ -1382,6 +1353,7 @@ namespace fheroes2
             }
         }
 
+        out._notifyWrite( outX, outY, width, height );
     }
 
     void ApplyPalette( Image & image, const std::vector<uint8_t> & palette )
@@ -1485,6 +1457,12 @@ namespace fheroes2
                     }
                 }
             }
+        }
+
+        // Notify only matters when image is single-layer (image data was written). For
+        // double-layer the loop above only modified transform; hook would be null anyway.
+        if ( image.singleLayer() ) {
+            image._notifyWrite( x, y, width, height );
         }
     }
     void Blit( const Image & in, Image & out, const bool flip /* = false */ )
@@ -1642,6 +1620,7 @@ namespace fheroes2
             }
         }
 
+        out._notifyWrite( outX, outY, width, height );
     }
 
     void Copy( const Image & in, Image & out )
@@ -1649,6 +1628,7 @@ namespace fheroes2
         if ( !out.singleLayer() && !in.singleLayer() ) {
             // Both images have transform layer. Copy using the assignment operator.
             out = in;
+            out._notifyWrite( 0, 0, in.width(), in.height() );
             return;
         }
 
@@ -1669,6 +1649,8 @@ namespace fheroes2
             memcpy( out.image(), in.image(), size );
             memset( out.transform(), static_cast<uint8_t>( 0 ), size );
         }
+
+        out._notifyWrite( 0, 0, width, height );
     }
 
     void Copy( const Image & in, const int32_t inX, const int32_t inY, Image & out, const Rect & outRoi )
@@ -1726,6 +1708,7 @@ namespace fheroes2
             }
         }
 
+        out._notifyWrite( outX, outY, width, height );
     }
 
     void copyTransformLayer( const Image & in, Image & out )
@@ -2071,6 +2054,8 @@ namespace fheroes2
                 }
             }
         }
+
+        out._notifyWrite( outX, outY, width, height );
     }
 
     Sprite Crop( const Image & image, int32_t x, int32_t y, int32_t width, int32_t height )
@@ -2295,6 +2280,8 @@ namespace fheroes2
                 }
             }
         }
+
+        image._notifyWrite( 0, 0, image.width(), image.height() );
     }
 
     void DrawLine( Image & image, const Point & start, const Point & end, const uint8_t value, const Rect & roi /* = Rect() */ )
@@ -2407,6 +2394,13 @@ namespace fheroes2
                 }
             }
         }
+
+        // Mirror the bounding rect of the line. Coarse but correct.
+        const int32_t roiMinX = std::max<int32_t>( 0, std::min( start.x, end.x ) );
+        const int32_t roiMinY = std::max<int32_t>( 0, std::min( start.y, end.y ) );
+        const int32_t roiMaxX = std::min( image.width(), std::max( start.x, end.x ) + 1 );
+        const int32_t roiMaxY = std::min( image.height(), std::max( start.y, end.y ) + 1 );
+        image._notifyWrite( roiMinX, roiMinY, roiMaxX - roiMinX, roiMaxY - roiMinY );
     }
 
     void DrawRect( Image & image, const Rect & roi, const uint8_t value )
@@ -2569,6 +2563,7 @@ namespace fheroes2
         if ( image.width() == width && image.height() == height ) {
             // We fill the whole image.
             image.fill( colorId );
+            image._notifyWrite( 0, 0, width, height );
             return;
         }
 
@@ -2589,6 +2584,8 @@ namespace fheroes2
                 memset( transformY, static_cast<uint8_t>( 0 ), width );
             }
         }
+
+        image._notifyWrite( x, y, width, height );
     }
 
     void FillTransform( Image & image, int32_t x, int32_t y, int32_t width, int32_t height, const uint8_t transformId )
@@ -2890,6 +2887,8 @@ namespace fheroes2
                 }
             }
         }
+
+        out._notifyWrite( outX, outY, width, height );
     }
 
     Rect GetActiveROI( const Image & image, const uint8_t minTransformValue )
@@ -3040,6 +3039,8 @@ namespace fheroes2
                 *data = newColorId;
             }
         }
+
+        image._notifyWrite( 0, 0, image.width(), image.height() );
     }
 
     void ReplaceColorIdByTransformId( Image & image, const uint8_t colorId, const uint8_t transformId )
@@ -3059,6 +3060,8 @@ namespace fheroes2
                 *transformIn = transformId;
             }
         }
+
+        image._notifyWrite( 0, 0, width, height );
     }
 
     void ReplaceTransformIdByColorId( Image & image, const uint8_t transformId, const uint8_t colorId )
@@ -3078,6 +3081,8 @@ namespace fheroes2
                 *imageIn = colorId;
             }
         }
+
+        image._notifyWrite( 0, 0, image.width(), image.height() );
     }
 
     void Resize( const Image & in, Image & out )
@@ -3190,6 +3195,8 @@ namespace fheroes2
                 }
             }
         }
+
+        out._notifyWrite( outX, outY, widthRoiOut, heightRoiOut );
     }
 
     void SetPixel( Image & image, const int32_t x, const int32_t y, const uint8_t value )
@@ -3203,6 +3210,8 @@ namespace fheroes2
         if ( !image.singleLayer() ) {
             *( image.transform() + offset ) = 0;
         }
+
+        image._notifyWrite( x, y, 1, 1 );
     }
 
     void SetPixel( Image & image, const std::vector<Point> & points, const uint8_t value )
@@ -3215,6 +3224,11 @@ namespace fheroes2
         const int32_t height = image.height();
         const bool isDoubleLayer = !image.singleLayer();
 
+        int32_t minX = width;
+        int32_t minY = height;
+        int32_t maxX = -1;
+        int32_t maxY = -1;
+
         for ( const Point & point : points ) {
             if ( point.x >= width || point.y >= height || point.x < 0 || point.y < 0 ) {
                 continue;
@@ -3225,6 +3239,23 @@ namespace fheroes2
             if ( isDoubleLayer ) {
                 *( image.transform() + offset ) = 0;
             }
+
+            if ( point.x < minX ) {
+                minX = point.x;
+            }
+            if ( point.y < minY ) {
+                minY = point.y;
+            }
+            if ( point.x > maxX ) {
+                maxX = point.x;
+            }
+            if ( point.y > maxY ) {
+                maxY = point.y;
+            }
+        }
+
+        if ( maxX >= 0 ) {
+            image._notifyWrite( minX, minY, maxX - minX + 1, maxY - minY + 1 );
         }
     }
 
@@ -3503,6 +3534,8 @@ namespace fheroes2
                 }
             }
         }
+
+        out._notifyWrite( outX, outY, widthRoiOut, heightRoiOut );
     }
 
     void Transpose( const Image & in, Image & out )
@@ -3583,6 +3616,8 @@ namespace fheroes2
                 }
             }
         }
+
+        out._notifyWrite( 0, 0, out.width(), out.height() );
     }
 
     void updateShadow( Image & image, const Point & shadowOffset, const uint8_t transformId, const bool connectCorners )
@@ -3678,7 +3713,12 @@ namespace fheroes2
 
         _width = width;
         _height = height;
-        _data.reset( new uint8_t[static_cast<size_t>( width ) * height * 4] );
+        const size_t byteCount = static_cast<size_t>( width ) * height * 4;
+        _data.reset( new uint8_t[byteCount] );
+        // Zero-initialise so callers that only paint a sub-region (per-scope dialog surfaces filled
+        // by buffer paints, palette mirror) do not show uninitialised memory in the unwritten areas.
+        // Painter compositor relies on alpha=0 outside painted regions to let the parent show through.
+        std::memset( _data.get(), 0, byteCount );
     }
 
     void BlitRGBA( const RGBAImage & in, RGBAImage & out, const int32_t outX, const int32_t outY, const bool flip )

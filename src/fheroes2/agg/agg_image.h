@@ -54,12 +54,9 @@ namespace fheroes2
         const RGBAImage * GetRGBACustomPortrait( const int monsterId );
 
         // Paint a hi-res monster portrait / frame at (gameX, gameY) with logical width gameWidth
-        // in game-space pixels. Direct-paints into the currently active forwarding target via
-        // registerRGBABufferPaint — no SDL overlay is added, Z-order is correct by construction.
-        //
-        // Post-Phase 6 contract: every call site runs inside a scope that has pushed a
-        // forwarding frame (AdventureMap root, dialog, or battle). If no frame is active the
-        // call is a silent no-op.
+        // in game-space pixels. Direct-blits into Display::screenRGBA() at the moment of the
+        // call, after the WriteHook mirrored any palette art at this slot — Z-order is correct
+        // by construction (later writes cover earlier writes).
         void renderHiResMonsterPortrait( const RGBAImage & portrait, int32_t gameX, int32_t gameY, int32_t gameWidth, bool flip = false, uint8_t alpha = 255 );
     }
 }

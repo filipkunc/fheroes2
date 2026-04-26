@@ -182,31 +182,7 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
 
     const fheroes2::Point cur_pt( frameborder.activeArea().x, frameborder.activeArea().y );
 
-    // Screen-level RGBA composition for this setup dialog: snapshot the window's current
-    // palette content into a buffer, register it as the single overlay for the dialog, and
-    // push a forwarding frame so subsequent palette writes update the buffer. Custom-monster
-    // portraits that ArmyBar registers via renderHiResMonsterPortrait will land as persistent
-    // post-forwarding paints in this buffer — they stay across partial renders (opening a
-    // sub-modal, changing a count, etc.) without being wiped by the palette conversion.
     fheroes2::Display & display = fheroes2::Display::instance();
-    const fheroes2::Rect battleOnlyRect = frameborder.totalArea();
-    const float rgbaScale = display.getPhysicalScale();
-    fheroes2::RGBAImage setupRGBA( static_cast<int32_t>( static_cast<float>( battleOnlyRect.width ) * rgbaScale ),
-                                   static_cast<int32_t>( static_cast<float>( battleOnlyRect.height ) * rgbaScale ) );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, battleOnlyRect.x, battleOnlyRect.y, battleOnlyRect.width, battleOnlyRect.height, setupRGBA, 0, 0, rgbaScale );
-    display.addRGBAOverlay( setupRGBA, battleOnlyRect.x, battleOnlyRect.y, battleOnlyRect.width );
-    fheroes2::Image::pushDialogForwarding( &setupRGBA, battleOnlyRect.x, battleOnlyRect.y, rgbaScale );
-
-    struct BattleOnlyForwardingGuard
-    {
-        fheroes2::RGBAImage * rgba;
-        ~BattleOnlyForwardingGuard()
-        {
-            fheroes2::Image::popDialogForwarding();
-            fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
-            fheroes2::Display::instance().removeRGBAOverlay( rgba );
-        }
-    } forwardingGuard{ &setupRGBA };
 
     armyInfo[0].portraitRoi = { cur_pt.x + 93, cur_pt.y + 72, 101, 93 };
     armyInfo[1].portraitRoi = { cur_pt.x + 445, cur_pt.y + 72, 101, 93 };
@@ -523,9 +499,6 @@ bool Battle::Only::setup( const bool allowBackup, bool & reset )
     armyInfo[1].ui = {};
 
     attackedArmyControlInfo.reset();
-
-    // No explicit cleanup of custom-monster overlays needed: BattleOnlyForwardingGuard's RAII
-    // below tears down the setupRGBA surface along with every buffer paint registered into it.
 
     return result;
 }

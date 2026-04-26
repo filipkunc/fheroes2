@@ -300,6 +300,10 @@ void SMKVideoSequence::getCurrentFrame( fheroes2::Image & image, const int32_t x
         }
     }
 
+    // The decoder writes raw pixel bytes directly to image.image(); fire the WriteHook so
+    // Display::screenRGBA() (or any other consumer) mirrors the just-written rect.
+    image._notifyWrite( x, y, width, height );
+
     palette.resize( 256 * 3 );
     memcpy( palette.data(), paletteData, 256 * 3 );
 }

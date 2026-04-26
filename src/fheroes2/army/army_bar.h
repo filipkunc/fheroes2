@@ -42,9 +42,9 @@ public:
 
     ArmyBar( Army *, const bool miniSprites, const bool readOnly, const bool isEditMode = false, const bool saveLastTroop = true );
 
-    // Hi-res monster portrait paints are cleaned up by the host screen's forwarding-guard RAII
-    // on dialog close (removeRGBABufferPaintsForTarget). Per-frame stale paints from a removed
-    // slot are wiped at the start of Redraw via removeRGBABufferPaintsInRect.
+    // Hi-res monster portraits are direct-blitted into Display::screenRGBA() at RedrawItem
+    // time. The palette redraw of the slot fires the WriteHook (mirrors palette to screenRGBA)
+    // and the hi-res blit lands on top, so no separate cleanup is needed when the bar redraws.
     ~ArmyBar() override = default;
 
     void RedrawBackground( const fheroes2::Rect &, fheroes2::Image & ) override;

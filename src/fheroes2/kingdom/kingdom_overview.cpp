@@ -776,34 +776,6 @@ void Kingdom::openOverviewDialog()
         fheroes2::fadeOutDisplay();
     }
 
-    // Screen-level RGBA composition: snapshot the window's current palette into an RGBA surface,
-    // register it as the single overlay for the dialog, and push a forwarding frame so subsequent
-    // palette writes continuously update the surface. Hi-res custom-monster portraits drawn by the
-    // per-hero / per-castle ArmyBars route through renderHiResMonsterPortrait and land as
-    // persistent post-forwarding paints on this surface — correctly Z-ordered above the list rows
-    // and surviving partial redraws triggered by scrolling or swapping armies.
-    const fheroes2::Rect kingdomRect = background.totalArea();
-    const float rgbaScale = display.getPhysicalScale();
-    fheroes2::RGBAImage kingdomRGBA( static_cast<int32_t>( static_cast<float>( kingdomRect.width ) * rgbaScale ),
-                                     static_cast<int32_t>( static_cast<float>( kingdomRect.height ) * rgbaScale ) );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, kingdomRect.x, kingdomRect.y, kingdomRect.width, kingdomRect.height, kingdomRGBA, 0, 0, rgbaScale );
-    display.addRGBAOverlay( kingdomRGBA, kingdomRect.x, kingdomRect.y, kingdomRect.width );
-    fheroes2::Image::pushDialogForwarding( &kingdomRGBA, kingdomRect.x, kingdomRect.y, rgbaScale );
-
-    // RAII guard: pops forwarding and removes overlay / buffer-paint registrations targeting this
-    // surface before kingdomRGBA destructs. The function has a single break-out-of-loop exit,
-    // but the guard keeps the cleanup localised and survives any future early returns.
-    struct KingdomOverviewForwardingGuard
-    {
-        fheroes2::RGBAImage * rgba;
-        ~KingdomOverviewForwardingGuard()
-        {
-            fheroes2::Image::popDialogForwarding();
-            fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
-            fheroes2::Display::instance().removeRGBAOverlay( rgba );
-        }
-    } forwardingGuard{ &kingdomRGBA };
-
     const fheroes2::Point cur_pt( background.activeArea().x, background.activeArea().y );
     fheroes2::Point dst_pt( cur_pt );
 

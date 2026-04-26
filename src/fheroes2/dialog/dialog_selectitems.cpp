@@ -101,28 +101,13 @@ namespace
 
         ~SelectEnumMonster() override = default;
 
-        // Wipe any stale portrait paints before redrawing — the list may have scrolled so the
-        // previous row at a given y-coord now shows a different monster. Scoped to the scroll
-        // area rect against the active forwarding target (the dialog's own RGBA from Phase 2).
-        // Per-dialog cleanup on close is handled by the host's RAII guard
-        // (removeRGBABufferPaintsForTarget).
-        void Redraw() override
-        {
-            const fheroes2::Image::DialogForwardingFrame * active = fheroes2::Image::getActiveDialogForwarding();
-            if ( active != nullptr && active->target != nullptr && rtAreaItems.width > 0 && rtAreaItems.height > 0 ) {
-                fheroes2::Display::instance().removeRGBABufferPaintsInRect( active->target, rtAreaItems.x, rtAreaItems.y, rtAreaItems.width, rtAreaItems.height );
-            }
-            Dialog::ItemSelectionWindow::Redraw();
-        }
-
         void RedrawItem( const int32_t & index, int32_t dstx, int32_t dsty, bool current ) override
         {
             renderItem( getImage( index ), Monster{ index }.GetName(), { dstx, dsty }, 45 / 2, 50, _offsetY / 2, current );
 
-            // For custom monsters with hi-res PNGs, direct-paint the cropped portrait into the
-            // dialog's RGBA surface — the palette-quantised 32x32 icon has dither noise from the
-            // 460→32 downscale. Stale paints from a previous scroll position are wiped by the
-            // rect-clear in Redraw above.
+            // For custom monsters with hi-res PNGs, direct-blit the cropped portrait into
+            // Display::screenRGBA(). The palette icon and the row redraw are mirrored to
+            // _screenRGBA by the WriteHook first, then the hi-res RGBA paint lands on top.
             const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( index );
             if ( portrait != nullptr && !portrait->empty() ) {
                 // Icon is centred within the 43x43 STRIP background blitted at (dstx+1, dsty).
@@ -1174,34 +1159,6 @@ Monster Dialog::selectMonster( const int32_t monsterId )
     if ( monsterId != Monster::UNKNOWN ) {
         listbox.SetCurrent( monsterId );
     }
-
-    // Mirror battle's RGBA compositing: snapshot the dialog footprint into a local RGBA
-    // buffer, register it as its own overlay so it masks peer ArmyBar overlays (e.g. a
-    // hero's dachshunds) that would otherwise bleed through into this modal, and forward
-    // subsequent palette writes inside the footprint so partial redraws stay in sync.
-    // The dialog's own list-item overlays register AFTER this buffer and render on top.
-    fheroes2::Display & display = fheroes2::Display::instance();
-    const fheroes2::Rect dialogFootprint = listbox.getBackgroundArea();
-    const float rgbaScale = display.getPhysicalScale();
-    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogFootprint.width ) * rgbaScale ),
-                                    static_cast<int32_t>( static_cast<float>( dialogFootprint.height ) * rgbaScale ) );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width, dialogFootprint.height, dialogRGBA, 0, 0, rgbaScale );
-    display.addRGBAOverlay( dialogRGBA, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width );
-
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFootprint.x, dialogFootprint.y, rgbaScale );
-
-    // RAII guard: pop + overlay/paint cleanup fires on any return path.
-    struct DialogSurfaceGuard
-    {
-        fheroes2::Display * display;
-        fheroes2::RGBAImage * rgba;
-        ~DialogSurfaceGuard()
-        {
-            fheroes2::Image::popDialogForwarding();
-            display->removeRGBABufferPaintsForTarget( rgba );
-            display->removeRGBAOverlay( rgba );
-        }
-    } dialogSurfaceGuard{ &display, &dialogRGBA };
 
     const int32_t result = listbox.selectItemsEventProcessing();
 

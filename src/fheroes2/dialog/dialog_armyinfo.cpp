@@ -507,19 +507,9 @@ namespace
                                     && !( *rgbaFrames )[animFrame].empty() && !troop.isModes( Battle::CAP_MIRRORIMAGE );
 
             if ( canUseRGBA ) {
-                // The sprite animation cycles through frames each call; consecutive frames have
-                // different src pointers AND different outPos/inSize (the unit walks across the
-                // preview area). Clear the whole monster ROI before re-registering so paints
-                // from previous frames don't linger at their prior positions — a rect-scoped
-                // clear around just the current frame's footprint would leave the trailing
-                // frames visible, giving the portrait a stacked / smeared look.
-                const fheroes2::Image::DialogForwardingFrame * active = fheroes2::Image::getActiveDialogForwarding();
-                if ( active != nullptr && active->target != nullptr ) {
-                    display.removeRGBABufferPaintsInRect( active->target, roi.x, roi.y, roi.width, roi.height );
-                }
-                // Hi-res PNG direct-paints into the dialog's RGBA surface via the helper —
-                // Phase 2 installed the DialogSurfaceGuard forwarding frame in Dialog::ArmyInfo
-                // below, and the helper picks it up automatically.
+                // Each animation frame redraws the palette MONH first (mirrored to _screenRGBA
+                // by the WriteHook), then this hi-res direct-blit lands on top. No stale-paint
+                // cleanup is needed — the palette mirror over-writes any prior frame's pixels.
                 fheroes2::AGG::renderHiResMonsterPortrait( ( *rgbaFrames )[animFrame], outPos.x, outPos.y, inSize.width, isReflected );
             }
             else if ( troop.isModes( Battle::CAP_MIRRORIMAGE ) ) {
@@ -573,37 +563,6 @@ int Dialog::ArmyInfo( const Troop & troop, int flags, bool isReflected, const in
         pos_rt.x += 9;
         pos_rt.y -= 1;
     }
-
-    // Mask any RGBA overlays (typically an ArmyBar behind us) from bleeding through
-    // the dialog body. We do this by mirroring battle's pattern: the dialog's visible
-    // footprint is snapshotted into a local RGBA buffer, registered as its own overlay
-    // (so it renders AFTER previously-registered overlays, masking them in its rect),
-    // and subsequent palette edits inside the footprint are live-forwarded so partial
-    // redraws update the buffer. The dialog's own hi-res monster overlay is registered
-    // AFTER this one and therefore renders on top — visible at full resolution.
-    const fheroes2::Rect dialogFootprint( shadowOffset.x, dialogOffset.y, sprite_dialog.width() - shadowShift.x, sprite_dialog.height() + shadowShift.y );
-    const float rgbaScale = display.getPhysicalScale();
-    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogFootprint.width ) * rgbaScale ),
-                                    static_cast<int32_t>( static_cast<float>( dialogFootprint.height ) * rgbaScale ) );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width, dialogFootprint.height, dialogRGBA, 0, 0,
-                                             rgbaScale );
-    display.addRGBAOverlay( dialogRGBA, dialogFootprint.x, dialogFootprint.y, dialogFootprint.width );
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogFootprint.x, dialogFootprint.y, rgbaScale );
-
-    // RAII guard fires on EVERY exit path (including the Dialog::ZERO early return in the
-    // right-click-preview branch below). An unbalanced pop leaves the forwarding stack with
-    // a dangling RGBAImage* that the next Display::render() faults on when it dereferences.
-    struct DialogSurfaceGuard
-    {
-        fheroes2::Display * display;
-        fheroes2::RGBAImage * rgba;
-        ~DialogSurfaceGuard()
-        {
-            fheroes2::Image::popDialogForwarding();
-            display->removeRGBABufferPaintsForTarget( rgba );
-            display->removeRGBAOverlay( rgba );
-        }
-    } dialogSurfaceGuard{ &display, &dialogRGBA };
 
     const fheroes2::Point monsterStatOffset( pos_rt.x + 400, pos_rt.y + 37 );
     DrawMonsterStats( monsterStatOffset, troop, display );
@@ -767,14 +726,6 @@ int Dialog::ArmyInfo( const Troop & troop, int flags, bool isReflected, const in
             }
 
             display.render( restorer.rect() );
-        }
-    }
-
-    // Drop any RGBA overlay we added for a custom hi-res monster so it doesn't linger over the
-    // map/battle interface after the dialog closes.
-    if ( const std::vector<fheroes2::RGBAImage> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( troop.GetID() ) ) {
-        for ( const fheroes2::RGBAImage & frame : *rgbaFrames ) {
-            display.removeRGBAOverlay( &frame );
         }
     }
 

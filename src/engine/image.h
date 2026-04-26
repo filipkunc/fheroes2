@@ -22,6 +22,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -135,76 +136,24 @@ namespace fheroes2
             _singleLayer = true;
         }
 
-        // Dialog forwarding: during Display::render(), any non-zero pixel on Display within the
-        // active forwarding frame's footprint gets converted indexed→RGBA and written into the
-        // target surface. This is the foundation of screen-level RGBA composition — custom
-        // monster portraits can also be blitted directly into the same surface via
-        // BlitRGBAScaled, bypassing palette quantization.
-        //
-        // The stack lets nested screens/dialogs layer their own RGBA targets without clobbering
-        // each other: a host screen pushes its full-screen surface; a modal dialog on top pushes
-        // its own smaller one; when the dialog closes it pops and the host's forwarding resumes.
-        struct DialogForwardingFrame
+        // Write hook: invoked at the end of every drawing primitive that mutates this image's
+        // pixel data. The argument is the rectangle that was just written (in image-local coords).
+        // Used by Display to mirror its indexed buffer into _screenRGBA at physical scale on the
+        // fly — the painter algorithm: order of execution is order of pixel writes. Default is
+        // unset (null), so Sprites and intermediate buffers pay only a null check.
+        using WriteHook = std::function<void( int32_t x, int32_t y, int32_t w, int32_t h )>;
+
+        void _setWriteHook( WriteHook hook )
         {
-            RGBAImage * target;
-            int32_t offsetX;
-            int32_t offsetY;
-            float scale;
-        };
+            _onWrite = std::move( hook );
+        }
 
-        static void pushDialogForwarding( RGBAImage * target, int32_t offsetX, int32_t offsetY, float scale );
-        static void popDialogForwarding();
-
-        // RAII helper: push on construction, pop on destruction. Use this at every call site
-        // that pushes a forwarding frame so the frame is guaranteed to be popped on ANY exit
-        // path (normal return, early return, exception) — an unbalanced pop leaves a dangling
-        // RGBAImage* on the stack that the next Display::render() faults trying to dereference.
-        class ScopedDialogForwarding
+        void _notifyWrite( const int32_t x, const int32_t y, const int32_t w, const int32_t h )
         {
-        public:
-            ScopedDialogForwarding( RGBAImage * target, const int32_t offsetX, const int32_t offsetY, const float scale )
-            {
-                Image::pushDialogForwarding( target, offsetX, offsetY, scale );
+            if ( _onWrite && w > 0 && h > 0 ) {
+                _onWrite( x, y, w, h );
             }
-
-            ~ScopedDialogForwarding()
-            {
-                Image::popDialogForwarding();
-            }
-
-            ScopedDialogForwarding( const ScopedDialogForwarding & ) = delete;
-            ScopedDialogForwarding & operator=( const ScopedDialogForwarding & ) = delete;
-        };
-
-        // Legacy API kept for compatibility with existing battle_interface.cpp code paths. New
-        // call sites should use push/pop instead to play nicely with nested frames.
-        static void setDialogForwarding( RGBAImage * target, int32_t offsetX, int32_t offsetY, float scale );
-        static void clearDialogForwarding();
-
-        // Temporarily disable the forwarding pass without touching the stack — the top frame
-        // stays registered and resumes automatically when the matching resume fires. Use this
-        // when the palette buffer is about to be written with pixels that must NOT forward into
-        // the active RGBA surface (typically during fade transitions that darken the palette).
-        // Nested suspend/resume pairs compose via an internal depth counter.
-        static void suspendDialogForwarding();
-        static void resumeDialogForwarding();
-
-        static const DialogForwardingFrame * getActiveDialogForwarding();
-
-        // Size of the forwarding stack. Used by Display::addRGBAOverlay to tag overlays with the
-        // scope they were registered in — render() then composites only the deepest-depth
-        // overlays, so a nested scope (battle on top of adventure map) shadows the parent.
-        static int32_t getDialogFwdDepth();
-
-        // These mirror the top of the forwarding stack and are read directly by
-        // Display::render()'s indexed→RGBA loop. They are kept in sync by push/pop/set/clear.
-        // _dialogFwdSuspendDepth gates the forwarding pass — when > 0, render() skips it even
-        // if _dialogFwdTarget is non-null, so the stack stays intact across transient suspensions.
-        static RGBAImage * _dialogFwdTarget;
-        static int32_t _dialogFwdOffsetX;
-        static int32_t _dialogFwdOffsetY;
-        static float _dialogFwdScale;
-        static int32_t _dialogFwdSuspendDepth;
+        }
 
     private:
         void copy( const Image & image );
@@ -217,6 +166,58 @@ namespace fheroes2
         bool _singleLayer{ false };
 
         ImageFormat _format{ ImageFormat::INDEXED_8BIT };
+
+        // Set by Display only. Drawing primitives invoke this through _notifyWrite at the end of
+        // any write to _data. Sprites leave it null and pay one branch per write.
+        WriteHook _onWrite;
+    };
+
+    // RGBA image with 4 bytes per pixel (R, G, B, A). Used for true-color rendering.
+    class RGBAImage
+    {
+    public:
+        RGBAImage() = default;
+        RGBAImage( const int32_t width, const int32_t height );
+
+        RGBAImage( const RGBAImage & ) = delete;
+        RGBAImage & operator=( const RGBAImage & ) = delete;
+
+        ~RGBAImage() = default;
+
+        RGBAImage( RGBAImage && image ) noexcept;
+        RGBAImage & operator=( RGBAImage && image ) noexcept;
+
+        int32_t width() const
+        {
+            return _width;
+        }
+
+        int32_t height() const
+        {
+            return _height;
+        }
+
+        bool empty() const
+        {
+            return !_data;
+        }
+
+        uint8_t * data()
+        {
+            return _data.get();
+        }
+
+        const uint8_t * data() const
+        {
+            return _data.get();
+        }
+
+        void resize( int32_t width, int32_t height );
+
+    private:
+        int32_t _width{ 0 };
+        int32_t _height{ 0 };
+        std::unique_ptr<uint8_t[]> _data; // RGBA, 4 bytes per pixel
     };
 
     class Sprite : public Image
@@ -330,12 +331,22 @@ namespace fheroes2
         Image & _image;
         Image _copy;
 
+        // Snapshot of Display::screenRGBA() in the same rect at construction/update time.
+        // Restored alongside the indexed buffer so any hi-res RGBA paint (custom monster
+        // portrait, battle scene RGBA-direct write, etc.) on top of palette content is
+        // preserved through save/restore. Empty for non-Display targets.
+        RGBAImage _rgbaCopy;
+
         int32_t _x{ 0 };
         int32_t _y{ 0 };
         int32_t _width{ 0 };
         int32_t _height{ 0 };
 
         void _updateRoi();
+        // Capture screenRGBA region into _rgbaCopy if _image is the Display singleton.
+        void _captureRGBA();
+        // Write _rgbaCopy back into screenRGBA at the equivalent physical-pixel rect.
+        void _restoreRGBA();
 
         bool _isRestored{ false };
     };
@@ -461,53 +472,7 @@ namespace fheroes2
 
     void updateShadow( Image & image, const Point & shadowOffset, const uint8_t transformId, const bool connectCorners );
 
-    // RGBA image with 4 bytes per pixel (R, G, B, A). Used for true-color rendering.
-    class RGBAImage
-    {
-    public:
-        RGBAImage() = default;
-        RGBAImage( const int32_t width, const int32_t height );
-
-        RGBAImage( const RGBAImage & ) = delete;
-        RGBAImage & operator=( const RGBAImage & ) = delete;
-
-        ~RGBAImage() = default;
-
-        RGBAImage( RGBAImage && image ) noexcept;
-        RGBAImage & operator=( RGBAImage && image ) noexcept;
-
-        int32_t width() const
-        {
-            return _width;
-        }
-
-        int32_t height() const
-        {
-            return _height;
-        }
-
-        bool empty() const
-        {
-            return !_data;
-        }
-
-        uint8_t * data()
-        {
-            return _data.get();
-        }
-
-        const uint8_t * data() const
-        {
-            return _data.get();
-        }
-
-        void resize( int32_t width, int32_t height );
-
-    private:
-        int32_t _width{ 0 };
-        int32_t _height{ 0 };
-        std::unique_ptr<uint8_t[]> _data; // RGBA, 4 bytes per pixel
-    };
+    // (RGBAImage class moved earlier in this header so ImageRestorer can hold it as a value member.)
 
     // Blit an RGBAImage onto another RGBAImage with optional horizontal flip. Clips to destination bounds.
     void BlitRGBA( const RGBAImage & in, RGBAImage & out, int32_t outX, int32_t outY, bool flip = false );
@@ -548,27 +513,4 @@ namespace fheroes2
 
     // Darken a rectangular region of an RGBAImage by multiplying RGB by factor (0.0-1.0).
     void DimRGBA( RGBAImage & image, int32_t x, int32_t y, int32_t width, int32_t height, float factor );
-
-    // Position info for RGBA overlay rendering. Position is in game pixels.
-    struct RGBAOverlay
-    {
-        const RGBAImage * image{ nullptr };
-        int32_t x{ 0 };
-        int32_t y{ 0 };
-        // Desired width in game pixels. The height is computed to preserve aspect ratio.
-        // If 0, uses the source image width (1 source pixel = 1 game pixel).
-        int32_t gameWidth{ 0 };
-        bool flip{ false };
-        uint8_t alpha{ 255 };
-        // Forwarding-stack depth at registration. Used by the render order to decide whether
-        // shallower overlays are visible when a `shadowsParent` overlay is registered above.
-        int32_t depth{ 0 };
-        // True when this overlay semantically takes over the screen (battle's _mainSurfaceRGBA).
-        // render() then skips any overlay whose depth is shallower than this one's, so the
-        // parent scope's stale RGBA content (e.g. adventure map's screenRGBA during combat)
-        // stops obscuring palette UI the child draws outside its own RGBA footprint. Regular
-        // modal dialogs leave this false — they composite naturally on top of their parent so
-        // the parent remains visible outside the dialog rect.
-        bool shadowsParent{ false };
-    };
 }

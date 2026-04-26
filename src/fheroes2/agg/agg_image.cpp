@@ -6599,30 +6599,24 @@ namespace fheroes2::AGG
             return;
         }
 
-        // Post-Phase 6 contract: every call site runs inside a scope that has pushed a
-        // forwarding frame — AdventureMap at the root, plus dialog / battle frames stacked on
-        // top. With no fallback path left, a missing frame here is a programming error and the
-        // portrait silently drops rather than leaking an SDL overlay.
-        const Image::DialogForwardingFrame * active = Image::getActiveDialogForwarding();
-        if ( active == nullptr || active->target == nullptr || active->target->empty() ) {
-            return;
-        }
-
         const int32_t srcW = portrait.width();
         const int32_t srcH = portrait.height();
         if ( srcW <= 0 || srcH <= 0 ) {
             return;
         }
 
-        // Register a persistent direct-paint into the active RGBA surface. Display::render()
-        // applies these AFTER the palette→RGBA forwarding loop, so the hi-res portrait is not
-        // overwritten by palette content underneath. The registration survives across renders
-        // until the widget explicitly removes it (removeRGBABufferPaintAt /
-        // removeRGBABufferPaintsInRect) or the host's forwarding-guard RAII tears down the
-        // whole surface on dialog close.
-        const float scale = active->scale;
-        const int32_t dstX = static_cast<int32_t>( static_cast<float>( gameX - active->offsetX ) * scale );
-        const int32_t dstY = static_cast<int32_t>( static_cast<float>( gameY - active->offsetY ) * scale );
+        // Direct paint into Display::screenRGBA() at absolute screen coords. Order of execution
+        // is order of pixel writes — the WriteHook has already mirrored the palette MONH at this
+        // slot into _screenRGBA, so the hi-res RGBA paint lands on top.
+        Display & display = Display::instance();
+        RGBAImage & target = display.screenRGBA();
+        if ( target.empty() ) {
+            return;
+        }
+
+        const float scale = display.getPhysicalScale();
+        const int32_t dstX = static_cast<int32_t>( static_cast<float>( gameX ) * scale );
+        const int32_t dstY = static_cast<int32_t>( static_cast<float>( gameY ) * scale );
         const int32_t dstW = static_cast<int32_t>( static_cast<float>( gameWidth ) * scale );
         if ( dstW <= 0 ) {
             return;
@@ -6632,7 +6626,13 @@ namespace fheroes2::AGG
         if ( dstH <= 0 ) {
             return;
         }
-        Display::instance().registerRGBABufferPaint( portrait, *active->target, gameX, gameY, dstX, dstY, dstW, dstH, flip, alpha );
+
+        if ( alpha >= 255 ) {
+            BlitRGBAScaled( portrait, target, dstX, dstY, dstW, dstH, flip );
+        }
+        else {
+            BlitRGBAScaledAlpha( portrait, target, dstX, dstY, dstW, dstH, alpha, flip );
+        }
     }
 
     const Image & GetTIL( int tilId, uint32_t index, uint32_t shapeId )

@@ -64,18 +64,9 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
         cx += width;
     }
 
-    // Wipe any hi-res portrait paints left in this row's rect by a previous call — the troop
-    // list may have changed (focus switched to a hero without the custom monster, the unit was
-    // dismissed, etc.) and persistent buffer paints would otherwise ghost the stale portrait on
-    // top of whatever now occupies the slot. We clear against the currently active forwarding
-    // target, which is the surface renderHiResMonsterPortrait will register into below.
-    const fheroes2::Image::DialogForwardingFrame * activeForFrame = fheroes2::Image::getActiveDialogForwarding();
-    if ( activeForFrame != nullptr && activeForFrame->target != nullptr ) {
-        // Height is generous — covers the vertical range portraits can land at in either layout.
-        const int32_t clearH = isCompact ? 45 : 60;
-        const int32_t clearY = isCompact ? cy : ( cy - 30 );
-        fheroes2::Display::instance().removeRGBABufferPaintsInRect( activeForFrame->target, cx - width, clearY, width * 2, clearH );
-    }
+    // No stale-paint cleanup needed — hi-res portraits are direct-blitted into _screenRGBA each
+    // call. The palette row redraw runs first (WriteHook mirrors it), then this loop direct-blits
+    // the new portraits on top via renderHiResMonsterPortrait.
 
     const size_t slots = troops.Size();
     for ( size_t slot = 0; slot < slots; ++slot ) {
@@ -117,10 +108,8 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
         const int32_t posX = isRightToLeftRender ? ( cx + static_cast<int32_t>( chunk * ( count - 1 ) ) ) : ( cx - static_cast<int32_t>( chunk * count ) );
 
         // For custom monsters with hi-res PNGs (Thor, Succubus, ...), route the portrait through
-        // renderHiResMonsterPortrait so that when a host screen later installs RGBA forwarding the
-        // portrait direct-paints into the surface instead of registering a separate SDL overlay.
-        // Today on the adventure map no forwarding is active and the helper falls back to
-        // Display::addRGBAOverlay — same behaviour as before, new plumbing.
+        // renderHiResMonsterPortrait so it direct-paints into the active forwarding RGBA surface.
+        // The painter compositor alpha-composites that surface onto the screen framebuffer.
         const fheroes2::RGBAImage * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop->GetID() );
         const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
@@ -155,10 +144,8 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
         }
         else {
             // Non-compact path (quickinfo popups, kingdom overview lists, battle casualty
-            // dialog). Post-Phase 3b there is always an outer forwarding target on the stack —
-            // the adventure-map screenRGBA at minimum, or a dialog / battle surface nested on
-            // top — so renderHiResMonsterPortrait takes the direct-paint path, never the
-            // addRGBAOverlay fallback that was the leak concern before Phase 3b.
+            // dialog). The active forwarding target is always the topmost dialog or the
+            // adventure-map screenRGBA, so renderHiResMonsterPortrait direct-paints into it.
             const int32_t offsetY = 28 - monster.height() + monster.y();
             const int32_t blitX = posX - monster.width() / 2 + monster.x() + 2;
             const int32_t blitY = cy + offsetY;

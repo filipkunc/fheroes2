@@ -216,7 +216,7 @@ namespace
     }
 
     void RedrawLightningRGBA( const std::vector<std::pair<LightningPoint, LightningPoint>> & lightning, const uint8_t color, fheroes2::RGBAImage & surface,
-                              const float scale, const fheroes2::Rect & roi = fheroes2::Rect() )
+                              const float scale, const fheroes2::Point & physOrigin = fheroes2::Point(), const fheroes2::Rect & roi = fheroes2::Rect() )
     {
         uint8_t r, g, b;
         paletteColorToRGB( color, r, g, b );
@@ -224,6 +224,10 @@ namespace
         for ( const auto & [firstPoint, secondPoint] : lightning ) {
             fheroes2::Point first = scalePoint( firstPoint.point, scale );
             fheroes2::Point second = scalePoint( secondPoint.point, scale );
+            first.x += physOrigin.x;
+            first.y += physOrigin.y;
+            second.x += physOrigin.x;
+            second.y += physOrigin.y;
             const bool isHorizontal = std::abs( first.x - second.x ) >= std::abs( first.y - second.y );
             const float thicknessScale = scale;
 
@@ -1317,10 +1321,8 @@ void Battle::TurnOrder::addCustomMonsterOverlays() const
         }
         const int32_t overlayX = pos.x + 1 + ( boxW - overlayW ) / 2;
         const int32_t overlayY = pos.y + 1 + ( boxH - overlayH );
-        // Route through the helper so it direct-paints into battle's _mainSurfaceRGBA via the
-        // active forwarding frame. No separate SDL overlay is registered; position changes
-        // between redrawPreRender cycles are handled by the caller clearing buffer paints on
-        // _mainSurfaceRGBA before re-registering (see the clear in redrawPreRender).
+        // Direct-blit into Display::screenRGBA() at absolute coords. The WriteHook already
+        // mirrored the palette MONH below this slot, so the hi-res RGBA paint lands on top.
         fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
     }
 }
@@ -1542,45 +1544,21 @@ Battle::Interface::Interface( Arena & battleArena, const int32_t tileIndex )
 
     // Battlefield area excludes the lower part where the status log is located.
 
-    // Compute physical resolution scale for the RGBA composite surface.
+    // Cache battle area dimensions in physical pixels for direct writes into Display::screenRGBA().
     {
-        const fheroes2::Size screenSize = display.screenSize();
-        const float scaleX = static_cast<float>( screenSize.width ) / static_cast<float>( display.width() );
-        const float scaleY = static_cast<float>( screenSize.height ) / static_cast<float>( display.height() );
-        _rgbaScale = std::min( scaleX, scaleY );
-        if ( _rgbaScale < 1.0f ) {
-            _rgbaScale = 1.0f;
-        }
+        const float physicalScale = display.getPhysicalScale();
+        _battleAreaWidthPx = static_cast<int32_t>( static_cast<float>( area.width ) * physicalScale );
+        _battleAreaHeightPx = static_cast<int32_t>( static_cast<float>( battlefieldHeight ) * physicalScale );
     }
-    _mainSurfaceRGBA.resize( static_cast<int32_t>( static_cast<float>( area.width ) * _rgbaScale ),
-                             static_cast<int32_t>( static_cast<float>( battlefieldHeight ) * _rgbaScale ) );
 
     AudioManager::ResetAudio();
 
     // High-res RGBA frames for custom monsters (Thor, Succubus, ...) are loaded lazily by
     // fheroes2::AGG::GetRGBACustomFrames() and shared between battle and dialog rendering.
-
-    // Enable dialog forwarding: any non-zero pixels on Display in the battle area
-    // get converted indexed→RGBA and written to _mainSurfaceRGBA during Display::render().
-    //
-    // Push nests battle's frame on top of whatever the parent scope registered (typically the
-    // AdventureMap screen-RGBA). The matching pop in the dtor restores the parent frame so the
-    // adventure map's forwarding keeps working when we return from combat.
-    fheroes2::Image::pushDialogForwarding( &_mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _rgbaScale );
 }
 
 Battle::Interface::~Interface()
 {
-    // Pop battle's frame off the forwarding stack so the parent scope's frame (AdventureMap) is
-    // active again. Remove ONLY battle's own root overlay and any buffer paints targeting
-    // _mainSurfaceRGBA (turn-order portraits, casualty dialog portraits) — the parent's root
-    // overlay stays registered so its RGBA surface keeps compositing to screen.
-    fheroes2::Image::popDialogForwarding();
-    fheroes2::Display & display = fheroes2::Display::instance();
-    display.removeRGBAOverlay( &_mainSurfaceRGBA );
-    display.removeRGBABufferPaintsForTarget( &_mainSurfaceRGBA );
-    display.setRGBACompositLayer( nullptr, 0, 0 );
-
     AudioManager::ResetAudio();
 
     // Turn order dialog can be outside the battlefield area.
@@ -1664,21 +1642,14 @@ void Battle::Interface::fullRedraw()
     // We do not render battlefield display image to properly fade-in it.
     redrawPreRender();
 
-    // Suspend dialog forwarding during the fade so alpha-blended display pixels don't corrupt
-    // the RGBA buffer. Suspend preserves the stack — battle's frame (and any parent frame such
-    // as the adventure map's screen-RGBA) stays registered and automatically resumes below.
-    fheroes2::Image::suspendDialogForwarding();
-
-    // Fade-in battlefield.
+    // Fade-in battlefield. Each fade frame's palette draw fires the WriteHook, which mirrors the
+    // alpha-blended indexed pixels into _screenRGBA — the fade gradient appears on screen.
     if ( !isDefaultScreenSize ) {
         // We need to expand the ROI for the next render to properly render window borders and shadow.
         display.updateNextRenderRoi( fheroes2::getBoundaryRect( _background->totalArea(), _turnOrder.getRenderingRoi() ) );
     }
 
     fheroes2::fadeInDisplay( _background->activeArea(), !isDefaultScreenSize );
-
-    // Re-enable dialog forwarding after the fade completes.
-    fheroes2::Image::resumeDialogForwarding();
 }
 
 void Battle::Interface::Redraw()
@@ -1723,12 +1694,8 @@ void Battle::Interface::redrawPreRender()
             unit = cell->GetUnit();
         }
         _turnOrder.redraw( _currentUnit, _contourColor, unit, border.GetRect() );
-        // Sync the turn order area to RGBA from display (only needed when inside the battlefield area).
-        const fheroes2::Rect turnRoi = _turnOrder.getRenderingRoi();
-        if ( turnRoi.width > 0 && turnRoi.height > 0 && _turnOrder.isInsideBattleField() ) {
-            _syncIndexedRegionToRGBA( fheroes2::Display::instance(), turnRoi.x, turnRoi.y, turnRoi.width, turnRoi.height,
-                                      turnRoi.x - _interfacePosition.x, turnRoi.y - _interfacePosition.y );
-        }
+        // No manual sync needed — turn-order palette draws on Display.image() are mirrored into
+        // Display::screenRGBA() automatically by the Image::WriteHook.
     }
     else {
         _turnOrder.restore();
@@ -1748,27 +1715,22 @@ void Battle::Interface::redrawPreRender()
     }
 #endif
 
-    // Fill display's battle area with index 0 so dialog forwarding can detect dialog pixels (any non-zero pixel).
-    auto & display = fheroes2::Display::instance();
-    fheroes2::Fill( display, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width, _mainSurfaceRGBA.empty() ? _surfaceInnerArea.height
-                    : static_cast<int32_t>( static_cast<float>( _mainSurfaceRGBA.height() ) / _rgbaScale ), 0 );
-
-    // Register the RGBA surface as an overlay for physical-resolution rendering. Remove only
-    // battle-owned registrations before re-adding so a parent screen (AdventureMap) keeps its
-    // root overlay registered across every partial render cycle. Buffer paints targeting
-    // _mainSurfaceRGBA come from the turn-order hi-res portraits below; clearing them before
-    // re-registering handles the case where a unit died / moved between frames and its slot
-    // now belongs to a different unit.
-    display.removeRGBAOverlay( &_mainSurfaceRGBA );
-    display.removeRGBABufferPaintsForTarget( &_mainSurfaceRGBA );
-    // shadowsParent=true: battle is a fullscreen takeover, so the adventure-map root overlay
-    // (and its stale status-panel content) stops compositing while combat is running — palette
-    // UI battle draws outside _mainSurfaceRGBA's footprint (status bar, action buttons at the
-    // bottom) is visible instead of being covered by the shallower screenRGBA.
-    display.addRGBAOverlay( _mainSurfaceRGBA, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width, false, 255, true );
+    // Clear the battle area in Display's indexed buffer. Battle helpers write the scene
+    // RGBA-direct into screenRGBA, never touching display.image() in the battle area, so
+    // display.indexed[battle] retains whatever was there before (adventure map remnants,
+    // previous fadeOut content, …). Clearing to index 0 ensures fadeInDisplay's ApplyAlpha
+    // doesn't fade THAT old content into screenRGBA[battle] (the WriteHook skips index 0,
+    // so screenRGBA's RGBA-direct battle content is preserved through the fade).
+    {
+        fheroes2::Display & display = fheroes2::Display::instance();
+        const int32_t battleAreaH = ( _battleAreaHeightPx > 0 ) ? static_cast<int32_t>( static_cast<float>( _battleAreaHeightPx ) / display.getPhysicalScale() )
+                                                                : _surfaceInnerArea.height;
+        fheroes2::Fill( display, _interfacePosition.x, _interfacePosition.y, _surfaceInnerArea.width, battleAreaH, 0 );
+    }
 
     // Layer hi-res portraits for custom monsters (Thor, Succubus, ...) in the turn order. They
-    // direct-paint into _mainSurfaceRGBA via the helper, so Z-order is correct by construction.
+    // direct-blit into Display::screenRGBA() via renderHiResMonsterPortrait, so Z-order is
+    // correct by construction (the WriteHook already mirrored the palette MONH below).
     if ( Settings::Get().BattleShowTurnOrder() ) {
         _turnOrder.addCustomMonsterOverlays();
     }
@@ -2170,11 +2132,16 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
         const std::vector<fheroes2::RGBAImage> & frames = *rgbaCustomFramesPtr;
         const int32_t frame = unit.GetFrame();
         if ( frame >= 0 && frame < static_cast<int32_t>( frames.size() ) && !frames[frame].empty() ) {
-            const int32_t physX = static_cast<int32_t>( static_cast<float>( drawnPosition.x ) * _rgbaScale );
-            const int32_t physY = static_cast<int32_t>( static_cast<float>( drawnPosition.y ) * _rgbaScale );
-            const int32_t physW = static_cast<int32_t>( static_cast<float>( monsterSprite.width() ) * _rgbaScale );
-            const int32_t physH = static_cast<int32_t>( static_cast<float>( monsterSprite.height() ) * _rgbaScale );
-            fheroes2::BlitRGBAScaled( frames[frame], _mainSurfaceRGBA, physX, physY, physW, physH, unit.isReflect() );
+            // Direct-paint into Display::screenRGBA() at absolute physical-pixel coords. The
+            // WriteHook already mirrored the indexed troop sprite below this call, so this
+            // RGBA paint lands on top.
+            fheroes2::Display & display = fheroes2::Display::instance();
+            const float scale = display.getPhysicalScale();
+            const int32_t physX = static_cast<int32_t>( static_cast<float>( drawnPosition.x + _interfacePosition.x ) * scale );
+            const int32_t physY = static_cast<int32_t>( static_cast<float>( drawnPosition.y + _interfacePosition.y ) * scale );
+            const int32_t physW = static_cast<int32_t>( static_cast<float>( monsterSprite.width() ) * scale );
+            const int32_t physH = static_cast<int32_t>( static_cast<float>( monsterSprite.height() ) * scale );
+            fheroes2::BlitRGBAScaled( frames[frame], display.screenRGBA(), physX, physY, physW, physH, unit.isReflect() );
             customRGBASrc = &frames[frame];
         }
         else {
@@ -2299,100 +2266,49 @@ fheroes2::Point Battle::Interface::_drawTroopSprite( const Unit & unit, const fh
 
 void Battle::Interface::_blitOnSurface( const fheroes2::Image & in, const int32_t outX, const int32_t outY, const bool flip )
 {
-    fheroes2::BlitIndexedToRGBAScaled( in, _mainSurfaceRGBA, outX, outY, _rgbaScale, flip );
+    fheroes2::Display & display = fheroes2::Display::instance();
+    fheroes2::BlitIndexedToRGBAScaled( in, display.screenRGBA(), outX + _interfacePosition.x, outY + _interfacePosition.y, display.getPhysicalScale(), flip );
 }
 
 void Battle::Interface::_alphaBlitOnSurface( const fheroes2::Image & in, const int32_t outX, const int32_t outY, const uint8_t alpha, const bool flip )
 {
-    fheroes2::BlitIndexedToRGBAScaledAlpha( in, _mainSurfaceRGBA, outX, outY, _rgbaScale, alpha, flip );
+    fheroes2::Display & display = fheroes2::Display::instance();
+    fheroes2::BlitIndexedToRGBAScaledAlpha( in, display.screenRGBA(), outX + _interfacePosition.x, outY + _interfacePosition.y, display.getPhysicalScale(), alpha,
+                                            flip );
 }
 
 void Battle::Interface::_alphaBlitOnSurface( const fheroes2::Image & in, const int32_t inX, const int32_t inY, const int32_t outX, const int32_t outY, const int32_t w,
                                              const int32_t h, const uint8_t alpha, const bool flip )
 {
-    fheroes2::BlitIndexedToRGBAScaledRegion( in, inX, inY, w, h, _mainSurfaceRGBA, outX, outY, _rgbaScale, alpha, flip );
+    fheroes2::Display & display = fheroes2::Display::instance();
+    fheroes2::BlitIndexedToRGBAScaledRegion( in, inX, inY, w, h, display.screenRGBA(), outX + _interfacePosition.x, outY + _interfacePosition.y,
+                                             display.getPhysicalScale(), alpha, flip );
 }
 
 void Battle::Interface::_copyOnSurface( const fheroes2::Image & in, const int32_t inX, const int32_t inY, const int32_t outX, const int32_t outY, const int32_t w,
                                         const int32_t h )
 {
-    fheroes2::BlitIndexedToRGBAScaledRegion( in, inX, inY, w, h, _mainSurfaceRGBA, outX, outY, _rgbaScale );
+    fheroes2::Display & display = fheroes2::Display::instance();
+    fheroes2::BlitIndexedToRGBAScaledRegion( in, inX, inY, w, h, display.screenRGBA(), outX + _interfacePosition.x, outY + _interfacePosition.y,
+                                             display.getPhysicalScale() );
 }
 
 void Battle::Interface::_copyFullSurface()
 {
-    // Fast memcpy of pre-converted RGBA background.
-    if ( !_battleGroundRGBA.empty() && !_mainSurfaceRGBA.empty() ) {
-        fheroes2::CopyRGBA( _battleGroundRGBA, 0, 0, _mainSurfaceRGBA, 0, 0, _battleGroundRGBA.width(), _battleGroundRGBA.height() );
-    }
-}
-
-void Battle::Interface::_syncIndexedRegionToRGBA( const fheroes2::Image & src, const int32_t srcX, const int32_t srcY, const int32_t w, const int32_t h,
-                                                  const int32_t dstX, const int32_t dstY )
-{
-    if ( _mainSurfaceRGBA.empty() ) {
+    // Fast memcpy of pre-converted battlefield background into Display::screenRGBA() at the
+    // battle's physical-pixel origin.
+    if ( _battleGroundRGBA.empty() ) {
         return;
     }
-
-    const int32_t surfW = src.width();
-    const int32_t surfH = src.height();
-
-    const int32_t startSrcX = std::max( srcX, 0 );
-    const int32_t startSrcY = std::max( srcY, 0 );
-    const int32_t endSrcX = std::min( srcX + w, surfW );
-    const int32_t endSrcY = std::min( srcY + h, surfH );
-
-    if ( startSrcX >= endSrcX || startSrcY >= endSrcY ) {
+    fheroes2::Display & display = fheroes2::Display::instance();
+    fheroes2::RGBAImage & screen = display.screenRGBA();
+    if ( screen.empty() ) {
         return;
     }
-
-    const uint8_t * gamePalette = fheroes2::getGamePalette();
-    const uint8_t * srcImage = src.image();
-    uint8_t * dstData = _mainSurfaceRGBA.data();
-    const int32_t rgbaW = _mainSurfaceRGBA.width();
-    const int32_t rgbaH = _mainSurfaceRGBA.height();
-    const float scale = _rgbaScale;
-
-    // Offset between source coordinates and destination coordinates in game-pixel space.
-    const int32_t offX = dstX - srcX;
-    const int32_t offY = dstY - srcY;
-
-    // For each game pixel in the source region, fill the corresponding block in the high-res RGBA surface.
-    for ( int32_t row = startSrcY; row < endSrcY; ++row ) {
-        const uint8_t * srcRow = srcImage + static_cast<ptrdiff_t>( row ) * surfW;
-
-        const int32_t dstRow0 = row + offY;
-        const int32_t dstRowStart = static_cast<int32_t>( static_cast<float>( dstRow0 ) * scale );
-        const int32_t dstRowEnd = std::min( static_cast<int32_t>( static_cast<float>( dstRow0 + 1 ) * scale ), rgbaH );
-        if ( dstRowStart >= rgbaH || dstRowEnd <= 0 ) {
-            continue;
-        }
-
-        for ( int32_t col = startSrcX; col < endSrcX; ++col ) {
-            const uint8_t * pal = gamePalette + static_cast<ptrdiff_t>( srcRow[col] ) * 3;
-            const uint8_t r = static_cast<uint8_t>( pal[0] << 2 );
-            const uint8_t g = static_cast<uint8_t>( pal[1] << 2 );
-            const uint8_t b = static_cast<uint8_t>( pal[2] << 2 );
-
-            const int32_t dstCol0 = col + offX;
-            const int32_t dstColStart = static_cast<int32_t>( static_cast<float>( dstCol0 ) * scale );
-            const int32_t dstColEnd = std::min( static_cast<int32_t>( static_cast<float>( dstCol0 + 1 ) * scale ), rgbaW );
-            if ( dstColStart >= rgbaW || dstColEnd <= 0 ) {
-                continue;
-            }
-
-            for ( int32_t dy = std::max( dstRowStart, 0 ); dy < dstRowEnd; ++dy ) {
-                uint8_t * dstRow2 = dstData + static_cast<ptrdiff_t>( dy ) * rgbaW * 4;
-                for ( int32_t dx = std::max( dstColStart, 0 ); dx < dstColEnd; ++dx ) {
-                    uint8_t * dst = dstRow2 + static_cast<ptrdiff_t>( dx ) * 4;
-                    dst[0] = r;
-                    dst[1] = g;
-                    dst[2] = b;
-                    dst[3] = 255;
-                }
-            }
-        }
-    }
+    const float scale = display.getPhysicalScale();
+    const int32_t physX = static_cast<int32_t>( static_cast<float>( _interfacePosition.x ) * scale );
+    const int32_t physY = static_cast<int32_t>( static_cast<float>( _interfacePosition.y ) * scale );
+    fheroes2::CopyRGBA( _battleGroundRGBA, 0, 0, screen, physX, physY, _battleGroundRGBA.width(), _battleGroundRGBA.height() );
 }
 
 
@@ -2732,7 +2648,10 @@ void Battle::Interface::_redrawBattleGround()
 {
     // Build the battlefield background as a game-resolution RGBA image, then scale to _battleGroundRGBA.
     const int32_t bgW = _surfaceInnerArea.width;
-    const int32_t bgH = _mainSurfaceRGBA.empty() ? _surfaceInnerArea.height : static_cast<int32_t>( static_cast<float>( _mainSurfaceRGBA.height() ) / _rgbaScale );
+    // Battlefield height excludes the lower status-log strip. _battleAreaHeightPx is in physical
+    // pixels; divide by the scale to get back to game pixels for the source RGBA build buffer.
+    const float physicalScale = fheroes2::Display::instance().getPhysicalScale();
+    const int32_t bgH = ( _battleAreaHeightPx > 0 ) ? static_cast<int32_t>( static_cast<float>( _battleAreaHeightPx ) / physicalScale ) : _surfaceInnerArea.height;
     fheroes2::Image bgRGBA( bgW, bgH, fheroes2::ImageFormat::RGBA_32BIT );
     memset( bgRGBA.image(), 0, static_cast<size_t>( bgW ) * bgH * 4 );
 
@@ -2816,23 +2735,24 @@ void Battle::Interface::_redrawBattleGround()
         fheroes2::Blit( sprite2, bgRGBA, sprite2.x(), sprite2.y() );
     }
 
-    // Scale the game-resolution RGBA background to physical resolution.
-    if ( !_mainSurfaceRGBA.empty() ) {
-        _battleGroundRGBA.resize( _mainSurfaceRGBA.width(), _mainSurfaceRGBA.height() );
-        memset( _battleGroundRGBA.data(), 0, static_cast<size_t>( _battleGroundRGBA.width() ) * _battleGroundRGBA.height() * 4 );
+    // Scale the game-resolution RGBA background to physical resolution. _battleAreaWidthPx /
+    // _battleAreaHeightPx are the battlefield rect in screen-physical pixels.
+    if ( _battleAreaWidthPx > 0 && _battleAreaHeightPx > 0 ) {
+        _battleGroundRGBA.resize( _battleAreaWidthPx, _battleAreaHeightPx );
+        memset( _battleGroundRGBA.data(), 0, static_cast<size_t>( _battleAreaWidthPx ) * _battleAreaHeightPx * 4 );
         // Scale bgRGBA (game-res) to _battleGroundRGBA (physical-res) using nearest-neighbor.
         const uint8_t * srcData = bgRGBA.image();
         uint8_t * dstData = _battleGroundRGBA.data();
-        const int32_t dstW = _battleGroundRGBA.width();
-        const int32_t dstH = _battleGroundRGBA.height();
+        const int32_t dstW = _battleAreaWidthPx;
+        const int32_t dstH = _battleAreaHeightPx;
 
         for ( int32_t dy = 0; dy < dstH; ++dy ) {
-            const int32_t sy = static_cast<int32_t>( static_cast<float>( dy ) / _rgbaScale );
+            const int32_t sy = static_cast<int32_t>( static_cast<float>( dy ) / physicalScale );
             const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( std::min( sy, bgH - 1 ) ) * bgW * 4 );
             uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( dy ) * dstW * 4 );
 
             for ( int32_t dx = 0; dx < dstW; ++dx ) {
-                const int32_t sx = static_cast<int32_t>( static_cast<float>( dx ) / _rgbaScale );
+                const int32_t sx = static_cast<int32_t>( static_cast<float>( dx ) / physicalScale );
                 const uint8_t * src = srcRow + ( std::min( sx, bgW - 1 ) * 4 );
                 uint8_t * dst = dstRow + ( dx * 4 );
                 memcpy( dst, src, 4 );
@@ -3935,11 +3855,8 @@ void Battle::Interface::FadeArena( const bool clearMessageLog )
 
     fheroes2::Copy( display, srt.x, srt.y, top, 0, 0, srt.width, srt.height );
 
-    // Suspend dialog forwarding during the fade so darkened display pixels don't overwrite the
-    // dimmed RGBA scene. Suspend keeps battle's frame (and any parent frame) on the stack.
-    fheroes2::Image::suspendDialogForwarding();
-
-    // Custom fade that darkens the RGBA surface.
+    // Custom fade that darkens the RGBA surface directly. The palette-buffer copy above is
+    // mirrored into _screenRGBA by the WriteHook; the loop below repeatedly dims that area.
     {
         const fheroes2::Rect roi{ srt.x, srt.y, top.width(), top.height() };
 
@@ -3958,9 +3875,15 @@ void Battle::Interface::FadeArena( const bool clearMessageLog )
                     break;
                 }
 
-                // Darken RGBA surface.
-                if ( !_mainSurfaceRGBA.empty() ) {
-                    fheroes2::DimRGBA( _mainSurfaceRGBA, 0, 0, _mainSurfaceRGBA.width(), _mainSurfaceRGBA.height(), dimFactor );
+                // Darken the battle area in Display::screenRGBA(). Bounded by the cached
+                // physical-pixel battle rect so the status log and dialogs above (e.g. the
+                // settings popup) remain unaffected.
+                {
+                    fheroes2::Display & dsp = fheroes2::Display::instance();
+                    const float scale = dsp.getPhysicalScale();
+                    const int32_t physX = static_cast<int32_t>( static_cast<float>( _interfacePosition.x ) * scale );
+                    const int32_t physY = static_cast<int32_t>( static_cast<float>( _interfacePosition.y ) * scale );
+                    fheroes2::DimRGBA( dsp.screenRGBA(), physX, physY, _battleAreaWidthPx, _battleAreaHeightPx, dimFactor );
                 }
 
                 display.render( roi );
@@ -3968,9 +3891,6 @@ void Battle::Interface::FadeArena( const bool clearMessageLog )
             }
         }
     }
-
-    // Re-enable dialog forwarding for the battle summary dialog.
-    fheroes2::Image::resumeDialogForwarding();
 
     display.render();
 }
@@ -4401,21 +4321,27 @@ void Battle::Interface::RedrawMissileAnimation( const fheroes2::Point & startPos
         if ( Game::validateAnimationDelay( Game::BATTLE_MISSILE_DELAY ) ) {
             RedrawPartialStart();
             if ( isMage ) {
-                // RGBA missile beam lines at physical resolution.
-                if ( !_mainSurfaceRGBA.empty() ) {
+                // RGBA missile beam lines at physical resolution. Coords are battle-local
+                // game pixels scaled to physical, plus the battle's physical-pixel origin.
+                fheroes2::Display & dsp = fheroes2::Display::instance();
+                fheroes2::RGBAImage & screen = dsp.screenRGBA();
+                if ( !screen.empty() ) {
+                    const float scale = dsp.getPhysicalScale();
                     uint8_t r77, g77, b77, rB5, gB5, bB5, rBC, gBC, bBC;
                     paletteColorToRGB( 0x77, r77, g77, b77 );
                     paletteColorToRGB( 0xB5, rB5, gB5, bB5 );
                     paletteColorToRGB( 0xBC, rBC, gBC, bBC );
-                    const auto sp = scalePoint( startPos, _rgbaScale );
-                    const auto ep = scalePoint( *pnt, _rgbaScale );
-                    const int32_t s1 = static_cast<int32_t>( _rgbaScale );
-                    const int32_t s2 = static_cast<int32_t>( 2.0f * _rgbaScale );
-                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, { sp.x, sp.y - s2 }, { ep.x, ep.y - s2 }, r77, g77, b77 );
-                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, { sp.x, sp.y - s1 }, { ep.x, ep.y - s1 }, rB5, gB5, bB5 );
-                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, sp, ep, rBC, gBC, bBC );
-                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, { sp.x, sp.y + s1 }, { ep.x, ep.y + s1 }, rB5, gB5, bB5 );
-                    fheroes2::DrawLineRGBA( _mainSurfaceRGBA, { sp.x, sp.y + s2 }, { ep.x, ep.y + s2 }, r77, g77, b77 );
+                    const int32_t physOX = static_cast<int32_t>( static_cast<float>( _interfacePosition.x ) * scale );
+                    const int32_t physOY = static_cast<int32_t>( static_cast<float>( _interfacePosition.y ) * scale );
+                    const fheroes2::Point sp{ scalePoint( startPos, scale ).x + physOX, scalePoint( startPos, scale ).y + physOY };
+                    const fheroes2::Point ep{ scalePoint( *pnt, scale ).x + physOX, scalePoint( *pnt, scale ).y + physOY };
+                    const int32_t s1 = static_cast<int32_t>( scale );
+                    const int32_t s2 = static_cast<int32_t>( 2.0f * scale );
+                    fheroes2::DrawLineRGBA( screen, { sp.x, sp.y - s2 }, { ep.x, ep.y - s2 }, r77, g77, b77 );
+                    fheroes2::DrawLineRGBA( screen, { sp.x, sp.y - s1 }, { ep.x, ep.y - s1 }, rB5, gB5, bB5 );
+                    fheroes2::DrawLineRGBA( screen, sp, ep, rBC, gBC, bBC );
+                    fheroes2::DrawLineRGBA( screen, { sp.x, sp.y + s1 }, { ep.x, ep.y + s1 }, rB5, gB5, bB5 );
+                    fheroes2::DrawLineRGBA( screen, { sp.x, sp.y + s2 }, { ep.x, ep.y + s2 }, r77, g77, b77 );
                 }
             }
             else {
@@ -6314,10 +6240,17 @@ void Battle::Interface::_redrawLightningOnTargets( const std::vector<fheroes2::P
 
                 RedrawPartialStart();
 
-                // Draw lightning and dim the scene on RGBA surface.
-                if ( !_mainSurfaceRGBA.empty() ) {
-                    RedrawLightningRGBA( lightningBolt, fheroes2::GetColorId( 0xff, 0xff, 0 ), _mainSurfaceRGBA, _rgbaScale );
-                    fheroes2::DimRGBA( _mainSurfaceRGBA, 0, 0, _mainSurfaceRGBA.width(), _mainSurfaceRGBA.height(), 0.65f );
+                // Draw lightning and dim the battle area on Display::screenRGBA().
+                {
+                    fheroes2::Display & dsp = fheroes2::Display::instance();
+                    fheroes2::RGBAImage & screen = dsp.screenRGBA();
+                    if ( !screen.empty() ) {
+                        const float scale = dsp.getPhysicalScale();
+                        const int32_t physX = static_cast<int32_t>( static_cast<float>( _interfacePosition.x ) * scale );
+                        const int32_t physY = static_cast<int32_t>( static_cast<float>( _interfacePosition.y ) * scale );
+                        RedrawLightningRGBA( lightningBolt, fheroes2::GetColorId( 0xff, 0xff, 0 ), screen, scale, { physX, physY } );
+                        fheroes2::DimRGBA( screen, physX, physY, _battleAreaWidthPx, _battleAreaHeightPx, 0.65f );
+                    }
                 }
 
                 RedrawPartialFinish();
@@ -6629,29 +6562,33 @@ void Battle::Interface::_redrawActionDeathWaveSpell( const int32_t strength )
         area.height -= listlog->GetArea().height;
     }
 
-    // Capture the RGBA battlefield for the wave effect.
-    const int32_t rgbaAreaW = static_cast<int32_t>( static_cast<float>( area.width ) * _rgbaScale );
-    const int32_t rgbaAreaH = static_cast<int32_t>( static_cast<float>( area.height ) * _rgbaScale );
+    // Capture the RGBA battlefield for the wave effect, sourced from Display::screenRGBA() at
+    // the battle's physical-pixel origin.
+    fheroes2::Display & display = fheroes2::Display::instance();
+    const float physicalScale = display.getPhysicalScale();
+    const int32_t physOX = static_cast<int32_t>( static_cast<float>( _interfacePosition.x ) * physicalScale );
+    const int32_t physOY = static_cast<int32_t>( static_cast<float>( _interfacePosition.y ) * physicalScale );
+    const int32_t rgbaAreaW = static_cast<int32_t>( static_cast<float>( area.width ) * physicalScale );
+    const int32_t rgbaAreaH = static_cast<int32_t>( static_cast<float>( area.height ) * physicalScale );
 
     fheroes2::RGBAImage battleFieldCopyRGBA;
     battleFieldCopyRGBA.resize( rgbaAreaW, rgbaAreaH );
-    fheroes2::CopyRGBA( _mainSurfaceRGBA, 0, 0, battleFieldCopyRGBA, 0, 0, rgbaAreaW, rgbaAreaH );
+    fheroes2::CopyRGBA( display.screenRGBA(), physOX, physOY, battleFieldCopyRGBA, 0, 0, rgbaAreaW, rgbaAreaH );
 
     // The death wave horizontal length in pixels (game-resolution units, scaled for RGBA).
-    const int32_t waveLength = static_cast<int32_t>( 38.0f * _rgbaScale );
-    const int32_t waveStep = static_cast<int32_t>( 5.0f * _rgbaScale );
+    const int32_t waveLength = static_cast<int32_t>( 38.0f * physicalScale );
+    const int32_t waveStep = static_cast<int32_t>( 5.0f * physicalScale );
     const double waveLimit = waveLength / M_PI / 2;
     std::vector<int32_t> deathWaveCurve;
     deathWaveCurve.reserve( waveLength );
 
     for ( int32_t posX = 0; posX < waveLength; ++posX ) {
-        deathWaveCurve.push_back( static_cast<int32_t>( std::round( strength * _rgbaScale * ( cosf( posX / waveLimit ) / 2.0f - 0.5f ) ) ) - 1 );
+        deathWaveCurve.push_back( static_cast<int32_t>( std::round( strength * physicalScale * ( cosf( posX / waveLimit ) / 2.0f - 0.5f ) ) ) - 1 );
     }
 
     // Take into account that the Death Wave starts outside the battle screen.
     const int32_t rgbaAreaX = 0;
     int32_t position = waveStep;
-    fheroes2::Display & display = fheroes2::Display::instance();
 
     fheroes2::RGBAImage spellEffectRGBA;
     spellEffectRGBA.resize( waveLength, rgbaAreaH );
@@ -6667,16 +6604,16 @@ void Battle::Interface::_redrawActionDeathWaveSpell( const int32_t strength )
             const int32_t restorePositionX = ( wavePositionX < waveStep ) ? 0 : ( wavePositionX - waveStep );
             const int32_t restoreWidth = wavePositionX < waveStep ? wavePositionX : waveStep;
 
-            // Restore the previous wave position on the RGBA surface.
-            fheroes2::CopyRGBA( battleFieldCopyRGBA, restorePositionX, 0, _mainSurfaceRGBA, restorePositionX, 0, restoreWidth, rgbaAreaH );
+            // Restore the previous wave position on the screen RGBA surface.
+            fheroes2::CopyRGBA( battleFieldCopyRGBA, restorePositionX, 0, display.screenRGBA(), physOX + restorePositionX, physOY, restoreWidth, rgbaAreaH );
 
-            // Apply the Death Wave effect to the RGBA surface.
+            // Apply the Death Wave effect and write into screenRGBA at the absolute battle origin + offset.
             fheroes2::CreateDeathWaveEffectRGBA( spellEffectRGBA, battleFieldCopyRGBA, position, deathWaveCurve );
-            fheroes2::CopyRGBA( spellEffectRGBA, 0, 0, _mainSurfaceRGBA, restorePositionX + restoreWidth, 0, waveWidth, rgbaAreaH );
+            fheroes2::CopyRGBA( spellEffectRGBA, 0, 0, display.screenRGBA(), physOX + restorePositionX + restoreWidth, physOY, waveWidth, rgbaAreaH );
 
             // Render the changed area via the overlay.
-            const int32_t gameRestoreX = static_cast<int32_t>( static_cast<float>( restorePositionX ) / _rgbaScale );
-            const int32_t gameW = static_cast<int32_t>( static_cast<float>( waveWidth + restoreWidth ) / _rgbaScale ) + 1;
+            const int32_t gameRestoreX = static_cast<int32_t>( static_cast<float>( restorePositionX ) / physicalScale );
+            const int32_t gameW = static_cast<int32_t>( static_cast<float>( waveWidth + restoreWidth ) / physicalScale ) + 1;
             const fheroes2::Rect renderArea( _interfacePosition.x + gameRestoreX, _interfacePosition.y, gameW, area.height );
             display.render( renderArea );
 
@@ -6758,13 +6695,17 @@ void Battle::Interface::_redrawActionHolyShoutSpell( const uint8_t strength )
         area.height -= listlog->GetArea().height;
     }
 
-    // Capture the RGBA battlefield.
-    const int32_t rgbaW = _mainSurfaceRGBA.width();
-    const int32_t rgbaH = _mainSurfaceRGBA.height();
+    // Capture the RGBA battlefield from Display::screenRGBA() at the battle's physical origin.
+    fheroes2::Display & display = fheroes2::Display::instance();
+    const float physicalScale = display.getPhysicalScale();
+    const int32_t physOX = static_cast<int32_t>( static_cast<float>( _interfacePosition.x ) * physicalScale );
+    const int32_t physOY = static_cast<int32_t>( static_cast<float>( _interfacePosition.y ) * physicalScale );
+    const int32_t rgbaW = _battleAreaWidthPx;
+    const int32_t rgbaH = _battleAreaHeightPx;
 
     fheroes2::RGBAImage battleFieldCopyRGBA;
     battleFieldCopyRGBA.resize( rgbaW, rgbaH );
-    fheroes2::CopyRGBA( _mainSurfaceRGBA, 0, 0, battleFieldCopyRGBA, 0, 0, rgbaW, rgbaH );
+    fheroes2::CopyRGBA( display.screenRGBA(), physOX, physOY, battleFieldCopyRGBA, 0, 0, rgbaW, rgbaH );
 
     _currentUnit = nullptr;
 
@@ -6772,7 +6713,7 @@ void Battle::Interface::_redrawActionHolyShoutSpell( const uint8_t strength )
     const uint32_t halfMaxFrame = maxFrame / 2;
 
     // Scaled blur radius for physical resolution.
-    const int32_t scaledBlurRadius = std::max( 1, static_cast<int32_t>( 4.0f * _rgbaScale ) );
+    const int32_t scaledBlurRadius = std::max( 1, static_cast<int32_t>( 4.0f * physicalScale ) );
 
     // Create spell effect frames in RGBA space.
     std::vector<fheroes2::RGBAImage> spellEffect;
@@ -6796,7 +6737,6 @@ void Battle::Interface::_redrawActionHolyShoutSpell( const uint8_t strength )
     uint8_t alpha = 30;
     const uint8_t alphaStep = 25;
 
-    fheroes2::Display & display = fheroes2::Display::instance();
     const fheroes2::Rect renderArea( _interfacePosition.x + area.x, _interfacePosition.y + area.y, area.width, area.height );
 
     Game::passCustomAnimationDelay( spellcastDelay );
@@ -6816,8 +6756,8 @@ void Battle::Interface::_redrawActionHolyShoutSpell( const uint8_t strength )
                 }
 
                 const uint32_t spellEffectFrame = ( frame < halfMaxFrame ) ? frame : ( maxFrame - frame - 1 );
-                // Write the effect frame to the RGBA surface.
-                fheroes2::CopyRGBA( spellEffect[spellEffectFrame], 0, 0, _mainSurfaceRGBA, 0, 0, rgbaW, rgbaH );
+                // Write the effect frame to Display::screenRGBA() at the battle's physical origin.
+                fheroes2::CopyRGBA( spellEffect[spellEffectFrame], 0, 0, display.screenRGBA(), physOX, physOY, rgbaW, rgbaH );
 
                 display.render( renderArea );
             }
@@ -6916,13 +6856,17 @@ void Battle::Interface::_redrawActionArmageddonSpell()
         settings.setBattleShowTurnOrder( true );
     }
 
-    // Capture the RGBA battlefield for whitening and reddening effects.
-    const int32_t rgbaW = _mainSurfaceRGBA.width();
-    const int32_t rgbaH = _mainSurfaceRGBA.height();
+    // Capture the RGBA battlefield from Display::screenRGBA() for whitening / reddening effects.
+    fheroes2::Display & display = fheroes2::Display::instance();
+    const float physicalScale = display.getPhysicalScale();
+    const int32_t physOX = static_cast<int32_t>( static_cast<float>( _interfacePosition.x ) * physicalScale );
+    const int32_t physOY = static_cast<int32_t>( static_cast<float>( _interfacePosition.y ) * physicalScale );
+    const int32_t rgbaW = _battleAreaWidthPx;
+    const int32_t rgbaH = _battleAreaHeightPx;
 
     fheroes2::RGBAImage spriteWhiteningRGBA;
     spriteWhiteningRGBA.resize( rgbaW, rgbaH );
-    fheroes2::CopyRGBA( _mainSurfaceRGBA, 0, 0, spriteWhiteningRGBA, 0, 0, rgbaW, rgbaH );
+    fheroes2::CopyRGBA( display.screenRGBA(), physOX, physOY, spriteWhiteningRGBA, 0, 0, rgbaW, rgbaH );
 
     // Create the reddish version by dimming green and blue channels.
     fheroes2::RGBAImage spriteReddishRGBA;
@@ -6945,7 +6889,7 @@ void Battle::Interface::_redrawActionArmageddonSpell()
         if ( Game::validateAnimationDelay( Game::BATTLE_SPELL_DELAY ) ) {
             // Progressive whitening in RGBA space.
             fheroes2::WhitenRGBA( spriteWhiteningRGBA, 0.15f );
-            fheroes2::CopyRGBA( spriteWhiteningRGBA, 0, 0, _mainSurfaceRGBA, 0, 0, rgbaW, rgbaH );
+            fheroes2::CopyRGBA( spriteWhiteningRGBA, 0, 0, display.screenRGBA(), physOX, physOY, rgbaW, rgbaH );
             RedrawPartialFinish();
 
             alpha += 10;
@@ -6953,10 +6897,10 @@ void Battle::Interface::_redrawActionArmageddonSpell()
     }
 
     // Switch to reddish shaking phase.
-    fheroes2::CopyRGBA( spriteReddishRGBA, 0, 0, _mainSurfaceRGBA, 0, 0, rgbaW, rgbaH );
+    fheroes2::CopyRGBA( spriteReddishRGBA, 0, 0, display.screenRGBA(), physOX, physOY, rgbaW, rgbaH );
 
-    const int32_t rgbaShakeX = static_cast<int32_t>( 14.0f * _rgbaScale );
-    const int32_t rgbaShakeY = static_cast<int32_t>( 11.0f * _rgbaScale );
+    const int32_t rgbaShakeX = static_cast<int32_t>( 14.0f * physicalScale );
+    const int32_t rgbaShakeY = static_cast<int32_t>( 11.0f * physicalScale );
 
     while ( le.HandleEvents( Game::isDelayNeeded( { Game::BATTLE_SPELL_DELAY } ) ) && Mixer::isPlaying( -1 ) ) {
         CheckGlobalEvents( le );
@@ -6965,9 +6909,9 @@ void Battle::Interface::_redrawActionArmageddonSpell()
             const int32_t offsetX = static_cast<int32_t>( Rand::Get( 0, static_cast<uint32_t>( 2 * rgbaShakeX ) ) ) - rgbaShakeX;
             const int32_t offsetY = static_cast<int32_t>( Rand::Get( 0, static_cast<uint32_t>( 2 * rgbaShakeY ) ) ) - rgbaShakeY;
 
-            fheroes2::CopyRGBA( spriteReddishRGBA, std::max<int32_t>( 0, -offsetX ), std::max<int32_t>( 0, -offsetY ),
-                                _mainSurfaceRGBA, std::max<int32_t>( 0, offsetX ), std::max<int32_t>( 0, offsetY ),
-                                rgbaW - std::abs( offsetX ), rgbaH - std::abs( offsetY ) );
+            fheroes2::CopyRGBA( spriteReddishRGBA, std::max<int32_t>( 0, -offsetX ), std::max<int32_t>( 0, -offsetY ), display.screenRGBA(),
+                                physOX + std::max<int32_t>( 0, offsetX ), physOY + std::max<int32_t>( 0, offsetY ), rgbaW - std::abs( offsetX ),
+                                rgbaH - std::abs( offsetY ) );
 
             RedrawPartialFinish();
         }
@@ -7005,13 +6949,17 @@ void Battle::Interface::redrawActionEarthquakeSpellPart1( const HeroBase & caste
         settings.setBattleShowTurnOrder( true );
     }
 
-    // Capture the RGBA battlefield for earthquake shaking.
-    const int32_t rgbaW = _mainSurfaceRGBA.width();
-    const int32_t rgbaH = _mainSurfaceRGBA.height();
+    // Capture the RGBA battlefield from Display::screenRGBA() for earthquake shaking.
+    fheroes2::Display & dsp = fheroes2::Display::instance();
+    const float physicalScale = dsp.getPhysicalScale();
+    const int32_t physOX = static_cast<int32_t>( static_cast<float>( _interfacePosition.x ) * physicalScale );
+    const int32_t physOY = static_cast<int32_t>( static_cast<float>( _interfacePosition.y ) * physicalScale );
+    const int32_t rgbaW = _battleAreaWidthPx;
+    const int32_t rgbaH = _battleAreaHeightPx;
 
     fheroes2::RGBAImage battlefieldRGBA;
     battlefieldRGBA.resize( rgbaW, rgbaH );
-    fheroes2::CopyRGBA( _mainSurfaceRGBA, 0, 0, battlefieldRGBA, 0, 0, rgbaW, rgbaH );
+    fheroes2::CopyRGBA( dsp.screenRGBA(), physOX, physOY, battlefieldRGBA, 0, 0, rgbaW, rgbaH );
 
     _currentUnit = nullptr;
     AudioManager::PlaySound( M82::ERTHQUAK );
@@ -7019,12 +6967,12 @@ void Battle::Interface::redrawActionEarthquakeSpellPart1( const HeroBase & caste
     LocalEvent & le = LocalEvent::Get();
     uint32_t frame = 0;
 
-    const int32_t rgbaShakeX = static_cast<int32_t>( 14.0f * _rgbaScale );
-    const int32_t rgbaShakeY = static_cast<int32_t>( 11.0f * _rgbaScale );
+    const int32_t rgbaShakeX = static_cast<int32_t>( 14.0f * physicalScale );
+    const int32_t rgbaShakeY = static_cast<int32_t>( 11.0f * physicalScale );
 
     Game::passAnimationDelay( Game::BATTLE_SPELL_DELAY );
 
-    // Draw earthquake animation by shaking the RGBA surface.
+    // Draw earthquake animation by shaking the screenRGBA battle region.
     while ( le.HandleEvents( Game::isDelayNeeded( { Game::BATTLE_SPELL_DELAY } ) ) && frame < 18 ) {
         CheckGlobalEvents( le );
 
@@ -7032,9 +6980,9 @@ void Battle::Interface::redrawActionEarthquakeSpellPart1( const HeroBase & caste
             const int32_t offsetX = static_cast<int32_t>( Rand::Get( 0, static_cast<uint32_t>( 2 * rgbaShakeX ) ) ) - rgbaShakeX;
             const int32_t offsetY = static_cast<int32_t>( Rand::Get( 0, static_cast<uint32_t>( 2 * rgbaShakeY ) ) ) - rgbaShakeY;
 
-            fheroes2::CopyRGBA( battlefieldRGBA, std::max<int32_t>( 0, -offsetX ), std::max<int32_t>( 0, -offsetY ),
-                                _mainSurfaceRGBA, std::max<int32_t>( 0, offsetX ), std::max<int32_t>( 0, offsetY ),
-                                rgbaW - std::abs( offsetX ), rgbaH - std::abs( offsetY ) );
+            fheroes2::CopyRGBA( battlefieldRGBA, std::max<int32_t>( 0, -offsetX ), std::max<int32_t>( 0, -offsetY ), dsp.screenRGBA(),
+                                physOX + std::max<int32_t>( 0, offsetX ), physOY + std::max<int32_t>( 0, offsetY ), rgbaW - std::abs( offsetX ),
+                                rgbaH - std::abs( offsetY ) );
 
             RedrawPartialFinish();
 

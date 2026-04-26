@@ -353,7 +353,7 @@ int main( int argc, char ** argv )
 
         // Load palette.
         fheroes2::setGamePalette( AGG::getDataFromAggFile( "KB.PAL", false ) );
-        const fheroes2::Display & display = fheroes2::Display::instance();
+        fheroes2::Display & display = fheroes2::Display::instance();
         display.changePalette( nullptr, true );
 
         // Update the fonts according to the game language set in the configuration.

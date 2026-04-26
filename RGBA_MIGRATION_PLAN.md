@@ -1,187 +1,178 @@
-# Screen-level RGBA composition — final state
+# Display = single RGBA surface — final state
 
 ## Why
 
-Custom monster portraits (Thor, Succubus, Dachshund, …) are hi-res PNGs that
-can't survive the engine's 256-colour palette path. They used to be drawn
-via `Display::addRGBAOverlay`, an SDL-texture overlay painted on top of
-everything — which produced a long tail of Z-order bugs: overlays bleeding
-through modals, overlays getting wiped by ad-hoc `ClearAllCustomMonsterRGBAOverlays`
-calls, multi-slot portraits stomping each other, portraits lingering after
-dismissal, casualty dialog masking, etc.
+Custom monster portraits (Thor, Succubus, Azure Dragon, …) are hi-res PNGs that
+can't survive the engine's 256-colour palette path. Earlier iterations layered
+SDL overlay textures, then a per-scope RGBA buffer-paint pool with a forwarding
+stack, then a per-frame palette mirror — each iteration produced its own long
+tail of Z-order bugs (overlays bleeding through modals, buffer paints surviving
+into the wrong scope, palette content over-painting hi-res portraits, etc.).
 
-The system now works like `Battle::Interface` already did for its main
-surface, but extended to every dialog and to the adventure map:
-
-1. **Each scope owns one RGBA surface** sized to its viewport, allocated at
-   **physical display resolution** (not game resolution — otherwise hi-res
-   PNGs downscale twice).
-2. **A forwarding frame is pushed onto a stack** so palette writes inside
-   the scope convert indexed → RGBA into that surface at render time.
-3. **Hi-res portraits direct-paint** into the active surface via
-   `registerRGBABufferPaint`, applied **after** the forwarding pass so they
-   survive palette repaints.
-4. **One `addRGBAOverlay(rgba, …)`** at the root composites the surface
-   onto the screen at physical resolution.
-5. **Modals and battle stack their own surfaces on top** via the forwarding
-   stack; when popped, their surface teardown cleans up everything it
-   registered, parent resumes.
+The current rendering pipeline is a pure painter algorithm into a single
+`Display`-owned RGBA framebuffer at physical resolution. There is no SDL
+overlay, no per-scope target, no buffer-paint pool, no forwarding stack,
+no scope-key filtering. **Order of execution = order of pixel writes.** Every
+frame ends with one `SDL_UpdateTexture` + `SDL_RenderCopy`.
 
 ## How it works
 
-### Forwarding stack — `src/engine/image.{h,cpp}`
+`Display` owns `_screenRGBA` — a screen-sized `RGBAImage` at physical pixel
+resolution (`gameW * physicalScale × gameH * physicalScale`), allocated by
+`setResolution` / `resetRenderer`.
 
-- `pushDialogForwarding(target, offsetX, offsetY, scale)`: push a frame.
-  `scale` is the physical-pixel-per-game-pixel ratio; `target` is an
-  `RGBAImage` sized `(gameW × scale, gameH × scale)`.
-- `popDialogForwarding()`: pop the top frame.
-- `getActiveDialogForwarding()`: read the top frame.
-- `getDialogFwdDepth()`: stack size; used to tag overlays at registration.
-- `suspendDialogForwarding()` / `resumeDialogForwarding()`: gate the
-  forwarding pass **without touching the stack**. Used by battle's fade
-  transitions so the adventure-map parent frame stays registered underneath
-  battle's frame while palette pixels are alpha-blended.
-- `ScopedDialogForwarding` RAII helper: push on construct, pop on destruct.
+Every drawing primitive that writes to `Image::_data` (`Blit`, `Fill`,
+`AlphaBlit`, `ApplyPalette`, `ApplyAlpha`, `Copy`, `Flip`, `DrawLine`,
+`DrawRect`, `Resize`, `SubpixelResize`, `SetPixel`, `Transpose`,
+`ReplaceColorId{,ByTransformId}`, `addGradientShadow`,
+`CreateDitheringTransition`, …) ends with a call to `out._notifyWrite(roi)`.
 
-The legacy `setDialogForwarding` / `clearDialogForwarding` shims are still
-present for historical compatibility but no longer have active callers —
-everything uses push/pop.
+`Image` carries an optional `_onWrite` hook. Sprites and intermediate buffers
+have a null hook (one branch per write). `Display` installs a hook in
+`setResolution` that mirrors the just-written rect from indexed → `_screenRGBA`
+at physical scale. Index 0 is skipped (legacy palette-zero convention; harmless
+in the new model).
 
-### Paint pool — `src/engine/screen.{h,cpp}`
+Hi-res RGBA paints (`renderHiResMonsterPortrait`, battle's terrain/units, spell
+effects) bypass the indexed buffer entirely and write directly to
+`Display::screenRGBA()` at absolute physical-pixel coords. They land *after*
+the palette mirror because the widget code calls them after the palette
+draw — the painter algorithm guarantees correct Z-order by construction.
 
-- `registerRGBABufferPaint(src, dst, gameX, gameY, dstX, dstY, dstW, dstH, flip, alpha)`:
-  persistent post-forwarding paint. Identity is `(src, dst, gameX, gameY)`
-  so re-registration dedupes.
-- `removeRGBABufferPaintAt(src, gameX, gameY)`: remove by widget identity.
-- `removeRGBABufferPaintsForTarget(dst)`: remove everything targeting a
-  surface — used by each host's RAII on teardown.
-- `removeRGBABufferPaintsInRect(dst, gameX, gameY, gameW, gameH)`: remove
-  paints whose game-space coord falls in the rect — used by widgets at
-  redraw time to wipe stale paints from the previous frame's troop list.
-- The render loop drains `_rgbaBufferPaints` **after** the palette→RGBA
-  forwarding loop so direct-paints aren't clobbered by the palette mirror.
+`Display::render(roi)` is then trivially:
 
-### Overlay render — `_renderRGBAOverlays` in `src/engine/screen.cpp`
+1. Optional pre-processing palette swap.
+2. Software cursor — last paint, drawn directly into `_screenRGBA` via
+   `BlitIndexedToRGBAScaled`.
+3. Engine `renderScreenRGBA` — one `SDL_UpdateTexture(_screenTexture)` +
+   `SDL_RenderCopy` letterboxed to actual output, then `SDL_RenderPresent`.
 
-- Overlays are tagged at registration with `depth` (stack size) and
-  `shadowsParent` (bool).
-- Find the deepest overlay with `shadowsParent=true` (if any). Skip every
-  overlay with shallower depth.
-- Default is `shadowsParent=false` — dialogs compose naturally on top of
-  their parent, so the parent's content remains visible outside the dialog
-  rect.
-- Only `Battle::Interface` sets `shadowsParent=true` (combat is a
-  fullscreen takeover; the shallower `screenRGBA` would otherwise obscure
-  palette UI battle draws outside `_mainSurfaceRGBA`'s footprint).
+### Files
 
-### Helper — `src/fheroes2/agg/agg_image.{h,cpp}`
+- `src/engine/image.{h,cpp}` — `Image::_onWrite` (`std::function<void(int32_t,int32_t,int32_t,int32_t)>`),
+  `_setWriteHook`, `_notifyWrite`. Every primitive ends with `out._notifyWrite(roi)`.
+- `src/engine/screen.{h,cpp}` — `Display::_screenRGBA`, `Display::render`,
+  `mirrorIndexedRectToScreenRGBA` (the hook lambda body),
+  `paintPaletteToScreenRGBA` (used only by `changePalette` for color cycling
+  re-mirror — not per frame).
+- `src/fheroes2/agg/agg_image.cpp` — `renderHiResMonsterPortrait` direct-blits
+  the portrait into `Display::screenRGBA()`.
+- `src/fheroes2/battle/battle_interface.{h,cpp}` — battle writes the scene
+  directly into `Display::screenRGBA()` via `_blitOnSurface` /
+  `_alphaBlitOnSurface` / `_copyOnSurface` / `_copyFullSurface` (offset by
+  `_interfacePosition`). `_battleAreaWidthPx` / `_battleAreaHeightPx` cache
+  the battlefield rect in physical pixels for the spell effects (DimRGBA,
+  DeathWave, HolyShout, Armageddon, Earthquake, …).
 
-`renderHiResMonsterPortrait(portrait, gameX, gameY, gameWidth, flip, alpha)`:
-the one entry point every caller uses. It reads the active forwarding
-frame, computes `(dstX, dstY, dstW, dstH)` in the target surface's
-coordinate system (scaled by the frame's physical scale), and registers a
-buffer paint. **No fallback** — if no frame is active the call is a silent
-no-op.
+### Color cycling
 
-### Physical-resolution RGBA — `Display::getPhysicalScale()`
+`Display::changePalette` calls `paintPaletteToScreenRGBA(*this)` once per
+palette change to re-mirror the indexed buffer under the new palette table.
+Cycling fires roughly every 150 ms (`AGG::ApplyICNCycling`), much less often
+than per-frame, so the cost is amortised vs. the old per-frame full mirror.
 
-Every dialog host asks `display.getPhysicalScale()` to size its RGBA.
-Buffer paints then land in the surface at physical-pixel dimensions, so
-`BlitRGBAScaled` downscales hi-res source (e.g. ~460 px) directly to the
-physical target (~300 px on a 3× display) instead of hitting an
-intermediate game-space downscale (~100 px) followed by an SDL upscale.
+### Fade transitions
 
-## Who owns a forwarding frame
+`fadeDisplay` in `ui_tool.cpp` calls `Fill` + `ApplyAlpha` per frame; each
+call hits the hook and `_screenRGBA` updates incrementally. Battle's fade-in
+/ fade-out walks frames calling `ApplyAlpha` on the indexed buffer — same
+behaviour. No `suspendDialogForwarding` shenanigans needed; the fade is just
+palette writes that mirror naturally.
 
-| Scope | File | RGBA | Guard |
-|---|---|---|---|
-| Adventure map session | `src/fheroes2/game/game_startgame.cpp` | `screenRGBA` (full screen) | `AdventureMapForwardingGuard` |
-| Castle dialog | `src/fheroes2/castle/castle_dialog.cpp` | `dialogRGBA` | `CastleDialogForwardingGuard` |
-| Kingdom Overview | `src/fheroes2/kingdom/kingdom_overview.cpp` | `kingdomRGBA` | `KingdomOverviewForwardingGuard` |
-| Hero dialog | `src/fheroes2/heroes/heroes_dialog.cpp` | `dialogRGBA` | `HeroDialogForwardingGuard` |
-| Hero Meeting | `src/fheroes2/heroes/heroes_meeting.cpp` | `meetingRGBA` | `MeetingForwardingGuard` |
-| Army Info | `src/fheroes2/dialog/dialog_armyinfo.cpp` | `dialogRGBA` | `DialogSurfaceGuard` |
-| Select Count | `src/fheroes2/dialog/dialog_selectcount.cpp` | `dialogRGBA` | `DialogSurfaceGuard` |
-| Recruit Monster | `src/fheroes2/dialog/dialog_recruit.cpp` | `dialogRGBA` | `DialogSurfaceGuard` |
-| Select Monster | `src/fheroes2/dialog/dialog_selectitems.cpp` | `dialogRGBA` | `DialogSurfaceGuard` |
-| Battle::Only setup | `src/fheroes2/battle/battle_only.cpp` | `setupRGBA` | `BattleOnlyForwardingGuard` |
-| Battle | `src/fheroes2/battle/battle_interface.cpp` | `_mainSurfaceRGBA` (`shadowsParent=true`) | — (ctor push, dtor pop) |
-| Battle summary | `src/fheroes2/battle/battle_dialogs.cpp` | `summaryRGBA` | `SummaryForwardingGuard` |
-| Editor castle details | `src/fheroes2/editor/editor_castle_details_window.cpp` | `dialogRGBA` | `CastleDetailsForwardingGuard` |
+### Cursor
 
-Every guard's destructor does: `popDialogForwarding` +
-`removeRGBABufferPaintsForTarget(rgba)` + `removeRGBAOverlay(rgba)`.
+The software cursor is direct-blitted into `_screenRGBA` last, in
+`Display::render`. The cursor area is overwritten by palette mirrors on the
+next frame's redraw, so no backup/restore is needed — same model as before,
+simpler implementation.
 
-## Who is a portrait caller
+## What this deleted
 
-All use `renderHiResMonsterPortrait`:
+The accumulated workarounds, in one block:
 
-- `ArmyBar::RedrawItem` (both mini- and full-sprite branches)
-- `drawMiniMonsters` (compact status-panel path + non-compact dialog path)
+- The `_rgbaBufferPaints` pool and the `RGBABufferPaint` struct on `Display`,
+  along with `registerRGBABufferPaint`, `removeRGBABufferPaintAt`,
+  `removeRGBABufferPaintsForScope`, `removeRGBABufferPaintsForTarget`,
+  `removeRGBABufferPaintsInRect`.
+- `Image::DialogForwardingFrame`, the forwarding stack
+  (`pushDialogForwarding` / `popDialogForwarding`,
+  `getActiveDialogForwarding`, `getDialogFwdDepth`, `getDialogFwdStack`,
+  `setDialogForwarding`, `clearDialogForwarding`, `suspendDialogForwarding`,
+  `resumeDialogForwarding`), the cached top-of-stack
+  (`_dialogFwdTarget`, `_dialogFwdOffsetX/Y`, `_dialogFwdScale`,
+  `_dialogFwdSuspendDepth`), and `ScopedDialogForwarding`.
+- All 13 forwarding-guard structs (`AdventureMapForwardingGuard` in
+  `game_startgame.cpp`; `CastleDialogForwardingGuard` in `castle_dialog.cpp`;
+  `KingdomOverviewForwardingGuard` in `kingdom_overview.cpp`;
+  `MeetingForwardingGuard` in `heroes_meeting.cpp`;
+  `HeroDialogForwardingGuard` in `heroes_dialog.cpp`;
+  `DialogSurfaceGuard` ×4 in `dialog_armyinfo.cpp`, `dialog_recruit.cpp`,
+  `dialog_selectcount.cpp`, `dialog_selectitems.cpp`;
+  `BattleOnlyForwardingGuard` in `battle_only.cpp`;
+  `SummaryForwardingGuard` in `battle_dialogs.cpp`;
+  `CastleDetailsForwardingGuard` in `editor_castle_details_window.cpp`).
+- The per-frame `paintPaletteToScreenRGBA` call from `Display::render`
+  (the function itself stays for the `changePalette` re-mirror).
+- Battle's `_mainSurfaceRGBA` and `_rgbaScale` members and the
+  `_syncIndexedRegionToRGBA` helper — battle now writes directly to
+  `Display::screenRGBA()` at offset.
+- `Battle::Interface::ctor`'s `pushDialogForwarding` and
+  `~Interface`'s `popDialogForwarding` / `removeRGBABufferPaintsForTarget`.
+- The `Fill(display, _interfacePosition.x, …, 0)` clear in
+  `redrawPreRender` (it was a transparency gate for the legacy per-frame
+  palette mirror — meaningless in the new model).
+- All `removeRGBABufferPaintsInRect` / `ForTarget` / `ForScope` call sites
+  scattered across widgets.
+
+## Hi-res portrait callers
+
+All call `renderHiResMonsterPortrait`, which direct-blits to
+`Display::screenRGBA()` at absolute physical-pixel coords:
+
+- `ArmyBar::RedrawItem`
+- `drawMiniMonsters` (compact + non-compact branches)
 - `Battle::TurnOrder::addCustomMonsterOverlays`
-- `Dialog::ArmyInfo::DrawMonster` (animated-frame cycle)
-- `MonsterDialogElement::draw` (used by Select Count / Recruit / …)
+- `Dialog::ArmyInfo::DrawMonster`
+- `MonsterDialogElement::draw` (Select Count / Recruit / …)
 - `SelectEnumMonster::RedrawItem`
-
-## Per-widget stale-paint cleanup
-
-Each widget that redraws with changing content wipes stale paints before
-re-registering, scoped to its own rect on the active forwarding target:
-
-- `ArmyBar::Redraw` → `GetArea()` (bar bounding box)
-- `drawMiniMonsters` → the row rect it's about to render into
-- `SelectEnumMonster::Redraw` → `rtAreaItems` (scroll area)
-- `Dialog::ArmyInfo::DrawMonster` → the full preview `roi` (animation
-  frames have varying sprite sizes; rect-scoped clear handles them)
-- `Battle::redrawPreRender` → `removeRGBABufferPaintsForTarget(&_mainSurfaceRGBA)`
-  before re-registering turn-order paints (positions shift between frames).
 
 ## Key gotchas
 
-- **Always use an RAII guard.** A manual push/pop with any early return
-  between them is a crash risk: the next `Display::render()` dereferences
-  a dangling `RGBAImage*` on the stack.
-- **Forwarding loop only overwrites RGBA where palette > 0.** Index-0
-  pixels don't forward; the RGBA surface retains whatever was there. For
-  most widgets this is invisible because the palette is opaque everywhere
-  they care about, but if a widget clears its slot to index 0 and relies
-  on the RGBA to show through, it needs to re-register or explicitly clear.
-- **Dialog host install goes after early-return branches.** Castle dialog
-  chains to a sibling `OpenDialog` on construction / mage-guild early
-  returns — those must not leave a forwarding frame on the stack. Install
-  the guard AFTER those branches so it only covers the main event loop.
-- **Battle sub-dialogs need their own frame.** If a dialog opens during
-  battle and does not push its own forwarding frame, buffer paints
-  targeting `_mainSurfaceRGBA` (turn-order portraits, etc.) will re-apply
-  on top of the dialog content each render. `DialogBattleSummary` pushes
-  its own `summaryRGBA` for this reason; any new battle sub-dialog that
-  shows UI over `_mainSurfaceRGBA` must do the same.
-- **Each animation frame of a sprite is a different RGBAImage src pointer.**
-  `(src, dst, gameX, gameY)` dedupe does not catch them. Use
-  `removeRGBABufferPaintsInRect` at the start of each redraw over the
-  animation rect, not per-frame registration.
+- **Order of widget code matters.** Hi-res RGBA paints land on whatever was
+  last written. Widget code MUST draw the palette art *first* (so the hook
+  mirrors it) and call `renderHiResMonsterPortrait` *after*. All current
+  callers do this.
+- **`Image::_onWrite` lifetime.** The hook is set on `Display::instance()`
+  only, in `setResolution`. Sprites and intermediate buffers never get a
+  hook (one branch per write — no allocation cost).
+- **Battle area dimensions are cached at construction.**
+  `_battleAreaWidthPx` / `_battleAreaHeightPx` capture the battlefield rect
+  in physical pixels. Spell effects (DimRGBA, DeathWave, HolyShout, …) use
+  these and `(_interfacePosition.x * scale, _interfacePosition.y * scale)`
+  to address the right sub-rect of `_screenRGBA`.
 
-## Open / deferred
+## Verification
 
-- **`BlitRGBAScaled` is still nearest-neighbour.** Since the physical-scale
-  fix the downscale ratio is small enough (~1.5×) that this isn't
-  obviously bad. A box-average version was tried and made pixel-perfect
-  PNG edges muddy; reverted. If quality ever matters more than perf,
-  options are bilinear, Lanczos, or pre-cached downscaled portraits per
-  canonical size.
-- **`quickinfo` popups** still don't push their own forwarding frame.
-  They work today because the non-compact `drawMiniMonsters` branch
-  direct-paints into whatever parent frame is active (adventure map
-  `screenRGBA`), and a rect-scoped clear at the start of `drawMiniMonsters`
-  handles stale paints. The inconsistency with other modals is cosmetic —
-  if you touch `dialog_quickinfo.cpp` later, consider giving it a
-  `QuickInfoForwardingGuard` for symmetry.
-- **Legacy `setDialogForwarding` / `clearDialogForwarding`** have no active
-  callers post-migration. Safe to delete from `image.h` / `image.cpp` if
-  anyone wants the cleanup.
-- **Validate** in play: hero-on-tile status-panel portrait bug
-  ("missing after certain transitions") — believed fixed, but the whole
-  transition chain would be worth a targeted test.
+1. **Build clean.** Debug x64 MSBuild succeeds without errors.
+2. **Adventure map.** Status panel custom monsters render once, no flicker.
+3. **Open every dialog with custom monsters.** Castle dialog, hero dialog,
+   hero meeting, kingdom overview, recruit, select count, select monster,
+   army info, editor castle details. Open every sub-modal reachable from
+   each (right-click slot → Army Info; left-click slot → Select Count;
+   add/select monster → Select Monster list). Drag/swap slots, split
+   stacks, scroll lists, close and reopen.
+4. **Battle.** Enter combat with custom monsters; turn-order portraits,
+   hi-res unit sprites, fade in/out, spell effects (lightning,
+   death wave, holy shout, armageddon, earthquake, cold ring) all work.
+5. **Color cycling.** Gold/water/lava palette cycles update on screen.
+6. **Battle ↔ adventure map round trip.** Status panel portraits
+   re-populate after combat.
+7. **Cursor on hi-res monsters.** Hover a custom-monster portrait —
+   cursor draws on top, pixel-for-pixel.
+8. **Letterbox / pillarbox.** Resize window to 16:9 with a 4:3 game;
+   black bars remain solid black.
+9. **Single SDL upload per frame.** Step `Display::render` in a debugger;
+   confirm one `SDL_UpdateTexture` + one `SDL_RenderCopy` per frame.
 
 ## Build / debug quick-ref
 
@@ -201,36 +192,3 @@ VS Code:
 When the debug exe crashes, the debugger breaks on the fault. Copy the top
 ~10 frames of the Call Stack panel + locals on the top frame — usually
 enough to localize.
-
-## Testing recipes
-
-For each screen containing a custom-monster army (Thor / Succubus /
-Dachshund):
-
-1. Open the screen.
-2. Open every sub-modal reachable from it:
-   - Right-click slot → ArmyInfo (animates, check no smearing)
-   - Left-click slot → SelectCount (portrait crisp, parent visible around dialog)
-   - Add / select monster → Select Monster list (scrolling doesn't leave ghosts)
-   - Recruit flow if applicable
-3. Dismiss monsters in various orders, including all slots.
-4. Drag / swap between slots in one bar and between two bars on screens
-   that host multiple (hero meeting, castle dialog).
-5. Split stacks. Retain split.
-6. Close and re-open the screen.
-7. Adventure map: scroll, move hero, enter combat, close summary dialog,
-   return to map. Status panel portraits must re-populate for the current
-   hero.
-8. Battle: open turn order with custom monsters, open battle settings /
-   spell book / surrender / retreat, close, resume combat.
-
-Watch for:
-- Portraits disappearing (missing register — usually a widget that needs a
-  `removeRGBABufferPaintsInRect` + re-register pattern).
-- Portraits lingering where the unit no longer is (missing remove, or the
-  widget's rect is too narrow for the clear).
-- Portraits bleeding through a modal (modal didn't push its own frame, so
-  parent's buffer paints re-apply).
-- Adventure-map status-panel ghosts on focus change.
-- Crashes on dialog exit paths — reach for the debug build; unbalanced
-  push/pop is the usual cause.

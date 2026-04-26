@@ -281,9 +281,9 @@ namespace Battle
             _restorer.reset();
         }
 
-        // Re-registers hi-res RGBA overlays for custom monsters in the turn order. Call this from
-        // the parent interface AFTER clearRGBAOverlays()+addMainSurface overlay, otherwise the
-        // central overlay reset would immediately drop our turn-order overlays.
+        // Direct-blits hi-res custom-monster portraits onto Display::screenRGBA() at absolute
+        // coords. Order of execution is order of pixel writes — the WriteHook has already
+        // mirrored the palette MONH at each slot, so these RGBA paints land on top.
         void addCustomMonsterOverlays() const;
 
     private:
@@ -643,11 +643,9 @@ namespace Battle
             }
         };
 
-        // Convert a region from an indexed Image to _mainSurfaceRGBA.
-        // (srcX, srcY) is the top-left in the source image; (dstX, dstY) is the top-left in game-pixel space for the RGBA surface.
-        void _syncIndexedRegionToRGBA( const fheroes2::Image & src, int32_t srcX, int32_t srcY, int32_t w, int32_t h, int32_t dstX, int32_t dstY );
-
-        // Central wrappers that draw to _mainSurfaceRGBA.
+        // Central wrappers that draw battle-local pixels into Display::screenRGBA() at physical
+        // resolution. (outX/outY) are battle-local game-pixel coords; the helpers add
+        // _interfacePosition.{x,y} to land at the correct absolute screen position.
         void _blitOnSurface( const fheroes2::Image & in, int32_t outX, int32_t outY, bool flip = false );
         void _alphaBlitOnSurface( const fheroes2::Image & in, int32_t outX, int32_t outY, uint8_t alpha, bool flip = false );
         void _alphaBlitOnSurface( const fheroes2::Image & in, int32_t inX, int32_t inY, int32_t outX, int32_t outY, int32_t w, int32_t h, uint8_t alpha,
@@ -658,9 +656,11 @@ namespace Battle
         // High-res RGBA animation frames for custom monsters are loaded and cached by
         // fheroes2::AGG::GetRGBACustomFrames().
 
-        // RGBA composite at physical screen resolution for the battle area.
-        fheroes2::RGBAImage _mainSurfaceRGBA;
-        float _rgbaScale{ 1.0f };  // game pixels → _mainSurfaceRGBA pixels
+        // Battle area dimensions cached at construction time. The battle scene occupies
+        // (_interfacePosition.x, _interfacePosition.y, _battleAreaWidthPx, _battleAreaHeightPx)
+        // in PHYSICAL pixels of Display::screenRGBA(). Excludes the lower status-log strip.
+        int32_t _battleAreaWidthPx{ 0 };
+        int32_t _battleAreaHeightPx{ 0 };
 
         // Cache for palette-to-RGBA converted sprites. Key = (icnId << 32) | frameIndex.
         std::map<uint64_t, fheroes2::RGBAImage> _rgbaSpriteCache;

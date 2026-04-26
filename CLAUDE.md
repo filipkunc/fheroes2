@@ -89,20 +89,32 @@ static const RGBACustomEntry registry[] = {
 ```
 Add a line per new monster with hi-res PNGs. Frame 0 must exist (a 1×1 transparent placeholder is fine) — the loader probes it to detect "are these sprites available at all".
 
-The hi-res rendering bypasses palette quantisation by drawing PNG frames via `Display::addRGBAOverlay` on top of the indexed buffer. Consumers that already wire this up:
+### Painter compositor (single Display-owned RGBA surface)
+
+`Display` owns `_screenRGBA` at physical resolution. Every drawing primitive on `Display` (`Blit`, `Fill`, `AlphaBlit`, `ApplyPalette`, `ApplyAlpha`, `Copy`, `Flip`, `DrawLine`, `DrawRect`, `Resize`, `SubpixelResize`, `SetPixel`, `Transpose`, `ReplaceColorId{,ByTransformId}`, `addGradientShadow`, `CreateDitheringTransition`, …) ends with `out._notifyWrite(roi)`. The hook installed by `Display::setResolution` mirrors the just-written rect from indexed → `_screenRGBA` at physical scale. Sprites and intermediate buffers leave the hook null (one branch per write).
+
+Hi-res RGBA paints (`renderHiResMonsterPortrait`, battle scene, spell effects) bypass the indexed buffer and write directly to `Display::screenRGBA()` at absolute physical-pixel coords, *after* the palette draws above them — order of execution is order of pixel writes.
+
+`Display::render` is just: cursor blit + one `SDL_UpdateTexture` + `SDL_RenderCopy`.
+
+`Display::changePalette` triggers a full re-mirror of the indexed buffer under the new palette table — color cycling animations (gold/water/lava) update on screen.
+
+### Hi-res portrait callers
+
+All call `renderHiResMonsterPortrait` (in `agg_image.cpp`), which direct-blits to `Display::screenRGBA()`:
 - Battle main sprite (`RedrawTroopSprite`)
-- Battle turn order (`TurnOrder::addCustomMonsterOverlays`, called from `redrawPreRender` *after* the main-surface re-registration — otherwise `clearRGBAOverlays` wipes the overlays)
+- Battle turn order (`TurnOrder::addCustomMonsterOverlays`)
 - Army info dialog (`DrawMonster` in `dialog_armyinfo.cpp`)
 - Set Count / Monster Selector dialogs via `MonsterDialogElement::draw` (uses `AGG::GetRGBACustomPortrait` — bbox-cropped frame 1, not the full PNG, so the figure fills the portrait rect)
-- Select Monster list (`SelectEnumMonster::Redraw` + `RedrawItem`)
+- Select Monster list (`SelectEnumMonster::RedrawItem`)
 - Army bar in both mini-sprite and full-portrait branches
 - Adventure-map status panel (compact `drawMiniMonsters` path)
 
-Overlay cleanup:
-- `AGG::ClearAllCustomMonsterRGBAOverlays()` removes only overlays pointing into custom-monster caches; safe to call without wiping battle's `_mainSurfaceRGBA` overlay.
-- `Display::removeRGBAOverlay(image)` surgically removes overlays matching a single image pointer (for per-draw redraw cycles that would otherwise accumulate).
-- `ArmyBar::~ArmyBar()` calls `ClearAllCustomMonsterRGBAOverlays()` so any dialog containing an ArmyBar auto-cleans on close. Other dialogs (`ArmyInfo`, `SelectCount`, `selectMonster`) explicitly call it at their exit points.
-- `renderMonsterFrame` takes `includePortrait = true` default — callers that will paint the portrait via RGBA overlay should pass `false` to skip the now-invisible palette MONH blit.
+The widget code MUST draw the palette art *first* (so the WriteHook mirrors it into `_screenRGBA`) and call `renderHiResMonsterPortrait` *after* — Z-order is correct by construction. No buffer-paint pool, no forwarding stack, no scope keys, no per-frame composition step.
+
+### Battle's RGBA writes
+
+`Battle::Interface` writes the battle scene directly to `Display::screenRGBA()` via `_blitOnSurface` / `_alphaBlitOnSurface` / `_copyOnSurface` / `_copyFullSurface` (offset by `_interfacePosition.{x,y}`). `_battleAreaWidthPx` / `_battleAreaHeightPx` cache the battlefield rect in physical pixels for spell effects (DimRGBA, DeathWave, HolyShout, Armageddon, Earthquake, …) that operate on a sub-rect of `_screenRGBA`. There is no `_mainSurfaceRGBA` member or `_rgbaScale` — battle uses `Display::instance().getPhysicalScale()` directly.
 
 Indexed-fallback path (`agg_image.cpp::writeIndexedSpriteFromRGBA`) uses **alpha-weighted box filter** averaging before `GetColorId` palette quantisation — preserves dramatically more detail than the engine's default nearest-neighbour `Resize` at large downscale ratios.
 

@@ -489,35 +489,6 @@ bool Battle::Arena::DialogBattleSummary( const Result & res, const std::vector<A
 
     fheroes2::StandardWindow background( bsTextWidth + 32, 424, true, display );
 
-    // Screen-level RGBA composition: this dialog opens on top of Battle::Interface, which has
-    // battle's _mainSurfaceRGBA overlay registered and custom-monster turn-order portraits
-    // direct-painted into it. Without our own forwarding frame, dialog palette writes forward
-    // into _mainSurfaceRGBA too, then the turn-order post-forwarding buffer paints re-apply
-    // over the dialog content — the turn-order Dachshunds bleed through the victory screen.
-    //
-    // Pushing our own frame makes the dialog's RGBA the deepest scope: overlay depth
-    // filtering in Display::render() hides battle's _mainSurfaceRGBA while this dialog is
-    // up, and our forwarding surface carries the dialog's own palette content without any
-    // stale buffer paints from battle underneath.
-    const fheroes2::Rect summaryTotal = background.totalArea();
-    const float rgbaScale = display.getPhysicalScale();
-    fheroes2::RGBAImage summaryRGBA( static_cast<int32_t>( static_cast<float>( summaryTotal.width ) * rgbaScale ),
-                                     static_cast<int32_t>( static_cast<float>( summaryTotal.height ) * rgbaScale ) );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, summaryTotal.x, summaryTotal.y, summaryTotal.width, summaryTotal.height, summaryRGBA, 0, 0, rgbaScale );
-    display.addRGBAOverlay( summaryRGBA, summaryTotal.x, summaryTotal.y, summaryTotal.width );
-    fheroes2::Image::pushDialogForwarding( &summaryRGBA, summaryTotal.x, summaryTotal.y, rgbaScale );
-
-    struct SummaryForwardingGuard
-    {
-        fheroes2::RGBAImage * rgba;
-        ~SummaryForwardingGuard()
-        {
-            fheroes2::Image::popDialogForwarding();
-            fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
-            fheroes2::Display::instance().removeRGBAOverlay( rgba );
-        }
-    } summaryForwardingGuard{ &summaryRGBA };
-
     const bool isEvilInterface = Settings::Get().isEvilInterfaceEnabled();
 
     const fheroes2::Sprite & originalBorderImage = fheroes2::AGG::GetICN( isEvilInterface ? ICN::WINLOSEE : ICN::WINLOSE, 0 );

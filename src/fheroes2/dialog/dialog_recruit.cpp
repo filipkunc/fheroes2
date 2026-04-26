@@ -279,35 +279,6 @@ Troop Dialog::RecruitMonster( const Monster & monster0, const uint32_t available
 
     const fheroes2::Rect windowActiveArea( window.activeArea() );
 
-    // Mirror battle's RGBA compositing so overlays from the screen behind this modal
-    // (typically a castle garrison ArmyBar) don't bleed through its frame. We snapshot
-    // the dialog's current palette content into a local RGBA buffer, register it as
-    // its own overlay (renders AFTER any previously-registered overlays, masking them
-    // in its rect), and live-forward subsequent palette writes so partial redraws
-    // stay in sync. The dialog's hi-res monster overlays register AFTER this buffer
-    // and therefore render on top at full fidelity.
-    const float rgbaScale = display.getPhysicalScale();
-    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( roi.width ) * rgbaScale ),
-                                    static_cast<int32_t>( static_cast<float>( roi.height ) * rgbaScale ) );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, roi.x, roi.y, roi.width, roi.height, dialogRGBA, 0, 0, rgbaScale );
-    display.addRGBAOverlay( dialogRGBA, roi.x, roi.y, roi.width );
-
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, roi.x, roi.y, rgbaScale );
-
-    // RAII guard: any early return out of this function pops the forwarding frame and drops
-    // dialogRGBA's overlay / buffer-paint registrations before the RGBAImage destructs.
-    struct DialogSurfaceGuard
-    {
-        fheroes2::Display * display;
-        fheroes2::RGBAImage * rgba;
-        ~DialogSurfaceGuard()
-        {
-            fheroes2::Image::popDialogForwarding();
-            display->removeRGBABufferPaintsForTarget( rgba );
-            display->removeRGBAOverlay( rgba );
-        }
-    } dialogSurfaceGuard{ &display, &dialogRGBA };
-
     const fheroes2::Sprite & originalBackground = fheroes2::AGG::GetICN( ICN::RECRBKG, 0 );
 
     // Render the recruit count background from original recruit dialog ICN.

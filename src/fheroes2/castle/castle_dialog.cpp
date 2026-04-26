@@ -322,35 +322,6 @@ Castle::CastleDialogReturnValue Castle::OpenDialog( const bool openConstructionW
         }
     }
 
-    // Screen-level RGBA composition: snapshot the dialog's current palette into an RGBA surface,
-    // register it as the single overlay for the dialog, and push a forwarding frame so subsequent
-    // palette writes keep it in sync. The two ArmyBars (castle garrison and visiting hero) route
-    // custom-monster portraits through renderHiResMonsterPortrait which direct-paints into this
-    // surface, surviving partial redraws (building animations, fadeBuilding, split/recruit flows).
-    //
-    // Installed AFTER the construction / mage guild early-return branches above: those chain to a
-    // sibling OpenDialog for a different castle and must not leave a stale forwarding frame on the
-    // stack. The RAII guard below covers the remaining exit paths — the mid-event-loop early
-    // return from the mage guild handler and the final return at end of function.
-    const float rgbaScale = display.getPhysicalScale();
-    fheroes2::RGBAImage dialogRGBA( static_cast<int32_t>( static_cast<float>( dialogWithShadowRoi.width ) * rgbaScale ),
-                                    static_cast<int32_t>( static_cast<float>( dialogWithShadowRoi.height ) * rgbaScale ) );
-    fheroes2::BlitIndexedToRGBAScaledRegion( display, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width, dialogWithShadowRoi.height, dialogRGBA,
-                                             0, 0, rgbaScale );
-    display.addRGBAOverlay( dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, dialogWithShadowRoi.width );
-    fheroes2::Image::pushDialogForwarding( &dialogRGBA, dialogWithShadowRoi.x, dialogWithShadowRoi.y, rgbaScale );
-
-    struct CastleDialogForwardingGuard
-    {
-        fheroes2::RGBAImage * rgba;
-        ~CastleDialogForwardingGuard()
-        {
-            fheroes2::Image::popDialogForwarding();
-            fheroes2::Display::instance().removeRGBABufferPaintsForTarget( rgba );
-            fheroes2::Display::instance().removeRGBAOverlay( rgba );
-        }
-    } forwardingGuard{ &dialogRGBA };
-
     const std::string currentDate = getDateString();
 
     // Previous castle button.

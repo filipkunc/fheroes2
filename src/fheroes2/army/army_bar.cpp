@@ -368,18 +368,9 @@ void ArmyBar::Redraw( fheroes2::Image & dstsf )
 {
     spcursor.hide();
 
-    // Wipe any hi-res portrait paints left in THIS bar's rect from a previous Redraw (troop
-    // list may have changed — dismissal, merge, split). Scoped to the bar's own area, so
-    // peer ArmyBars' paints elsewhere on the same surface stay intact. The host screen's
-    // forwarding-guard RAII takes care of the surface-wide cleanup on dialog close.
-    const fheroes2::Image::DialogForwardingFrame * active = fheroes2::Image::getActiveDialogForwarding();
-    if ( active != nullptr && active->target != nullptr ) {
-        const fheroes2::Rect & barArea = GetArea();
-        if ( barArea.width > 0 && barArea.height > 0 ) {
-            fheroes2::Display::instance().removeRGBABufferPaintsInRect( active->target, barArea.x, barArea.y, barArea.width, barArea.height );
-        }
-    }
-
+    // No stale-paint cleanup needed — hi-res portraits are direct-blitted into _screenRGBA at
+    // RedrawItem time. The palette redraw of this bar runs first and the WriteHook mirrors it
+    // into _screenRGBA, then renderHiResMonsterPortrait paints the new portraits on top.
     Interface::ItemsActionBar<ArmyTroop>::Redraw( dstsf );
 }
 
