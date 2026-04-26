@@ -84,6 +84,30 @@ namespace fheroes2
             return _height;
         }
 
+        // Physical-pixel byte stride of the backing buffer (in pixels). Default == width().
+        // Display overrides this to return its physical-resolution width so primitives that
+        // write to Display step rows by physical-pixel stride while still reasoning in game
+        // coords for clipping / hit testing.
+        virtual int32_t bufferStride() const
+        {
+            return _width;
+        }
+
+        // Physical-pixel row count of the backing buffer. Default == height(); Display overrides
+        // it to return its physical-resolution height.
+        virtual int32_t bufferHeight() const
+        {
+            return _height;
+        }
+
+        // Ratio of physical pixels to logical (game) pixels for this image. Default == 1.0;
+        // Display overrides it to return its getPhysicalScale() so RGBA-out primitives expand
+        // each game pixel into a scale x scale physical block when writing to Display.
+        virtual float physicalScale() const
+        {
+            return 1.0f;
+        }
+
         virtual uint8_t * image();
 
         virtual const uint8_t * image() const;
@@ -131,6 +155,16 @@ namespace fheroes2
         void _disableTransformLayer()
         {
             _singleLayer = true;
+        }
+
+    protected:
+        // Display uses this to publish game dimensions via width()/height() while keeping
+        // a physical-resolution backing buffer. Does NOT touch _data; only call after the
+        // buffer has been allocated at the desired physical size.
+        void _setLogicalDimensions( const int32_t logicalWidth, const int32_t logicalHeight )
+        {
+            _width = logicalWidth;
+            _height = logicalHeight;
         }
 
     private:

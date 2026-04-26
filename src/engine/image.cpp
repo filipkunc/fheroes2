@@ -211,6 +211,72 @@ namespace
         b = static_cast<uint8_t>( pal[2] << 2 );
     }
 
+    // Physical-pixel rectangle covered by a single game pixel at (gameX, gameY) when written
+    // to a backing buffer with the given physical scale. Floor-on-each-edge tiling keeps
+    // adjacent game pixels' blocks contiguous (no gaps) even at fractional scales (e.g. 2.25x);
+    // adjacent block sizes can differ by 1 physical pixel. Clamped to [0, bufStride/bufHeight).
+    struct PhysicalBlock
+    {
+        int32_t pXStart;
+        int32_t pXEnd;
+        int32_t pYStart;
+        int32_t pYEnd;
+    };
+
+    inline PhysicalBlock toPhysicalBlock( const int32_t gameX, const int32_t gameY, const float scale, const int32_t bufStride, const int32_t bufHeight )
+    {
+        PhysicalBlock b;
+        b.pXStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( gameX ) * scale ) );
+        b.pXEnd = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( gameX + 1 ) * scale ) );
+        b.pYStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( gameY ) * scale ) );
+        b.pYEnd = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( gameY + 1 ) * scale ) );
+        return b;
+    }
+
+    // Fill a physical-pixel block in an RGBA buffer with a solid (r, g, b, a) value.
+    inline void fillRGBABlock( uint8_t * outBase, const PhysicalBlock & pb, const int32_t bufStride, const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a )
+    {
+        for ( int32_t py = pb.pYStart; py < pb.pYEnd; ++py ) {
+            uint8_t * dstRow = outBase + ( static_cast<ptrdiff_t>( py ) * bufStride + pb.pXStart ) * 4;
+            for ( int32_t px = pb.pXStart; px < pb.pXEnd; ++px, dstRow += 4 ) {
+                dstRow[0] = r;
+                dstRow[1] = g;
+                dstRow[2] = b;
+                dstRow[3] = a;
+            }
+        }
+    }
+
+    // Apply a per-pixel shadow-darkening factor to every physical pixel in a block.
+    inline void shadeRGBABlock( uint8_t * outBase, const PhysicalBlock & pb, const int32_t bufStride, const float factor )
+    {
+        for ( int32_t py = pb.pYStart; py < pb.pYEnd; ++py ) {
+            uint8_t * dstRow = outBase + ( static_cast<ptrdiff_t>( py ) * bufStride + pb.pXStart ) * 4;
+            for ( int32_t px = pb.pXStart; px < pb.pXEnd; ++px, dstRow += 4 ) {
+                dstRow[0] = static_cast<uint8_t>( static_cast<float>( dstRow[0] ) * factor );
+                dstRow[1] = static_cast<uint8_t>( static_cast<float>( dstRow[1] ) * factor );
+                dstRow[2] = static_cast<uint8_t>( static_cast<float>( dstRow[2] ) * factor );
+            }
+        }
+    }
+
+    // Per-pixel src_over alpha blend onto every physical pixel in a block.
+    inline void blendRGBABlock( uint8_t * outBase, const PhysicalBlock & pb, const int32_t bufStride, const uint8_t srcR, const uint8_t srcG, const uint8_t srcB,
+                                const uint32_t srcA )
+    {
+        const uint32_t invA = 255 - srcA;
+        for ( int32_t py = pb.pYStart; py < pb.pYEnd; ++py ) {
+            uint8_t * dstRow = outBase + ( static_cast<ptrdiff_t>( py ) * bufStride + pb.pXStart ) * 4;
+            for ( int32_t px = pb.pXStart; px < pb.pXEnd; ++px, dstRow += 4 ) {
+                dstRow[0] = static_cast<uint8_t>( ( srcR * srcA + dstRow[0] * invA ) / 255 );
+                dstRow[1] = static_cast<uint8_t>( ( srcG * srcA + dstRow[1] * invA ) / 255 );
+                dstRow[2] = static_cast<uint8_t>( ( srcB * srcA + dstRow[2] * invA ) / 255 );
+                const uint32_t dstA = dstRow[3];
+                dstRow[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invA ) / 255, static_cast<uint32_t>( 255 ) ) );
+            }
+        }
+    }
+
     bool Validate( const fheroes2::Image & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height )
     {
         if ( image.empty() || width <= 0 || height <= 0 ) {
@@ -422,15 +488,18 @@ namespace
         // RGBA out + indexed in: read src indexed pixel, remap via palette[], convert to RGBA.
         if ( out.format() == fheroes2::ImageFormat::RGBA_32BIT && in.format() == fheroes2::ImageFormat::INDEXED_8BIT ) {
             const uint8_t * imageInY = in.image() + static_cast<ptrdiff_t>( inY ) * widthIn + inX;
-            uint8_t * outRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
             const uint8_t * transformInY = in.singleLayer() ? nullptr : ( in.transform() + static_cast<ptrdiff_t>( inY ) * widthIn + inX );
+
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
 
             for ( int32_t y = 0; y < height; ++y ) {
                 const uint8_t * imgIn = imageInY;
                 const uint8_t * trIn = transformInY;
-                uint8_t * outPx = outRow;
 
-                for ( int32_t x = 0; x < width; ++x, ++imgIn, outPx += 4 ) {
+                for ( int32_t x = 0; x < width; ++x, ++imgIn ) {
                     if ( trIn && *trIn != 0 ) {
                         ++trIn;
                         continue;
@@ -440,10 +509,8 @@ namespace
                     uint8_t g;
                     uint8_t b;
                     paletteIdxToRGBA( palette[*imgIn], r, g, b );
-                    outPx[0] = r;
-                    outPx[1] = g;
-                    outPx[2] = b;
-                    outPx[3] = 255;
+                    const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
+                    fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
                     if ( trIn ) {
                         ++trIn;
                     }
@@ -453,7 +520,6 @@ namespace
                 if ( transformInY ) {
                     transformInY += widthIn;
                 }
-                outRow += static_cast<ptrdiff_t>( widthOut ) * 4;
             }
             return;
         }
@@ -461,26 +527,29 @@ namespace
         // RGBA in + RGBA out: reverse-lookup each pixel's palette index, remap, convert back.
         // Used by ApplyPalette/ApplyAlpha on Display (or any RGBA buffer).
         if ( in.format() == fheroes2::ImageFormat::RGBA_32BIT && out.format() == fheroes2::ImageFormat::RGBA_32BIT ) {
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
+            const uint8_t * inBase = in.image();
             for ( int32_t y = 0; y < height; ++y ) {
-                const uint8_t * srcRow = in.image() + ( ( static_cast<ptrdiff_t>( inY + y ) * widthIn ) + inX ) * 4;
-                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+                const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( inY + y ) * inScale );
+                const uint8_t * srcRow = inBase + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
                 for ( int32_t x = 0; x < width; ++x ) {
-                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( x ) * 4;
-                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( inX + x ) * inScale );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
                     if ( srcPx[3] == 0 ) {
-                        // Fully transparent — leave destination untouched.
                         continue;
                     }
-                    // Reverse-lookup the source RGB to a palette index, remap, convert back.
                     const uint8_t srcIdx = GetPALColorId( srcPx[0] >> 2, srcPx[1] >> 2, srcPx[2] >> 2 );
                     uint8_t r;
                     uint8_t g;
                     uint8_t b;
                     paletteIdxToRGBA( palette[srcIdx], r, g, b );
-                    dstPx[0] = r;
-                    dstPx[1] = g;
-                    dstPx[2] = b;
-                    dstPx[3] = srcPx[3];
+                    const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
+                    fillRGBABlock( outBase, pb, bufStride, r, g, b, srcPx[3] );
                 }
             }
             return;
@@ -581,9 +650,10 @@ namespace fheroes2
             return;
         }
 
-        const size_t totalSize = static_cast<size_t>( _width ) * _height;
-
         if ( _format == ImageFormat::RGBA_32BIT ) {
+            // Fill the ENTIRE backing buffer (use bufferStride/bufferHeight so Display fills
+            // its full physical-pixel buffer, not just the game-pixel sub-rect).
+            const size_t totalSize = static_cast<size_t>( bufferStride() ) * bufferHeight();
             // Treat 'value' as a palette index. Convert and fill RGBA bytes.
             uint8_t r;
             uint8_t g;
@@ -598,6 +668,8 @@ namespace fheroes2
             }
             return;
         }
+
+        const size_t totalSize = static_cast<size_t>( _width ) * _height;
 
         memset( image(), value, totalSize );
 
@@ -637,13 +709,15 @@ namespace fheroes2
     void Image::reset()
     {
         if ( !empty() ) {
-            const size_t totalSize = static_cast<size_t>( _width ) * _height;
-
             if ( _format == ImageFormat::RGBA_32BIT ) {
-                // Zero all RGBA data (fully transparent black).
-                memset( image(), 0, totalSize * 4 );
+                // Zero the ENTIRE backing buffer (Display has a physical-resolution buffer
+                // larger than _width * _height — use bufferStride/bufferHeight virtuals to
+                // pick up the actual byte count).
+                const size_t totalBytes = static_cast<size_t>( bufferStride() ) * bufferHeight() * 4;
+                memset( image(), 0, totalBytes );
             }
             else {
+                const size_t totalSize = static_cast<size_t>( _width ) * _height;
                 memset( image(), static_cast<uint8_t>( 0 ), totalSize );
 
                 if ( !_singleLayer ) {
@@ -746,6 +820,65 @@ namespace fheroes2
         _y = y_;
     }
 
+    namespace
+    {
+        // Returns true if the image's backing buffer is sized larger than width()/height()
+        // (the physical-resolution Display case). Driven by the bufferStride/bufferHeight
+        // virtuals so any future "logical-vs-physical" Image subclass also takes this path.
+        inline bool isPhysicalBuffer( const Image & image )
+        {
+            return image.bufferStride() != image.width() || image.bufferHeight() != image.height();
+        }
+
+        // Capture a physical-pixel rect of a physical-resolution RGBA source into _copy.
+        // _copy is allocated at the matching physical dimensions so capture+restore round-trips
+        // at full physical fidelity (no downscale on capture, no upscale on restore).
+        void capturePhysicalCopy( const Image & src, const int32_t x, const int32_t y, const int32_t w, const int32_t h, Image & dst )
+        {
+            const float scale = src.physicalScale();
+            const int32_t srcStride = src.bufferStride();
+            const int32_t physX = static_cast<int32_t>( static_cast<float>( x ) * scale );
+            const int32_t physY = static_cast<int32_t>( static_cast<float>( y ) * scale );
+            const int32_t physW = static_cast<int32_t>( static_cast<float>( w ) * scale );
+            const int32_t physH = static_cast<int32_t>( static_cast<float>( h ) * scale );
+            if ( physW <= 0 || physH <= 0 ) {
+                dst = Image();
+                return;
+            }
+            dst = Image( physW, physH, ImageFormat::RGBA_32BIT );
+            const uint8_t * srcBase = src.image();
+            uint8_t * dstBase = dst.image();
+            for ( int32_t row = 0; row < physH; ++row ) {
+                memcpy( dstBase + static_cast<ptrdiff_t>( row ) * physW * 4,
+                        srcBase + ( static_cast<ptrdiff_t>( physY + row ) * srcStride + physX ) * 4, static_cast<size_t>( physW ) * 4 );
+            }
+        }
+
+        void restorePhysicalCopy( const Image & copy, const int32_t x, const int32_t y, const int32_t w, const int32_t h, Image & dst )
+        {
+            if ( copy.empty() ) {
+                return;
+            }
+            const float scale = dst.physicalScale();
+            const int32_t dstStride = dst.bufferStride();
+            const int32_t physX = static_cast<int32_t>( static_cast<float>( x ) * scale );
+            const int32_t physY = static_cast<int32_t>( static_cast<float>( y ) * scale );
+            const int32_t physW = static_cast<int32_t>( static_cast<float>( w ) * scale );
+            const int32_t physH = static_cast<int32_t>( static_cast<float>( h ) * scale );
+            const uint8_t * srcBase = copy.image();
+            uint8_t * dstBase = dst.image();
+            // copy was allocated at this same physical extent; if dimensions don't match
+            // (resolution change in flight), bail out.
+            if ( copy.width() != physW || copy.height() != physH ) {
+                return;
+            }
+            for ( int32_t row = 0; row < physH; ++row ) {
+                memcpy( dstBase + ( static_cast<ptrdiff_t>( physY + row ) * dstStride + physX ) * 4,
+                        srcBase + static_cast<ptrdiff_t>( row ) * physW * 4, static_cast<size_t>( physW ) * 4 );
+            }
+        }
+    }
+
     ImageRestorer::ImageRestorer( Image & image )
         : _image( image )
         , _width( image.width() )
@@ -756,14 +889,19 @@ namespace fheroes2
         if ( _image.singleLayer() ) {
             _copy._disableTransformLayer();
         }
-        if ( _image.format() == ImageFormat::RGBA_32BIT ) {
+        if ( _image.format() == ImageFormat::RGBA_32BIT && isPhysicalBuffer( _image ) ) {
+            // Physical-resolution Display: capture at physical-pixel resolution so restore
+            // is a full-fidelity byte memcpy back into the physical buffer.
+            capturePhysicalCopy( _image, _x, _y, _width, _height, _copy );
+        }
+        else if ( _image.format() == ImageFormat::RGBA_32BIT ) {
             _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
+            Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
         }
         else {
             _copy.resize( _width, _height );
+            Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
         }
-
-        Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
     }
 
     ImageRestorer::ImageRestorer( Image & image, const int32_t x_, const int32_t y_, const int32_t width, const int32_t height )
@@ -778,14 +916,17 @@ namespace fheroes2
         if ( _image.singleLayer() ) {
             _copy._disableTransformLayer();
         }
-        if ( _image.format() == ImageFormat::RGBA_32BIT ) {
+        if ( _image.format() == ImageFormat::RGBA_32BIT && isPhysicalBuffer( _image ) ) {
+            capturePhysicalCopy( _image, _x, _y, _width, _height, _copy );
+        }
+        else if ( _image.format() == ImageFormat::RGBA_32BIT ) {
             _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
+            Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
         }
         else {
             _copy.resize( _width, _height );
+            Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
         }
-
-        Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
     }
 
     void ImageRestorer::update( const int32_t x_, const int32_t y_, const int32_t width, const int32_t height )
@@ -797,18 +938,26 @@ namespace fheroes2
         _height = height;
         _updateRoi();
 
-        if ( _image.format() == ImageFormat::RGBA_32BIT ) {
+        if ( _image.format() == ImageFormat::RGBA_32BIT && isPhysicalBuffer( _image ) ) {
+            capturePhysicalCopy( _image, _x, _y, _width, _height, _copy );
+        }
+        else if ( _image.format() == ImageFormat::RGBA_32BIT ) {
             _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
+            Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
         }
         else {
             _copy.resize( _width, _height );
+            Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
         }
-        Copy( _image, _x, _y, _copy, 0, 0, _width, _height );
     }
 
     void ImageRestorer::restore()
     {
         _isRestored = true;
+        if ( _image.format() == ImageFormat::RGBA_32BIT && isPhysicalBuffer( _image ) ) {
+            restorePhysicalCopy( _copy, _x, _y, _width, _height, _image );
+            return;
+        }
         Copy( _copy, 0, 0, _image, _x, _y, _width, _height );
     }
 
@@ -882,22 +1031,24 @@ namespace fheroes2
             }
 
             const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
             const bool hasTransform = !in.singleLayer();
             const int32_t inDir = flip ? -1 : 1;
+
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
 
             const uint8_t * imageInY = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX );
             const uint8_t * transformInY = hasTransform
                                                ? ( in.transform() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX ) )
                                                : nullptr;
-            uint8_t * outRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
 
             for ( int32_t row = 0; row < height; ++row ) {
                 const uint8_t * imgIn = imageInY;
                 const uint8_t * trIn = transformInY;
-                uint8_t * outPx = outRow;
 
-                for ( int32_t col = 0; col < width; ++col, imgIn += inDir, outPx += 4 ) {
+                for ( int32_t col = 0; col < width; ++col, imgIn += inDir ) {
                     if ( hasTransform ) {
                         if ( *trIn == 1 ) {
                             // Transparent — skip.
@@ -905,12 +1056,10 @@ namespace fheroes2
                             continue;
                         }
                         if ( *trIn > 1 && *trIn <= 5 ) {
-                            // Shadow — darken the existing destination RGB.
+                            // Shadow — darken every physical pixel in the block.
                             const float f = shadowFactor[*trIn];
-                            outPx[0] = static_cast<uint8_t>( static_cast<float>( outPx[0] ) * f );
-                            outPx[1] = static_cast<uint8_t>( static_cast<float>( outPx[1] ) * f );
-                            outPx[2] = static_cast<uint8_t>( static_cast<float>( outPx[2] ) * f );
-                            // Keep alpha as-is.
+                            const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                            shadeRGBABlock( outBase, pb, bufStride, f );
                             trIn += inDir;
                             continue;
                         }
@@ -921,17 +1070,14 @@ namespace fheroes2
                     uint8_t g;
                     uint8_t b;
                     paletteIdxToRGBA( *imgIn, r, g, b );
-                    outPx[0] = r;
-                    outPx[1] = g;
-                    outPx[2] = b;
-                    outPx[3] = 255;
+                    const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                    fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
                 }
 
                 imageInY += widthIn;
                 if ( transformInY ) {
                     transformInY += widthIn;
                 }
-                outRow += static_cast<ptrdiff_t>( widthOut ) * 4;
             }
         }
 
@@ -947,23 +1093,25 @@ namespace fheroes2
             }
 
             const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
             const bool hasTransform = !in.singleLayer();
             const int32_t inDir = flip ? -1 : 1;
             const float alphaF = static_cast<float>( alpha ) / 255.0f;
+
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
 
             const uint8_t * imageInY = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX );
             const uint8_t * transformInY = hasTransform
                                                ? ( in.transform() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX ) )
                                                : nullptr;
-            uint8_t * outRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
 
             for ( int32_t row = 0; row < height; ++row ) {
                 const uint8_t * imgIn = imageInY;
                 const uint8_t * trIn = transformInY;
-                uint8_t * outPx = outRow;
 
-                for ( int32_t col = 0; col < width; ++col, imgIn += inDir, outPx += 4 ) {
+                for ( int32_t col = 0; col < width; ++col, imgIn += inDir ) {
                     if ( hasTransform ) {
                         if ( *trIn == 1 ) {
                             trIn += inDir;
@@ -972,9 +1120,8 @@ namespace fheroes2
                         if ( *trIn > 1 && *trIn <= 5 ) {
                             const float baseF = shadowFactor[*trIn];
                             const float f = 1.0f - ( 1.0f - baseF ) * alphaF;
-                            outPx[0] = static_cast<uint8_t>( static_cast<float>( outPx[0] ) * f );
-                            outPx[1] = static_cast<uint8_t>( static_cast<float>( outPx[1] ) * f );
-                            outPx[2] = static_cast<uint8_t>( static_cast<float>( outPx[2] ) * f );
+                            const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                            shadeRGBABlock( outBase, pb, bufStride, f );
                             trIn += inDir;
                             continue;
                         }
@@ -987,21 +1134,28 @@ namespace fheroes2
                     paletteIdxToRGBA( *imgIn, srcR, srcG, srcB );
 
                     const float invA = 1.0f - alphaF;
-                    outPx[0] = static_cast<uint8_t>( static_cast<float>( srcR ) * alphaF + static_cast<float>( outPx[0] ) * invA );
-                    outPx[1] = static_cast<uint8_t>( static_cast<float>( srcG ) * alphaF + static_cast<float>( outPx[1] ) * invA );
-                    outPx[2] = static_cast<uint8_t>( static_cast<float>( srcB ) * alphaF + static_cast<float>( outPx[2] ) * invA );
-                    outPx[3] = std::max<uint8_t>( outPx[3], alpha );
+                    const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                    for ( int32_t py = pb.pYStart; py < pb.pYEnd; ++py ) {
+                        uint8_t * dstRow = outBase + ( static_cast<ptrdiff_t>( py ) * bufStride + pb.pXStart ) * 4;
+                        for ( int32_t px = pb.pXStart; px < pb.pXEnd; ++px, dstRow += 4 ) {
+                            dstRow[0] = static_cast<uint8_t>( static_cast<float>( srcR ) * alphaF + static_cast<float>( dstRow[0] ) * invA );
+                            dstRow[1] = static_cast<uint8_t>( static_cast<float>( srcG ) * alphaF + static_cast<float>( dstRow[1] ) * invA );
+                            dstRow[2] = static_cast<uint8_t>( static_cast<float>( srcB ) * alphaF + static_cast<float>( dstRow[2] ) * invA );
+                            dstRow[3] = std::max<uint8_t>( dstRow[3], alpha );
+                        }
+                    }
                 }
 
                 imageInY += widthIn;
                 if ( transformInY ) {
                     transformInY += widthIn;
                 }
-                outRow += static_cast<ptrdiff_t>( widthOut ) * 4;
             }
         }
 
         // RGBA src -> RGBA out blit (no scaling, optional flip), src_over alpha for fully opaque pixels = copy.
+        // Iterates in game pixels; reads in at game-coord stride and writes the destination as a
+        // physical-pixel block per game pixel when out's physicalScale > 1 (Display).
         void BlitRGBAToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
                                    const bool flip )
         {
@@ -1012,24 +1166,28 @@ namespace fheroes2
                 return;
             }
 
-            const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
+            const uint8_t * inBase = in.image();
 
             for ( int32_t y = 0; y < height; ++y ) {
-                const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY + y ) * widthIn ) * 4;
-                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+                const int32_t srcGameY = inY + y;
+                const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( srcGameY ) * inScale );
+                const uint8_t * srcRow = inBase + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
 
                 for ( int32_t x = 0; x < width; ++x ) {
-                    const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
-                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+                    const int32_t srcGameX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( srcGameX ) * inScale );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
                     if ( srcPx[3] == 0 ) {
                         continue;
                     }
-                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
-                    dstPx[0] = srcPx[0];
-                    dstPx[1] = srcPx[1];
-                    dstPx[2] = srcPx[2];
-                    dstPx[3] = srcPx[3];
+                    const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
+                    fillRGBABlock( outBase, pb, bufStride, srcPx[0], srcPx[1], srcPx[2], srcPx[3] );
                 }
             }
         }
@@ -1045,16 +1203,23 @@ namespace fheroes2
                 return;
             }
 
-            const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
+            const uint8_t * inBase = in.image();
 
             for ( int32_t y = 0; y < height; ++y ) {
-                const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY + y ) * widthIn ) * 4;
-                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+                const int32_t srcGameY = inY + y;
+                const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( srcGameY ) * inScale );
+                const uint8_t * srcRow = inBase + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
 
                 for ( int32_t x = 0; x < width; ++x ) {
-                    const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
-                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+                    const int32_t srcGameX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( srcGameX ) * inScale );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
                     if ( srcPx[3] == 0 ) {
                         continue;
                     }
@@ -1062,13 +1227,8 @@ namespace fheroes2
                     if ( srcA == 0 ) {
                         continue;
                     }
-                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
-                    const uint32_t invA = 255 - srcA;
-                    dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invA ) / 255 );
-                    dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invA ) / 255 );
-                    dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invA ) / 255 );
-                    const uint32_t dstA = dstPx[3];
-                    dstPx[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invA ) / 255, static_cast<uint32_t>( 255 ) ) );
+                    const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
+                    blendRGBABlock( outBase, pb, bufStride, srcPx[0], srcPx[1], srcPx[2], srcA );
                 }
             }
         }
@@ -1084,30 +1244,31 @@ namespace fheroes2
             }
 
             const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
 
             const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + inX;
-            uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX ) * 4;
 
             for ( int32_t row = 0; row < height; ++row ) {
                 const uint8_t * src = srcRow;
-                uint8_t * dst = dstRow;
-                for ( int32_t col = 0; col < width; ++col, ++src, dst += 4 ) {
+                for ( int32_t col = 0; col < width; ++col, ++src ) {
                     uint8_t r;
                     uint8_t g;
                     uint8_t b;
                     paletteIdxToRGBA( *src, r, g, b );
-                    dst[0] = r;
-                    dst[1] = g;
-                    dst[2] = b;
-                    dst[3] = 255;
+                    const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                    fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
                 }
                 srcRow += widthIn;
-                dstRow += static_cast<ptrdiff_t>( widthOut ) * 4;
             }
         }
 
-        // RGBA src -> RGBA out, plain memcpy.
+        // RGBA src -> RGBA out copy. Treats coords as game coords on both sides; reads source
+        // at its physical-pixel stride and writes destination as a physical-pixel block per
+        // game pixel when out is a physical-resolution buffer (Display). For matching scales
+        // (the common scratch -> scratch case) collapses to the previous memcpy fast path.
         void CopyRGBAToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
         {
             assert( in.format() == ImageFormat::RGBA_32BIT );
@@ -1117,17 +1278,48 @@ namespace fheroes2
                 return;
             }
 
-            const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
+            const uint8_t * inBase = in.image();
 
+            // Fast path: identical scale on both sides — copy at physical-pixel resolution.
+            if ( inScale == scale ) {
+                const int32_t physInX = static_cast<int32_t>( static_cast<float>( inX ) * inScale );
+                const int32_t physInY = static_cast<int32_t>( static_cast<float>( inY ) * inScale );
+                const int32_t physOutX = static_cast<int32_t>( static_cast<float>( outX ) * scale );
+                const int32_t physOutY = static_cast<int32_t>( static_cast<float>( outY ) * scale );
+                const int32_t physW = static_cast<int32_t>( static_cast<float>( width ) * scale );
+                const int32_t physH = static_cast<int32_t>( static_cast<float>( height ) * scale );
+                for ( int32_t y = 0; y < physH; ++y ) {
+                    const uint8_t * srcRow = inBase + ( static_cast<ptrdiff_t>( physInY + y ) * inStride + physInX ) * 4;
+                    uint8_t * dstRow = outBase + ( static_cast<ptrdiff_t>( physOutY + y ) * bufStride + physOutX ) * 4;
+                    memcpy( dstRow, srcRow, static_cast<size_t>( physW ) * 4 );
+                }
+                return;
+            }
+
+            // Slow path: scales differ — sample source at game-coord nearest, write block on dest.
             for ( int32_t y = 0; y < height; ++y ) {
-                const uint8_t * srcRow = in.image() + ( ( static_cast<ptrdiff_t>( inY + y ) * widthIn ) + inX ) * 4;
-                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
-                memcpy( dstRow, srcRow, static_cast<size_t>( width ) * 4 );
+                const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( inY + y ) * inScale );
+                const uint8_t * srcRow = inBase + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
+
+                for ( int32_t x = 0; x < width; ++x ) {
+                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( inX + x ) * inScale );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
+                    const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
+                    fillRGBABlock( outBase, pb, bufStride, srcPx[0], srcPx[1], srcPx[2], srcPx[3] );
+                }
             }
         }
 
-        // RGBA src -> indexed out (palette quantization).
+        // RGBA src -> indexed out (palette quantization). The source can be a Display with a
+        // physical-resolution backing buffer; we sample one physical pixel per game pixel via
+        // in.physicalScale() / in.bufferStride() (nearest-neighbour). out is always indexed at
+        // game res, so output coords stay 1:1.
         void BlitRGBAToIndexed( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height, const bool flip )
         {
             assert( in.format() == ImageFormat::RGBA_32BIT );
@@ -1137,7 +1329,8 @@ namespace fheroes2
                 return;
             }
 
-            const int32_t widthIn = in.width();
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
             const int32_t widthOut = out.width();
 
             uint8_t * imageOutY = out.image() + ( static_cast<ptrdiff_t>( outY ) * widthOut ) + outX;
@@ -1146,10 +1339,12 @@ namespace fheroes2
             for ( int32_t y = 0; y < height; ++y ) {
                 uint8_t * imageOutX = imageOutY;
                 uint8_t * transformOutX = transformOutY;
+                const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( inY + y ) * inScale );
 
                 for ( int32_t x = 0; x < width; ++x ) {
-                    const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
-                    const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( inY + y ) * widthIn + srcX ) * 4;
+                    const int32_t srcGameX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( srcGameX ) * inScale );
+                    const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( srcPhysY ) * inStride + srcPhysX ) * 4;
                     const uint8_t * px = in.image() + pixelOffset;
 
                     if ( px[3] == 0 ) {
@@ -1175,7 +1370,8 @@ namespace fheroes2
             }
         }
 
-        // RGBA src -> indexed out with src_over alpha.
+        // RGBA src -> indexed out with src_over alpha. Source-side reads are physical-pixel
+        // (nearest sample) when the source is a physical-resolution Display.
         void AlphaBlitRGBAToIndexed( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
                                      const uint8_t alphaValue, const bool flip )
         {
@@ -1186,7 +1382,8 @@ namespace fheroes2
                 return;
             }
 
-            const int32_t widthIn = in.width();
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
             const int32_t widthOut = out.width();
             const uint8_t * gamePalette = getGamePalette();
 
@@ -1194,10 +1391,12 @@ namespace fheroes2
 
             for ( int32_t y = 0; y < height; ++y ) {
                 uint8_t * imageOutX = imageOutY;
+                const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( inY + y ) * inScale );
 
                 for ( int32_t x = 0; x < width; ++x, ++imageOutX ) {
-                    const int32_t srcX = flip ? ( inX + width - 1 - x ) : ( inX + x );
-                    const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( inY + y ) * widthIn + srcX ) * 4;
+                    const int32_t srcGameX = flip ? ( inX + width - 1 - x ) : ( inX + x );
+                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( srcGameX ) * inScale );
+                    const ptrdiff_t pixelOffset = ( static_cast<ptrdiff_t>( srcPhysY ) * inStride + srcPhysX ) * 4;
                     const uint8_t * px = in.image() + pixelOffset;
 
                     const uint8_t srcAlpha = px[3];
@@ -1231,10 +1430,13 @@ namespace fheroes2
             return;
         }
 
-        // RGBA-output path: darken affected pixels by shadowFactor.
+        // RGBA-output path: darken affected pixels by shadowFactor (block-expanded for Display).
         if ( out.format() == ImageFormat::RGBA_32BIT ) {
             const int32_t outWidth = out.width();
             const int32_t outHeight = out.height();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
             const int32_t inWidth = in.width();
             const int32_t inHeight = in.height();
             const int32_t shadowOffsetX = std::min<int32_t>( shadowOffset.x, 0 );
@@ -1311,10 +1513,8 @@ namespace fheroes2
                         continue;
                     }
                     const float f = shadowFactor[transformTableId];
-                    uint8_t * dst = out.image() + ( static_cast<ptrdiff_t>( dstY ) * outWidth + dstX ) * 4;
-                    dst[0] = static_cast<uint8_t>( static_cast<float>( dst[0] ) * f );
-                    dst[1] = static_cast<uint8_t>( static_cast<float>( dst[1] ) * f );
-                    dst[2] = static_cast<uint8_t>( static_cast<float>( dst[2] ) * f );
+                    const PhysicalBlock pb = toPhysicalBlock( dstX, dstY, scale, bufStride, bufHeight );
+                    shadeRGBABlock( out.image(), pb, bufStride, f );
                 }
             }
             return;
@@ -1695,22 +1895,28 @@ namespace fheroes2
             }
 
             const float alphaF = static_cast<float>( alpha ) / 255.0f;
-            const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
+            const uint8_t * inBase = in.image();
 
             for ( int32_t y = 0; y < lH; ++y ) {
-                const uint8_t * srcRow = in.image() + ( ( static_cast<ptrdiff_t>( lInY + y ) * widthIn ) + lInX ) * 4;
-                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( lOutY + y ) * widthOut ) + lOutX ) * 4;
+                const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( lInY + y ) * inScale );
+                const uint8_t * srcRow = inBase + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
                 for ( int32_t x = 0; x < lW; ++x ) {
-                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( x ) * 4;
-                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( lInX + x ) * inScale );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
                     if ( srcPx[3] == 0 ) {
                         continue;
                     }
-                    dstPx[0] = static_cast<uint8_t>( static_cast<float>( srcPx[0] ) * alphaF );
-                    dstPx[1] = static_cast<uint8_t>( static_cast<float>( srcPx[1] ) * alphaF );
-                    dstPx[2] = static_cast<uint8_t>( static_cast<float>( srcPx[2] ) * alphaF );
-                    dstPx[3] = srcPx[3];
+                    const uint8_t r = static_cast<uint8_t>( static_cast<float>( srcPx[0] ) * alphaF );
+                    const uint8_t g = static_cast<uint8_t>( static_cast<float>( srcPx[1] ) * alphaF );
+                    const uint8_t b = static_cast<uint8_t>( static_cast<float>( srcPx[2] ) * alphaF );
+                    const PhysicalBlock pb = toPhysicalBlock( lOutX + x, lOutY + y, scale, bufStride, bufHeight );
+                    fillRGBABlock( outBase, pb, bufStride, r, g, b, srcPx[3] );
                 }
             }
             return;
@@ -1745,16 +1951,15 @@ namespace fheroes2
                 return;
             }
             const float f = shadowFactor[transformId];
-            const int32_t imgW = image.width();
-            uint8_t * row = image.image() + ( ( static_cast<ptrdiff_t>( y ) * imgW ) + x ) * 4;
+            const float scale = image.physicalScale();
+            const int32_t bufStride = image.bufferStride();
+            const int32_t bufHeight = image.bufferHeight();
+            uint8_t * outBase = image.image();
             for ( int32_t ry = 0; ry < height; ++ry ) {
-                uint8_t * px = row;
-                for ( int32_t rx = 0; rx < width; ++rx, px += 4 ) {
-                    px[0] = static_cast<uint8_t>( static_cast<float>( px[0] ) * f );
-                    px[1] = static_cast<uint8_t>( static_cast<float>( px[1] ) * f );
-                    px[2] = static_cast<uint8_t>( static_cast<float>( px[2] ) * f );
+                for ( int32_t rx = 0; rx < width; ++rx ) {
+                    const PhysicalBlock pb = toPhysicalBlock( x + rx, y + ry, scale, bufStride, bufHeight );
+                    shadeRGBABlock( outBase, pb, bufStride, f );
                 }
-                row += static_cast<ptrdiff_t>( imgW ) * 4;
             }
             return;
         }
@@ -1958,8 +2163,14 @@ namespace fheroes2
         }
 
         if ( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT ) {
-            // Reuse copy-of-Image semantics — Image::operator= preserves RGBA bytes.
-            out = in;
+            // If either side has a buffer that doesn't match its game dimensions (Display),
+            // the Image::operator= shortcut would copy the wrong byte count or geometry. Fall
+            // through to the rect path which handles physical strides correctly.
+            if ( in.bufferStride() == in.width() && in.bufferHeight() == in.height() && out.bufferStride() == out.width() && out.bufferHeight() == out.height() ) {
+                out = in;
+                return;
+            }
+            CopyRGBAToRGBAOutput( in, 0, 0, out, 0, 0, in.width(), in.height() );
             return;
         }
 
@@ -2415,12 +2626,14 @@ namespace fheroes2
             uint8_t b;
             paletteIdxToRGBA( value, r, g, b );
 
+            const float scale = image.physicalScale();
+            const int32_t bufStride = image.bufferStride();
+            const int32_t bufHeight = image.bufferHeight();
+            uint8_t * outBase = image.image();
+
             const auto setPixel = [&]( int32_t px, int32_t py ) {
-                uint8_t * dst = image.image() + ( static_cast<ptrdiff_t>( py ) * width + px ) * 4;
-                dst[0] = r;
-                dst[1] = g;
-                dst[2] = b;
-                dst[3] = 255;
+                const PhysicalBlock pb = toPhysicalBlock( px, py, scale, bufStride, bufHeight );
+                fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
             };
 
             uint32_t counter = 1;
@@ -2639,15 +2852,17 @@ namespace fheroes2
             uint8_t b;
             paletteIdxToRGBA( value, r, g, b );
 
+            const float scale = image.physicalScale();
+            const int32_t bufStride = image.bufferStride();
+            const int32_t bufHeight = image.bufferHeight();
+            uint8_t * outBase = image.image();
+
             const auto plot = [&]( int32_t px, int32_t py ) {
                 if ( px < minX || px >= maxX || py < minY || py >= maxY ) {
                     return;
                 }
-                uint8_t * dst = image.image() + ( static_cast<ptrdiff_t>( py ) * width + px ) * 4;
-                dst[0] = r;
-                dst[1] = g;
-                dst[2] = b;
-                dst[3] = 255;
+                const PhysicalBlock pb = toPhysicalBlock( px, py, scale, bufStride, bufHeight );
+                fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
             };
 
             if ( dx >= dy ) {
@@ -2887,18 +3102,25 @@ namespace fheroes2
             uint8_t b;
             paletteIdxToRGBA( colorId, r, g, b );
 
-            const int32_t imgW = image.width();
-            uint8_t * row = image.image() + ( ( static_cast<ptrdiff_t>( y ) * imgW ) + x ) * 4;
+            const float scale = image.physicalScale();
+            const int32_t bufStride = image.bufferStride();
+            const int32_t bufHeight = image.bufferHeight();
+            uint8_t * outBase = image.image();
 
-            for ( int32_t ry = 0; ry < height; ++ry ) {
-                uint8_t * px = row;
-                for ( int32_t rx = 0; rx < width; ++rx, px += 4 ) {
-                    px[0] = r;
-                    px[1] = g;
-                    px[2] = b;
-                    px[3] = 255;
+            // Compute the physical-pixel rect spanning the entire game-coord region in one
+            // go (the rect is always solid, so we don't need per-game-pixel block math).
+            const int32_t pXStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( x ) * scale ) );
+            const int32_t pXEnd = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( x + width ) * scale ) );
+            const int32_t pYStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( y ) * scale ) );
+            const int32_t pYEnd = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( y + height ) * scale ) );
+            for ( int32_t py = pYStart; py < pYEnd; ++py ) {
+                uint8_t * dstRow = outBase + ( static_cast<ptrdiff_t>( py ) * bufStride + pXStart ) * 4;
+                for ( int32_t px = pXStart; px < pXEnd; ++px, dstRow += 4 ) {
+                    dstRow[0] = r;
+                    dstRow[1] = g;
+                    dstRow[2] = b;
+                    dstRow[3] = 255;
                 }
-                row += static_cast<ptrdiff_t>( imgW ) * 4;
             }
             return;
         }
@@ -3055,23 +3277,26 @@ namespace fheroes2
             return;
         }
 
-        // RGBA path: pixel-by-pixel write of 4-byte chunks.
+        // RGBA path: pixel-by-pixel write expanded to physical block on Display.
         if ( out.format() == ImageFormat::RGBA_32BIT ) {
             assert( in.format() == ImageFormat::RGBA_32BIT );
-            const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
+            const uint8_t * inBase = in.image();
             for ( int32_t y = 0; y < height; ++y ) {
-                const int32_t srcY = vertically ? ( inY + height - 1 - y ) : ( inY + y );
-                const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( srcY ) * widthIn ) * 4;
-                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
+                const int32_t srcGameY = vertically ? ( inY + height - 1 - y ) : ( inY + y );
+                const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( srcGameY ) * inScale );
+                const uint8_t * srcRow = inBase + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
                 for ( int32_t x = 0; x < width; ++x ) {
-                    const int32_t srcX = horizontally ? ( inX + width - 1 - x ) : ( inX + x );
-                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
-                    uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
-                    dstPx[0] = srcPx[0];
-                    dstPx[1] = srcPx[1];
-                    dstPx[2] = srcPx[2];
-                    dstPx[3] = srcPx[3];
+                    const int32_t srcGameX = horizontally ? ( inX + width - 1 - x ) : ( inX + x );
+                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( srcGameX ) * inScale );
+                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
+                    const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
+                    fillRGBABlock( outBase, pb, bufStride, srcPx[0], srcPx[1], srcPx[2], srcPx[3] );
                 }
             }
             return;
@@ -3346,6 +3571,7 @@ namespace fheroes2
         }
 
         // RGBA target: replace pixels matching palette[oldColorId] RGB with palette[newColorId] RGB.
+        // Scan the ENTIRE backing buffer (Display's buffer is physical-sized).
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
             uint8_t oldR;
             uint8_t oldG;
@@ -3356,7 +3582,7 @@ namespace fheroes2
             uint8_t newB;
             paletteIdxToRGBA( newColorId, newR, newG, newB );
 
-            const size_t total = static_cast<size_t>( image.width() ) * image.height();
+            const size_t total = static_cast<size_t>( image.bufferStride() ) * image.bufferHeight();
             uint8_t * px = image.image();
             for ( size_t i = 0; i < total; ++i, px += 4 ) {
                 if ( px[0] == oldR && px[1] == oldG && px[2] == oldB && px[3] != 0 ) {
@@ -3437,11 +3663,16 @@ namespace fheroes2
             return;
         }
 
-        // RGBA out: nearest-neighbor scale.
+        // RGBA out: nearest-neighbor scale, with destination block expansion on Display.
         if ( out.format() == ImageFormat::RGBA_32BIT ) {
             const int32_t widthIn = in.width();
-            const int32_t widthOut = out.width();
             const bool inIsRGBA = ( in.format() == ImageFormat::RGBA_32BIT );
+            const int32_t inStride = in.bufferStride();
+            const float inScale = in.physicalScale();
+            const float scale = out.physicalScale();
+            const int32_t bufStride = out.bufferStride();
+            const int32_t bufHeight = out.bufferHeight();
+            uint8_t * outBase = out.image();
 
             std::vector<int32_t> positionX( widthRoiOut );
             for ( int32_t x = 0; x < widthRoiOut; ++x ) {
@@ -3450,17 +3681,15 @@ namespace fheroes2
 
             for ( int32_t y = 0; y < heightRoiOut; ++y ) {
                 const int32_t srcRowOffset = ( ( y * heightRoiIn ) / heightRoiOut );
-                uint8_t * dstRow = out.image() + ( ( static_cast<ptrdiff_t>( outY + y ) * widthOut ) + outX ) * 4;
 
                 if ( inIsRGBA ) {
-                    const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY + srcRowOffset ) * widthIn ) * 4;
+                    const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( inY + srcRowOffset ) * inScale );
+                    const uint8_t * srcRow = in.image() + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
                     for ( int32_t x = 0; x < widthRoiOut; ++x ) {
-                        const uint8_t * srcPx = srcRow + ( static_cast<ptrdiff_t>( inX + positionX[x] ) ) * 4;
-                        uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
-                        dstPx[0] = srcPx[0];
-                        dstPx[1] = srcPx[1];
-                        dstPx[2] = srcPx[2];
-                        dstPx[3] = srcPx[3];
+                        const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( inX + positionX[x] ) * inScale );
+                        const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
+                        const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
+                        fillRGBABlock( outBase, pb, bufStride, srcPx[0], srcPx[1], srcPx[2], srcPx[3] );
                     }
                 }
                 else {
@@ -3469,25 +3698,19 @@ namespace fheroes2
                     for ( int32_t x = 0; x < widthRoiOut; ++x ) {
                         const uint8_t srcIdx = srcRow[positionX[x]];
                         const uint8_t srcTr = trRow ? trRow[positionX[x]] : 0;
-                        uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
                         if ( srcTr == 1 ) {
                             continue;
                         }
+                        const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
                         if ( srcTr > 1 && srcTr <= 5 ) {
-                            const float f = shadowFactor[srcTr];
-                            dstPx[0] = static_cast<uint8_t>( static_cast<float>( dstPx[0] ) * f );
-                            dstPx[1] = static_cast<uint8_t>( static_cast<float>( dstPx[1] ) * f );
-                            dstPx[2] = static_cast<uint8_t>( static_cast<float>( dstPx[2] ) * f );
+                            shadeRGBABlock( outBase, pb, bufStride, shadowFactor[srcTr] );
                             continue;
                         }
                         uint8_t r;
                         uint8_t g;
                         uint8_t b;
                         paletteIdxToRGBA( srcIdx, r, g, b );
-                        dstPx[0] = r;
-                        dstPx[1] = g;
-                        dstPx[2] = b;
-                        dstPx[3] = 255;
+                        fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
                     }
                 }
             }
@@ -3586,11 +3809,8 @@ namespace fheroes2
             uint8_t g;
             uint8_t b;
             paletteIdxToRGBA( value, r, g, b );
-            uint8_t * dst = image.image() + ( static_cast<ptrdiff_t>( y ) * image.width() + x ) * 4;
-            dst[0] = r;
-            dst[1] = g;
-            dst[2] = b;
-            dst[3] = 255;
+            const PhysicalBlock pb = toPhysicalBlock( x, y, image.physicalScale(), image.bufferStride(), image.bufferHeight() );
+            fillRGBABlock( image.image(), pb, image.bufferStride(), r, g, b, 255 );
             return;
         }
 
@@ -3615,15 +3835,16 @@ namespace fheroes2
             uint8_t g;
             uint8_t b;
             paletteIdxToRGBA( value, r, g, b );
+            const float scale = image.physicalScale();
+            const int32_t bufStride = image.bufferStride();
+            const int32_t bufHeight = image.bufferHeight();
+            uint8_t * outBase = image.image();
             for ( const Point & p : points ) {
                 if ( p.x < 0 || p.y < 0 || p.x >= width || p.y >= height ) {
                     continue;
                 }
-                uint8_t * dst = image.image() + ( static_cast<ptrdiff_t>( p.y ) * width + p.x ) * 4;
-                dst[0] = r;
-                dst[1] = g;
-                dst[2] = b;
-                dst[3] = 255;
+                const PhysicalBlock pb = toPhysicalBlock( p.x, p.y, scale, bufStride, bufHeight );
+                fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
             }
             return;
         }
@@ -4050,6 +4271,10 @@ namespace fheroes2
 
     // ===== RGBA-only public helpers =====
 
+    // BlitRGBAScaled: hi-res RGBA source -> RGBA destination, scaled to game-coord rect
+    // (dstW, dstH). When out is the physical-resolution Display, the destination physical
+    // rect is (dstW * scale, dstH * scale), so we sample the source PNG straight into final
+    // physical pixels — single nearest-neighbour downscale, no SDL bilinear pass on top.
     void BlitRGBAScaled( const Image & in, Image & out, const int32_t outX, const int32_t outY, const int32_t dstW, const int32_t dstH, const bool flip )
     {
         if ( in.empty() || out.empty() || dstW <= 0 || dstH <= 0 ) {
@@ -4062,31 +4287,53 @@ namespace fheroes2
         const int32_t outW = out.width();
         const int32_t outH = out.height();
 
+        const float scale = out.physicalScale();
+        const int32_t bufStride = out.bufferStride();
+        const int32_t bufHeight = out.bufferHeight();
+
+        // Game-coord clipping.
         const int32_t startX = std::max( outX, 0 );
         const int32_t startY = std::max( outY, 0 );
         const int32_t endX = std::min( outX + dstW, outW );
         const int32_t endY = std::min( outY + dstH, outH );
-
         if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        // Convert game-coord destination span -> physical-pixel destination span.
+        const int32_t pStartX = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startX ) * scale ) );
+        const int32_t pStartY = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startY ) * scale ) );
+        const int32_t pEndX = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( endX ) * scale ) );
+        const int32_t pEndY = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( endY ) * scale ) );
+        if ( pStartX >= pEndX || pStartY >= pEndY ) {
+            return;
+        }
+
+        // Physical-pixel extent of the dst rect (used for source mapping).
+        const int32_t pDstW = static_cast<int32_t>( static_cast<float>( dstW ) * scale );
+        const int32_t pDstH = static_cast<int32_t>( static_cast<float>( dstH ) * scale );
+        const int32_t pOutX = static_cast<int32_t>( static_cast<float>( outX ) * scale );
+        const int32_t pOutY = static_cast<int32_t>( static_cast<float>( outY ) * scale );
+        if ( pDstW <= 0 || pDstH <= 0 ) {
             return;
         }
 
         const uint8_t * srcData = in.image();
         uint8_t * dstData = out.image();
 
-        for ( int32_t y = startY; y < endY; ++y ) {
-            const int32_t srcY = ( ( y - outY ) * srcH ) / dstH;
+        for ( int32_t py = pStartY; py < pEndY; ++py ) {
+            const int32_t srcY = ( ( py - pOutY ) * srcH ) / pDstH;
             const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
-            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( y ) * outW * 4;
+            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( py ) * bufStride * 4;
 
-            for ( int32_t x = startX; x < endX; ++x ) {
-                const int32_t relX = x - outX;
-                const int32_t srcX = ( ( flip ? ( dstW - 1 - relX ) : relX ) * srcW ) / dstW;
+            for ( int32_t px = pStartX; px < pEndX; ++px ) {
+                const int32_t relPx = px - pOutX;
+                const int32_t srcX = ( ( flip ? ( pDstW - 1 - relPx ) : relPx ) * srcW ) / pDstW;
                 const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
                 if ( srcPx[3] == 0 ) {
                     continue;
                 }
-                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( px ) * 4;
                 dstPx[0] = srcPx[0];
                 dstPx[1] = srcPx[1];
                 dstPx[2] = srcPx[2];
@@ -4112,26 +4359,45 @@ namespace fheroes2
         const int32_t outW = out.width();
         const int32_t outH = out.height();
 
+        const float scale = out.physicalScale();
+        const int32_t bufStride = out.bufferStride();
+        const int32_t bufHeight = out.bufferHeight();
+
         const int32_t startX = std::max( outX, 0 );
         const int32_t startY = std::max( outY, 0 );
         const int32_t endX = std::min( outX + dstW, outW );
         const int32_t endY = std::min( outY + dstH, outH );
-
         if ( startX >= endX || startY >= endY ) {
+            return;
+        }
+
+        const int32_t pStartX = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startX ) * scale ) );
+        const int32_t pStartY = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startY ) * scale ) );
+        const int32_t pEndX = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( endX ) * scale ) );
+        const int32_t pEndY = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( endY ) * scale ) );
+        if ( pStartX >= pEndX || pStartY >= pEndY ) {
+            return;
+        }
+
+        const int32_t pDstW = static_cast<int32_t>( static_cast<float>( dstW ) * scale );
+        const int32_t pDstH = static_cast<int32_t>( static_cast<float>( dstH ) * scale );
+        const int32_t pOutX = static_cast<int32_t>( static_cast<float>( outX ) * scale );
+        const int32_t pOutY = static_cast<int32_t>( static_cast<float>( outY ) * scale );
+        if ( pDstW <= 0 || pDstH <= 0 ) {
             return;
         }
 
         const uint8_t * srcData = in.image();
         uint8_t * dstData = out.image();
 
-        for ( int32_t y = startY; y < endY; ++y ) {
-            const int32_t srcY = ( ( y - outY ) * srcH ) / dstH;
+        for ( int32_t py = pStartY; py < pEndY; ++py ) {
+            const int32_t srcY = ( ( py - pOutY ) * srcH ) / pDstH;
             const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
-            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( y ) * outW * 4;
+            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( py ) * bufStride * 4;
 
-            for ( int32_t x = startX; x < endX; ++x ) {
-                const int32_t relX = x - outX;
-                const int32_t srcX = ( ( flip ? ( dstW - 1 - relX ) : relX ) * srcW ) / dstW;
+            for ( int32_t px = pStartX; px < pEndX; ++px ) {
+                const int32_t relPx = px - pOutX;
+                const int32_t srcX = ( ( flip ? ( pDstW - 1 - relPx ) : relPx ) * srcW ) / pDstW;
                 const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
                 if ( srcPx[3] == 0 ) {
                     continue;
@@ -4140,7 +4406,7 @@ namespace fheroes2
                 if ( srcA == 0 ) {
                     continue;
                 }
-                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
+                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( px ) * 4;
                 const uint32_t dstA = dstPx[3];
                 const uint32_t invSrcA = 255 - srcA;
                 dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invSrcA ) / 255 );
@@ -4172,17 +4438,23 @@ namespace fheroes2
             return;
         }
 
+        const int32_t inStride = in.bufferStride();
+        const float inScale = in.physicalScale();
+        const float scale = out.physicalScale();
+        const int32_t bufStride = out.bufferStride();
+        const int32_t bufHeight = out.bufferHeight();
         const uint8_t * srcData = in.image();
         uint8_t * dstData = out.image();
 
         for ( int32_t y = startY; y < endY; ++y ) {
-            const int32_t srcY = y - outY;
-            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
-            uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( y ) * dstW * 4;
+            const int32_t srcGameY = y - outY;
+            const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( srcGameY ) * inScale );
+            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
 
             for ( int32_t x = startX; x < endX; ++x ) {
-                const int32_t srcX = flip ? ( srcW - 1 - ( x - outX ) ) : ( x - outX );
-                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
+                const int32_t srcGameX = flip ? ( srcW - 1 - ( x - outX ) ) : ( x - outX );
+                const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( srcGameX ) * inScale );
+                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
                 if ( srcPx[3] == 0 ) {
                     continue;
                 }
@@ -4190,13 +4462,8 @@ namespace fheroes2
                 if ( srcA == 0 ) {
                     continue;
                 }
-                uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( x ) * 4;
-                const uint32_t dstA = dstPx[3];
-                const uint32_t invSrcA = 255 - srcA;
-                dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invSrcA ) / 255 );
-                dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invSrcA ) / 255 );
-                dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invSrcA ) / 255 );
-                dstPx[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invSrcA ) / 255, static_cast<uint32_t>( 255 ) ) );
+                const PhysicalBlock pb = toPhysicalBlock( x, y, scale, bufStride, bufHeight );
+                blendRGBABlock( dstData, pb, bufStride, srcPx[0], srcPx[1], srcPx[2], srcA );
             }
         }
     }
@@ -4210,7 +4477,10 @@ namespace fheroes2
 
         const int32_t imgW = image.width();
         const int32_t imgH = image.height();
-        uint8_t * data = image.image();
+        const float scale = image.physicalScale();
+        const int32_t bufStride = image.bufferStride();
+        const int32_t bufHeight = image.bufferHeight();
+        uint8_t * outBase = image.image();
 
         int32_t x0 = start.x;
         int32_t y0 = start.y;
@@ -4225,19 +4495,12 @@ namespace fheroes2
 
         while ( true ) {
             if ( x0 >= 0 && x0 < imgW && y0 >= 0 && y0 < imgH ) {
-                uint8_t * px = data + ( static_cast<ptrdiff_t>( y0 ) * imgW + x0 ) * 4;
+                const PhysicalBlock pb = toPhysicalBlock( x0, y0, scale, bufStride, bufHeight );
                 if ( a == 255 ) {
-                    px[0] = r;
-                    px[1] = g;
-                    px[2] = b;
-                    px[3] = 255;
+                    fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
                 }
                 else {
-                    const uint32_t invA = 255 - a;
-                    px[0] = static_cast<uint8_t>( ( r * a + px[0] * invA ) / 255 );
-                    px[1] = static_cast<uint8_t>( ( g * a + px[1] * invA ) / 255 );
-                    px[2] = static_cast<uint8_t>( ( b * a + px[2] * invA ) / 255 );
-                    px[3] = std::max( px[3], a );
+                    blendRGBABlock( outBase, pb, bufStride, r, g, b, a );
                 }
             }
 
@@ -4257,6 +4520,9 @@ namespace fheroes2
         }
     }
 
+    // CopyRGBA: rectangular RGBA region copy. Game coords on both sides; reads in at its
+    // physical-pixel stride, writes out as a physical-pixel block per game pixel. Same-scale
+    // (the common scratch -> scratch / Display -> Display case) collapses to a scaled memcpy.
     void CopyRGBA( const Image & in, const int32_t inX, const int32_t inY, Image & out, const int32_t outX, const int32_t outY, const int32_t w, const int32_t h )
     {
         if ( in.empty() || out.empty() || w <= 0 || h <= 0 ) {
@@ -4288,16 +4554,45 @@ namespace fheroes2
         const int32_t dstStartX = std::max( outX + ( srcStartX - inX ), 0 );
         const int32_t dstStartY = std::max( outY + ( srcStartY - inY ), 0 );
 
+        const int32_t inStride = in.bufferStride();
+        const float inScale = in.physicalScale();
+        const float scale = out.physicalScale();
+        const int32_t bufStride = out.bufferStride();
+        const int32_t bufHeight = out.bufferHeight();
         const uint8_t * srcData = in.image();
         uint8_t * dstData = out.image();
 
+        // Fast path: matching scale on both sides — copy directly at physical-pixel resolution.
+        if ( inScale == scale ) {
+            const int32_t pSrcX = static_cast<int32_t>( static_cast<float>( srcStartX ) * inScale );
+            const int32_t pSrcY = static_cast<int32_t>( static_cast<float>( srcStartY ) * inScale );
+            const int32_t pDstX = static_cast<int32_t>( static_cast<float>( dstStartX ) * scale );
+            const int32_t pDstY = static_cast<int32_t>( static_cast<float>( dstStartY ) * scale );
+            const int32_t pW = static_cast<int32_t>( static_cast<float>( copyW ) * scale );
+            const int32_t pH = static_cast<int32_t>( static_cast<float>( copyH ) * scale );
+            for ( int32_t row = 0; row < pH; ++row ) {
+                const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( pSrcY + row ) * inStride + pSrcX ) * 4;
+                uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( pDstY + row ) * bufStride + pDstX ) * 4;
+                memcpy( dstRow, srcRow, static_cast<size_t>( pW ) * 4 );
+            }
+            return;
+        }
+
+        // Slow path: scale mismatch — sample source, expand destination per game pixel.
         for ( int32_t row = 0; row < copyH; ++row ) {
-            const uint8_t * srcRow = srcData + ( static_cast<ptrdiff_t>( srcStartY + row ) * srcW + srcStartX ) * 4;
-            uint8_t * dstRow = dstData + ( static_cast<ptrdiff_t>( dstStartY + row ) * dstW + dstStartX ) * 4;
-            memcpy( dstRow, srcRow, static_cast<size_t>( copyW ) * 4 );
+            const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( srcStartY + row ) * inScale );
+            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
+            for ( int32_t col = 0; col < copyW; ++col ) {
+                const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( srcStartX + col ) * inScale );
+                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
+                const PhysicalBlock pb = toPhysicalBlock( dstStartX + col, dstStartY + row, scale, bufStride, bufHeight );
+                fillRGBABlock( dstData, pb, bufStride, srcPx[0], srcPx[1], srcPx[2], srcPx[3] );
+            }
         }
     }
 
+    // DimRGBA: multiply RGB by factor (preserve alpha) over a game-coord rect. Iterates the
+    // physical-pixel block backing each game pixel directly.
     void DimRGBA( Image & image, const int32_t x, const int32_t y, const int32_t width, const int32_t height, const float factor )
     {
         if ( image.empty() || factor >= 1.0f ) {
@@ -4318,11 +4613,20 @@ namespace fheroes2
         }
 
         const float f = std::max( factor, 0.0f );
+        const float scale = image.physicalScale();
+        const int32_t bufStride = image.bufferStride();
+        const int32_t bufHeight = image.bufferHeight();
         uint8_t * data = image.image();
 
-        for ( int32_t row = startY; row < endY; ++row ) {
-            uint8_t * rowData = data + static_cast<ptrdiff_t>( row ) * imgW * 4;
-            for ( int32_t col = startX; col < endX; ++col ) {
+        // Compute the physical-pixel rect once and dim it directly (no per-game-pixel block math
+        // for an op that's already per-pixel uniform).
+        const int32_t pStartX = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startX ) * scale ) );
+        const int32_t pStartY = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startY ) * scale ) );
+        const int32_t pEndX = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( endX ) * scale ) );
+        const int32_t pEndY = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( endY ) * scale ) );
+        for ( int32_t row = pStartY; row < pEndY; ++row ) {
+            uint8_t * rowData = data + static_cast<ptrdiff_t>( row ) * bufStride * 4;
+            for ( int32_t col = pStartX; col < pEndX; ++col ) {
                 uint8_t * px = rowData + static_cast<ptrdiff_t>( col ) * 4;
                 if ( px[3] > 0 ) {
                     px[0] = static_cast<uint8_t>( static_cast<float>( px[0] ) * f );

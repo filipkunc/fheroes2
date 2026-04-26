@@ -274,9 +274,9 @@ namespace fheroes2
             return _screenSize;
         }
 
-        // Ratio of physical screen pixels to game pixels. Kept around for callers that still
-        // think in physical-pixel terms; with the pure-RGBA Display at game resolution, most
-        // primitives no longer need it.
+        // Ratio of physical screen pixels to game pixels. With the physical-resolution Display
+        // this is the scale every RGBA-out primitive uses to expand a single game-pixel write
+        // into a scale x scale block in the physical-pixel backing buffer.
         float getPhysicalScale() const
         {
             const int32_t gameW = width();
@@ -288,6 +288,25 @@ namespace fheroes2
             const float scaleY = static_cast<float>( _screenSize.height ) / static_cast<float>( gameH );
             const float scale = std::min( scaleX, scaleY );
             return ( scale < 1.0f ) ? 1.0f : scale;
+        }
+
+        // Physical-resolution Display overrides: width()/height() report game dims (logical
+        // coords used by widget code), bufferStride()/bufferHeight() report the physical-pixel
+        // backing-buffer dimensions, physicalScale() drives the per-pixel block expansion in
+        // every RGBA-out primitive.
+        int32_t bufferStride() const override
+        {
+            return _physWidth;
+        }
+
+        int32_t bufferHeight() const override
+        {
+            return _physHeight;
+        }
+
+        float physicalScale() const override
+        {
+            return getPhysicalScale();
         }
 
         friend BaseRenderEngine & engine();
@@ -303,6 +322,12 @@ namespace fheroes2
         Rect _prevRoi;
 
         Size _screenSize;
+
+        // Physical-pixel dimensions of the backing buffer. width()/height() report the GAME
+        // dimensions (logical coords), but the actual RGBA buffer is sized at these physical
+        // dimensions so primitives can write final-pixel-resolution content directly.
+        int32_t _physWidth{ 0 };
+        int32_t _physHeight{ 0 };
 
         Display();
     };

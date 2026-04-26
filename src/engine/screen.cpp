@@ -1178,9 +1178,12 @@ namespace
             SDL_RenderPresent( _renderer );
         }
 
-        // Pure-RGBA Display path: upload display.image() (RGBA bytes at game resolution) to the
-        // streaming texture, then RenderCopy under SDL_RenderSetLogicalSize so SDL handles the
-        // upscale-to-window with the configured filter (linear or nearest).
+        // Physical-resolution Display path: upload display.image() (RGBA bytes at the
+        // physical-pixel buffer dims reported by display.bufferStride()/bufferHeight()) to
+        // the streaming texture, then RenderCopy under SDL_RenderSetLogicalSize so SDL maps
+        // the texture 1:1 onto the physical window (no further filtering, since the texture
+        // already matches physical dims). When the screen happens to equal the game res the
+        // physical buffer == game res, and the path collapses to the previous behaviour.
         void renderScreenRGBA( const fheroes2::Display & display ) override
         {
             if ( _renderer == nullptr || _screenTexture == nullptr ) {
@@ -1191,10 +1194,11 @@ namespace
                 return;
             }
 
-            const int32_t w = display.width();
-            const int32_t h = display.height();
+            const int32_t w = display.bufferStride();
+            const int32_t h = display.bufferHeight();
             if ( w != _screenTextureW || h != _screenTextureH ) {
-                // Reallocate the streaming texture to match the framebuffer (e.g. resolution change).
+                // Reallocate the streaming texture to match the physical-pixel framebuffer
+                // (e.g. resolution change).
                 SDL_DestroyTexture( _screenTexture );
                 _screenTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, w, h );
                 if ( _screenTexture == nullptr ) {
@@ -1375,19 +1379,19 @@ namespace
                 return false;
             }
 
-            // Pure-RGBA Display upload texture, sized at game resolution. SDL_RenderSetLogicalSize
-            // (called above) handles the upscale to the physical window. Reallocates lazily in
-            // renderScreenRGBA() if the framebuffer ever changes size at runtime.
-            _screenTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, resolutionInfo.gameWidth, resolutionInfo.gameHeight );
+            // Physical-resolution Display upload texture: lazily (re)allocated in
+            // renderScreenRGBA() once Display has computed its physical buffer dims. The
+            // initial 1x1 placeholder keeps the texture pointer non-null so the render path
+            // doesn't bail early on the first frame.
+            _screenTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, 1, 1 );
             if ( _screenTexture == nullptr ) {
-                ERROR_LOG( "Failed to create the screen RGBA texture of " << resolutionInfo.gameWidth << " x " << resolutionInfo.gameHeight
-                                                                          << " size. The error: " << SDL_GetError() )
+                ERROR_LOG( "Failed to create the screen RGBA placeholder texture. The error: " << SDL_GetError() )
                 clear();
                 return false;
             }
             SDL_SetTextureBlendMode( _screenTexture, SDL_BLENDMODE_NONE );
-            _screenTextureW = resolutionInfo.gameWidth;
-            _screenTextureH = resolutionInfo.gameHeight;
+            _screenTextureW = 1;
+            _screenTextureH = 1;
 
             if ( !_retrieveWindowInfo() ) {
                 clear();
@@ -1538,14 +1542,24 @@ namespace fheroes2
             clear();
         }
 
-        // Reinitialise as RGBA-format Image at game resolution. We move-assign a fresh RGBA
-        // Image so Image::format() picks up RGBA_32BIT and Image::resize allocates 4 bytes
-        // per pixel.
-        Image fresh( info.gameWidth, info.gameHeight, ImageFormat::RGBA_32BIT );
-        fresh.reset(); // Zero out so the framebuffer starts black/transparent.
-        Image::operator=( std::move( fresh ) );
-
         _screenSize = { info.screenWidth, info.screenHeight };
+
+        // Compute the physical-pixel dimensions of the backing buffer. We size the buffer at
+        // the screen resolution (or the largest integer-aspect fit) and clamp scale >= 1, so
+        // when the screen happens to match the game dims the buffer is just game-sized.
+        const float scaleX = static_cast<float>( info.screenWidth ) / static_cast<float>( info.gameWidth );
+        const float scaleY = static_cast<float>( info.screenHeight ) / static_cast<float>( info.gameHeight );
+        const float scale = std::max( 1.0f, std::min( scaleX, scaleY ) );
+        _physWidth = static_cast<int32_t>( info.gameWidth * scale );
+        _physHeight = static_cast<int32_t>( info.gameHeight * scale );
+
+        // Allocate an RGBA Image at physical resolution, then patch _width/_height down to
+        // game dimensions so widget code sees game coords. _data stays physical-sized; the
+        // bufferStride()/bufferHeight() virtuals expose the actual buffer dims to primitives.
+        Image fresh( _physWidth, _physHeight, ImageFormat::RGBA_32BIT );
+        fresh.reset(); // Zero out so the framebuffer starts fully transparent black.
+        Image::operator=( std::move( fresh ) );
+        _setLogicalDimensions( info.gameWidth, info.gameHeight );
     }
 
     void Display::resetRenderer()
