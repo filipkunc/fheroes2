@@ -111,14 +111,6 @@ namespace Logging
         Logging::logFile << x << std::endl;                                                                                                                              \
         Logging::logFile.flush();                                                                                                                                        \
     }
-#elif defined( TARGET_PS_VITA )
-#include <psp2/kernel/clib.h>
-#define COUT( x )                                                                                                                                                        \
-    {                                                                                                                                                                    \
-        std::ostringstream _log_strstream; /* The name was chosen on purpose to avoid name collisions with outer code blocks. */                                         \
-        _log_strstream << x << std::endl;                                                                                                                                \
-        sceClibPrintf( "%s", _log_strstream.str().c_str() );                                                                                                             \
-    }
 #elif defined( MACOS_APP_BUNDLE )
 #include <syslog.h>
 #define COUT( x )                                                                                                                                                        \

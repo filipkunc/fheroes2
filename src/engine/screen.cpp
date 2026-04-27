@@ -39,25 +39,20 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
-#include <SDL_error.h>
-#include <SDL_events.h>
-#include <SDL_hints.h>
-#include <SDL_mouse.h>
-#include <SDL_pixels.h>
-#include <SDL_rect.h>
-#include <SDL_render.h>
-#include <SDL_stdinc.h>
-#include <SDL_surface.h>
-#include <SDL_version.h>
-#include <SDL_video.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_hints.h>
+#include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_pixels.h>
+#include <SDL3/SDL_rect.h>
+#include <SDL3/SDL_render.h>
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_surface.h>
+#include <SDL3/SDL_video.h>
 
 // Managing compiler warnings for SDL headers
 #if defined( __GNUC__ )
 #pragma GCC diagnostic pop
-#endif
-
-#if defined( TARGET_PS_VITA )
-#include <vita2d.h>
 #endif
 
 #include "image_palette.h"
@@ -107,7 +102,6 @@ namespace
         return resolutions[id];
     }
 
-#if !defined( TARGET_PS_VITA )
     bool IsLowerThanDefaultRes( const fheroes2::ResolutionInfo & value )
     {
         return value.gameWidth < fheroes2::Display::DEFAULT_WIDTH || value.gameHeight < fheroes2::Display::DEFAULT_HEIGHT;
@@ -193,7 +187,6 @@ namespace
 
         return resolutions;
     }
-#endif
 
     std::vector<uint8_t> StandardPaletteIndexes()
     {
@@ -266,8 +259,6 @@ namespace
 
     const uint8_t * currentPalette = PALPalette();
 
-// If SDL library is used
-#if !defined( TARGET_PS_VITA )
     class BaseSDLRenderer
     {
     protected:
@@ -279,9 +270,8 @@ namespace
             assert( surface != nullptr && !image.empty() );
 
             if ( SDL_MUSTLOCK( surface ) ) {
-                const int returnCode = SDL_LockSurface( surface );
-                if ( returnCode < 0 ) {
-                    ERROR_LOG( "Failed to lock surface. The error value: " << returnCode << ", description: " << SDL_GetError() )
+                if ( !SDL_LockSurface( surface ) ) {
+                    ERROR_LOG( "Failed to lock surface. The error: " << SDL_GetError() )
                 }
             }
 
@@ -291,9 +281,12 @@ namespace
             const bool fullFrame = ( roi.width == imageWidth ) && ( roi.height == imageHeight );
 
             const uint8_t * imageIn = image.image();
+            // SDL3 reports SDL_BITSPERPIXEL of XRGB8888 as 24 (only color bits) — switch the
+            // dispatch to bytes-per-pixel so 32-bit storage formats hit the 32-bit branch.
+            const int bytesPerPixel = SDL_BYTESPERPIXEL( surface->format );
 
             if ( fullFrame ) {
-                if ( surface->format->BitsPerPixel == 32 ) {
+                if ( bytesPerPixel == 4 ) {
                     uint32_t * out = static_cast<uint32_t *>( surface->pixels );
                     const uint32_t * outEnd = out + imageWidth * imageHeight;
                     const uint8_t * in = imageIn;
@@ -302,7 +295,7 @@ namespace
                     for ( ; out != outEnd; ++out, ++in )
                         *out = *( transform + *in );
                 }
-                else if ( ( surface->format->BitsPerPixel == 8 ) && ( surface->pixels != imageIn ) ) {
+                else if ( ( bytesPerPixel == 1 ) && ( surface->pixels != imageIn ) ) {
                     if ( imageWidth % 4 != 0 ) {
                         const int32_t screenWidth = ( imageWidth / 4 ) * 4 + 4;
                         for ( int32_t i = 0; i < imageHeight; ++i ) {
@@ -315,7 +308,7 @@ namespace
                 }
             }
             else {
-                if ( surface->format->BitsPerPixel == 32 ) {
+                if ( bytesPerPixel == 4 ) {
                     uint32_t * outY = static_cast<uint32_t *>( surface->pixels );
                     const uint32_t * outYEnd = outY + imageWidth * roi.height;
                     const uint8_t * inY = imageIn + roi.x + roi.y * imageWidth;
@@ -330,7 +323,7 @@ namespace
                             *outX = *( transform + *inX );
                     }
                 }
-                else if ( ( surface->format->BitsPerPixel == 8 ) && ( surface->pixels != imageIn ) ) {
+                else if ( ( bytesPerPixel == 1 ) && ( surface->pixels != imageIn ) ) {
                     const int32_t screenWidth = ( imageWidth / 4 ) * 4 + 4;
                     const int32_t screenOffset = roi.x + roi.y * screenWidth;
                     const int32_t imageOffset = roi.x + roi.y * imageWidth;
@@ -349,23 +342,26 @@ namespace
         {
             assert( surface != nullptr );
 
-            if ( surface->format->BitsPerPixel == 32 ) {
+            const int bytesPerPixel = SDL_BYTESPERPIXEL( surface->format );
+            const SDL_PixelFormatDetails * formatDetails = SDL_GetPixelFormatDetails( surface->format );
+
+            if ( bytesPerPixel == 4 ) {
                 _palette32Bit.resize( 256u );
 
-                if ( surface->format->Amask > 0 ) {
+                if ( formatDetails != nullptr && formatDetails->Amask > 0 ) {
                     for ( size_t i = 0; i < 256u; ++i ) {
                         const uint8_t * value = currentPalette + colorIds[i] * 3;
-                        _palette32Bit[i] = SDL_MapRGBA( surface->format, *value, *( value + 1 ), *( value + 2 ), 255 );
+                        _palette32Bit[i] = SDL_MapRGBA( formatDetails, nullptr, *value, *( value + 1 ), *( value + 2 ), 255 );
                     }
                 }
                 else {
                     for ( size_t i = 0; i < 256u; ++i ) {
                         const uint8_t * value = currentPalette + colorIds[i] * 3;
-                        _palette32Bit[i] = SDL_MapRGB( surface->format, *value, *( value + 1 ), *( value + 2 ) );
+                        _palette32Bit[i] = SDL_MapRGB( formatDetails, nullptr, *value, *( value + 1 ), *( value + 2 ) );
                     }
                 }
             }
-            else if ( surface->format->BitsPerPixel == 8 ) {
+            else if ( bytesPerPixel == 1 ) {
                 _palette8Bit.resize( 256 );
                 for ( uint32_t i = 0; i < 256; ++i ) {
                     const uint8_t * value = currentPalette + colorIds[i] * 3;
@@ -390,7 +386,7 @@ namespace
                 return nullptr;
             }
 
-            SDL_Surface * surface = SDL_CreateRGBSurface( 0, icon.width(), icon.height(), 32, 0xFF, 0xFF00, 0xFF0000, 0xFF000000 );
+            SDL_Surface * surface = SDL_CreateSurface( icon.width(), icon.height(), SDL_PIXELFORMAT_RGBA32 );
             if ( surface == nullptr ) {
                 ERROR_LOG( "Failed to create a surface of " << icon.width() << " x " << icon.height() << " size for cursor. The error: " << SDL_GetError() )
                 return nullptr;
@@ -404,30 +400,21 @@ namespace
             const uint8_t * in = icon.image();
             const uint8_t * transform = icon.transform();
 
-            if ( surface->format->Amask > 0 ) {
-                for ( ; out != outEnd; ++out, ++in, ++transform ) {
-                    if ( *transform == 0 ) {
-                        const uint8_t * value = currentPalette + *in * 3;
-                        *out = SDL_MapRGBA( surface->format, *value, *( value + 1 ), *( value + 2 ), 255 );
-                    }
+            const SDL_PixelFormatDetails * formatDetails = SDL_GetPixelFormatDetails( surface->format );
+
+            for ( ; out != outEnd; ++out, ++in, ++transform ) {
+                if ( *transform == 0 ) {
+                    const uint8_t * value = currentPalette + *in * 3;
+                    *out = SDL_MapRGBA( formatDetails, nullptr, *value, *( value + 1 ), *( value + 2 ), 255 );
                 }
-            }
-            else {
-                for ( ; out != outEnd; ++out, ++in, ++transform ) {
-                    if ( *transform == 0 ) {
-                        const uint8_t * value = currentPalette + *in * 3;
-                        *out = SDL_MapRGB( surface->format, *value, *( value + 1 ), *( value + 2 ) );
-                    }
-                    else {
-                        *out = SDL_MapRGB( surface->format, 0, 0, 0 );
-                    }
+                else {
+                    *out = SDL_MapRGBA( formatDetails, nullptr, 0, 0, 0, 0 );
                 }
             }
 
             return surface;
         }
     };
-#endif
 
     class RenderCursor final : public fheroes2::Cursor
     {
@@ -446,9 +433,9 @@ namespace
             fheroes2::Cursor::show( enable );
 
             if ( !_emulation ) {
-                const int returnCode = SDL_ShowCursor( _show ? SDL_ENABLE : SDL_DISABLE );
-                if ( returnCode < 0 ) {
-                    ERROR_LOG( "Failed to set cursor. The error value: " << returnCode << ", description: " << SDL_GetError() )
+                const bool success = _show ? SDL_ShowCursor() : SDL_HideCursor();
+                if ( !success ) {
+                    ERROR_LOG( "Failed to set cursor. The error: " << SDL_GetError() )
                 }
             }
         }
@@ -459,7 +446,7 @@ namespace
                 return fheroes2::Cursor::isVisible();
             }
 
-            return fheroes2::Cursor::isVisible() && ( SDL_ShowCursor( SDL_QUERY ) == SDL_ENABLE );
+            return fheroes2::Cursor::isVisible() && SDL_CursorVisible();
         }
 
         void update( const fheroes2::Image & image, int32_t offsetX, int32_t offsetY ) override
@@ -475,7 +462,7 @@ namespace
                 return;
             }
 
-            SDL_Surface * surface = SDL_CreateRGBSurface( 0, image.width(), image.height(), 32, 0xFF, 0xFF00, 0xFF0000, 0xFF000000 );
+            SDL_Surface * surface = SDL_CreateSurface( image.width(), image.height(), SDL_PIXELFORMAT_RGBA32 );
             if ( surface == nullptr ) {
                 ERROR_LOG( "Failed to create a surface of " << image.width() << " x " << image.height() << " size for cursor. The error: " << SDL_GetError() )
                 return;
@@ -489,28 +476,21 @@ namespace
             const uint8_t * in = image.image();
             const uint8_t * transform = image.transform();
 
-            if ( surface->format->Amask > 0 ) {
-                for ( ; out != outEnd; ++out, ++in, ++transform ) {
-                    if ( *transform == 0 ) {
-                        const uint8_t * value = currentPalette + *in * 3;
-                        *out = SDL_MapRGBA( surface->format, *value, *( value + 1 ), *( value + 2 ), 255 );
-                    }
-                    else if ( *transform > 1 ) {
-                        // SDL2 uses RGBA image on OS level separately from frame rendering.
-                        // Here we are trying to simulate cursor's shadow as close as possible to the original game.
-                        *out = SDL_MapRGBA( surface->format, 0, 0, 0, 64 );
-                    }
+            const SDL_PixelFormatDetails * formatDetails = SDL_GetPixelFormatDetails( surface->format );
+
+            for ( ; out != outEnd; ++out, ++in, ++transform ) {
+                if ( *transform == 0 ) {
+                    const uint8_t * value = currentPalette + *in * 3;
+                    *out = SDL_MapRGBA( formatDetails, nullptr, *value, *( value + 1 ), *( value + 2 ), 255 );
                 }
-            }
-            else {
-                for ( ; out != outEnd; ++out, ++in, ++transform ) {
-                    if ( *transform == 0 ) {
-                        const uint8_t * value = currentPalette + *in * 3;
-                        *out = SDL_MapRGB( surface->format, *value, *( value + 1 ), *( value + 2 ) );
-                    }
-                    else {
-                        *out = SDL_MapRGB( surface->format, 0, 0, 0 );
-                    }
+                else if ( *transform > 1 ) {
+                    // The OS draws the hardware cursor as RGBA. Approximate the original
+                    // game's cursor shadow by mapping the shadow transform values to a
+                    // semi-transparent black.
+                    *out = SDL_MapRGBA( formatDetails, nullptr, 0, 0, 0, 64 );
+                }
+                else {
+                    *out = SDL_MapRGBA( formatDetails, nullptr, 0, 0, 0, 0 );
                 }
             }
 
@@ -522,11 +502,11 @@ namespace
                 SDL_SetCursor( tempCursor );
             }
 
-            const int returnCode = SDL_ShowCursor( _show ? SDL_ENABLE : SDL_DISABLE );
-            if ( returnCode < 0 ) {
-                ERROR_LOG( "Failed to set cursor state. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            const bool success = _show ? SDL_ShowCursor() : SDL_HideCursor();
+            if ( !success ) {
+                ERROR_LOG( "Failed to set cursor state. The error: " << SDL_GetError() )
             }
-            SDL_FreeSurface( surface );
+            SDL_DestroySurface( surface );
 
             if ( tempCursor != nullptr ) {
                 clear();
@@ -543,17 +523,16 @@ namespace
             if ( enable ) {
                 clear();
 
-                const int returnCode = SDL_ShowCursor( SDL_DISABLE );
-                if ( returnCode < 0 ) {
-                    ERROR_LOG( "Failed to disable cursor. The error value: " << returnCode << ", description: " << SDL_GetError() )
+                if ( !SDL_HideCursor() ) {
+                    ERROR_LOG( "Failed to disable cursor. The error: " << SDL_GetError() )
                 }
 
                 _emulation = true;
             }
             else {
-                const int returnCode = SDL_ShowCursor( _show ? SDL_ENABLE : SDL_DISABLE );
-                if ( returnCode < 0 ) {
-                    ERROR_LOG( "Failed to set cursor state. The error value: " << returnCode << ", description: " << SDL_GetError() )
+                const bool success = _show ? SDL_ShowCursor() : SDL_HideCursor();
+                if ( !success ) {
+                    ERROR_LOG( "Failed to set cursor state. The error: " << SDL_GetError() )
                 }
 
                 _emulation = false;
@@ -576,230 +555,21 @@ namespace
         {
             _emulation = false;
 
-            const int returnCode = SDL_ShowCursor( _show ? SDL_ENABLE : SDL_DISABLE );
-            if ( returnCode < 0 ) {
-                ERROR_LOG( "Failed to set cursor state. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            const bool success = _show ? SDL_ShowCursor() : SDL_HideCursor();
+            if ( !success ) {
+                ERROR_LOG( "Failed to set cursor state. The error: " << SDL_GetError() )
             }
         }
 
         void clear()
         {
             if ( _cursor != nullptr ) {
-                SDL_FreeCursor( _cursor );
+                SDL_DestroyCursor( _cursor );
                 _cursor = nullptr;
             }
         }
     };
 
-#if defined( TARGET_PS_VITA )
-    class RenderEngine final : public fheroes2::BaseRenderEngine
-    {
-    public:
-        RenderEngine( const RenderEngine & ) = delete;
-
-        ~RenderEngine() override
-        {
-            clear();
-        }
-
-        RenderEngine & operator=( const RenderEngine & ) = delete;
-
-        void toggleFullScreen() override
-        {
-            BaseRenderEngine::toggleFullScreen();
-
-            const fheroes2::Display & display = fheroes2::Display::instance();
-            _calculateScreenScaling( display.width(), display.height(), isFullScreen() );
-        }
-
-        static RenderEngine * create()
-        {
-            return new RenderEngine;
-        }
-
-        fheroes2::Rect getActiveWindowROI() const override
-        {
-            return _destRect;
-        }
-
-        fheroes2::Size getCurrentScreenResolution() const override
-        {
-            return { VITA_FULLSCREEN_WIDTH, VITA_FULLSCREEN_HEIGHT };
-        }
-
-        std::vector<fheroes2::ResolutionInfo> getAvailableResolutions() const override
-        {
-            static const std::vector<fheroes2::ResolutionInfo> filteredResolutions = []() {
-                std::set<fheroes2::ResolutionInfo> resolutionSet;
-                resolutionSet.emplace( fheroes2::Display::DEFAULT_WIDTH, fheroes2::Display::DEFAULT_HEIGHT );
-                resolutionSet.emplace( VITA_ASPECT_CORRECTED_WIDTH, fheroes2::Display::DEFAULT_HEIGHT );
-                resolutionSet.emplace( VITA_FULLSCREEN_WIDTH, VITA_FULLSCREEN_HEIGHT );
-
-                return std::vector<fheroes2::ResolutionInfo>{ resolutionSet.rbegin(), resolutionSet.rend() };
-            }();
-
-            return filteredResolutions;
-        }
-
-    private:
-        SDL_Window * _window{ nullptr };
-        SDL_Surface * _surface{ nullptr };
-        vita2d_texture * _texBuffer{ nullptr };
-        uint8_t * _palettedTexturePointer{ nullptr };
-        fheroes2::Rect _destRect;
-
-        RenderEngine() = default;
-
-        enum : int32_t
-        {
-            VITA_FULLSCREEN_WIDTH = 960,
-            VITA_FULLSCREEN_HEIGHT = 544,
-            VITA_ASPECT_CORRECTED_WIDTH = 848
-        };
-
-        void clear() override
-        {
-            if ( _window != nullptr ) {
-                SDL_DestroyWindow( _window );
-                _window = nullptr;
-            }
-
-            if ( _surface != nullptr ) {
-                SDL_FreeSurface( _surface );
-                _surface = nullptr;
-            }
-
-            vita2d_fini();
-
-            if ( _texBuffer != nullptr ) {
-                vita2d_free_texture( _texBuffer );
-                _texBuffer = nullptr;
-            }
-        }
-
-        bool allocate( fheroes2::ResolutionInfo & resolutionInfo, bool isFullScreen ) override
-        {
-            clear();
-
-            const std::vector<fheroes2::ResolutionInfo> resolutions = getAvailableResolutions();
-            assert( !resolutions.empty() );
-            if ( !resolutions.empty() ) {
-                resolutionInfo = GetNearestResolution( resolutionInfo, resolutions );
-            }
-
-            vita2d_init();
-
-            _window = SDL_CreateWindow( "", 0, 0, resolutionInfo.gameWidth, resolutionInfo.gameHeight, 0 );
-            if ( _window == nullptr ) {
-                ERROR_LOG( "Failed to create an application window of " << resolutionInfo.gameWidth << " x " << resolutionInfo.gameHeight
-                                                                        << " size. The error: " << SDL_GetError() )
-
-                clear();
-                return false;
-            }
-
-            _surface = SDL_CreateRGBSurface( 0, 1, 1, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );
-
-            if ( _surface == nullptr || _surface->w <= 0 || _surface->h <= 0 ) {
-                ERROR_LOG( "Failed to create a surface of " << resolutionInfo.gameWidth << " x " << resolutionInfo.gameHeight << " size. The error: " << SDL_GetError() )
-
-                clear();
-                return false;
-            }
-
-            vita2d_texture_set_alloc_memblock_type( SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW );
-            _texBuffer = vita2d_create_empty_texture_format( resolutionInfo.gameWidth, resolutionInfo.gameHeight, SCE_GXM_TEXTURE_FORMAT_P8_ABGR );
-            _palettedTexturePointer = static_cast<uint8_t *>( vita2d_texture_get_datap( _texBuffer ) );
-            memset( _palettedTexturePointer, 0, resolutionInfo.gameWidth * resolutionInfo.gameHeight * sizeof( uint8_t ) );
-            _createPalette();
-
-            _calculateScreenScaling( resolutionInfo.gameWidth, resolutionInfo.gameHeight, isFullScreen );
-
-            return true;
-        }
-
-        void render( const fheroes2::Display & display, const fheroes2::Rect & roi ) override
-        {
-            (void)roi;
-
-            if ( _texBuffer == nullptr )
-                return;
-
-            const int32_t width = display.width();
-            const int32_t height = display.height();
-
-            SDL_memcpy( _palettedTexturePointer, display.image(), width * height * sizeof( uint8_t ) );
-
-            vita2d_start_drawing();
-            vita2d_draw_rectangle( 0, 0, VITA_FULLSCREEN_WIDTH, VITA_FULLSCREEN_HEIGHT, 0xff000000 );
-            vita2d_draw_texture_scale( _texBuffer, _destRect.x, _destRect.y, static_cast<float>( _destRect.width ) / width,
-                                       static_cast<float>( _destRect.height ) / height );
-            vita2d_end_drawing();
-            vita2d_swap_buffers();
-        }
-
-        void updatePalette( const std::vector<uint8_t> & colorIds ) override
-        {
-            if ( _surface == nullptr || colorIds.size() != 256 || _texBuffer == nullptr )
-                return;
-
-            uint32_t palette32Bit[256u];
-
-            for ( size_t i = 0; i < 256u; ++i ) {
-                const uint8_t * value = currentPalette + colorIds[i] * 3;
-                palette32Bit[i] = SDL_MapRGBA( _surface->format, *value, *( value + 1 ), *( value + 2 ), 255 );
-            }
-
-            memcpy( vita2d_texture_get_palette( _texBuffer ), palette32Bit, sizeof( uint32_t ) * 256 );
-        }
-
-        bool isMouseCursorActive() const override
-        {
-            return true;
-        }
-
-        void _createPalette()
-        {
-            updatePalette( StandardPaletteIndexes() );
-        }
-
-        void _calculateScreenScaling( const int32_t width_, const int32_t height_, const bool isFullScreen )
-        {
-            _destRect.x = 0;
-            _destRect.y = 0;
-            _destRect.width = width_;
-            _destRect.height = height_;
-
-            if ( width_ == VITA_FULLSCREEN_WIDTH && height_ == VITA_FULLSCREEN_HEIGHT ) {
-                // Nothing to do more.
-                return;
-            }
-
-            if ( !isFullScreen ) {
-                // Center game area.
-                _destRect.x = ( VITA_FULLSCREEN_WIDTH - width_ ) / 2;
-                _destRect.y = ( VITA_FULLSCREEN_HEIGHT - height_ ) / 2;
-                return;
-            }
-
-            const SceGxmTextureFilter textureFilter = isNearestScaling() ? SCE_GXM_TEXTURE_FILTER_POINT : SCE_GXM_TEXTURE_FILTER_LINEAR;
-
-            vita2d_texture_set_filters( _texBuffer, textureFilter, textureFilter );
-            if ( ( static_cast<float>( VITA_FULLSCREEN_WIDTH ) / VITA_FULLSCREEN_HEIGHT ) >= ( static_cast<float>( width_ ) / height_ ) ) {
-                const float scale = static_cast<float>( VITA_FULLSCREEN_HEIGHT ) / height_;
-                _destRect.width = static_cast<int32_t>( static_cast<float>( width_ ) * scale );
-                _destRect.height = VITA_FULLSCREEN_HEIGHT;
-                _destRect.x = ( VITA_FULLSCREEN_WIDTH - _destRect.width ) / 2;
-            }
-            else {
-                const float scale = static_cast<float>( VITA_FULLSCREEN_WIDTH ) / width_;
-                _destRect.width = VITA_FULLSCREEN_WIDTH;
-                _destRect.height = static_cast<int32_t>( static_cast<float>( height_ ) * scale );
-                _destRect.y = ( VITA_FULLSCREEN_HEIGHT - _destRect.height ) / 2;
-            }
-        }
-    };
-#else
     bool shouldUseFullscreenDesktopMode()
     {
         return fheroes2::cursor().isSoftwareEmulation();
@@ -807,15 +577,18 @@ namespace
 
     std::optional<bool> isWindowInAnyDisplay( const fheroes2::ResolutionInfo & resolutionInfo, const fheroes2::Point & windowPos )
     {
-        const int numDisplays = SDL_GetNumVideoDisplays();
-        if ( numDisplays < 1 ) {
-            ERROR_LOG( "Failed to get the number of video displays. The error value: " << numDisplays << ", description: " << SDL_GetError() )
+        int numDisplays = 0;
+        SDL_DisplayID * displays = SDL_GetDisplays( &numDisplays );
+        if ( displays == nullptr || numDisplays < 1 ) {
+            ERROR_LOG( "Failed to get the number of video displays. The error: " << SDL_GetError() )
+            SDL_free( displays );
             return std::nullopt;
         }
 
+        bool result = false;
         for ( int displayIndex = 0; displayIndex < numDisplays; ++displayIndex ) {
             SDL_Rect displayBounds;
-            if ( SDL_GetDisplayBounds( displayIndex, &displayBounds ) != 0 ) {
+            if ( !SDL_GetDisplayBounds( displays[displayIndex], &displayBounds ) ) {
                 ERROR_LOG( "Failed to get display bounds for display #" << displayIndex << ". The error: " << SDL_GetError() )
                 continue;
             }
@@ -824,10 +597,13 @@ namespace
             const int32_t windowMaxX = windowPos.x + resolutionInfo.screenWidth;
             const int32_t windowMaxY = windowPos.y + resolutionInfo.screenHeight;
             if ( windowPos.x >= displayBounds.x && windowMaxX < displayMaxX && windowPos.y >= displayBounds.y && windowMaxY < displayMaxY ) {
-                return true;
+                result = true;
+                break;
             }
         }
-        return false;
+
+        SDL_free( displays );
+        return result;
     }
 
     class RenderEngine final : public fheroes2::BaseRenderEngine, public BaseSDLRenderer
@@ -849,30 +625,23 @@ namespace
                 return;
             }
 
-            uint32_t flags = SDL_GetWindowFlags( _window );
-            if ( flags & ( SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP ) ) {
-                flags &= ~( SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP );
-            }
-            else {
+            const SDL_WindowFlags flags = SDL_GetWindowFlags( _window );
+            const bool wasFullScreen = ( flags & SDL_WINDOW_FULLSCREEN ) != 0;
+
+            bool useExclusiveFullscreen = false;
+            if ( !wasFullScreen ) {
 #if defined( _WIN32 )
-                // We force fullscreen at desktop resolution for nearest scaling to disable hardware scaling of game resolution by the monitor.
-                if ( isNearestScaling() || fheroes2::cursor().isSoftwareEmulation() ) {
-                    flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-                }
-                else {
-                    flags |= SDL_WINDOW_FULLSCREEN;
-                }
-#else
-                flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+                // Force borderless desktop fullscreen for nearest scaling to disable hardware
+                // scaling of game resolution by the monitor.
+                useExclusiveFullscreen = !( isNearestScaling() || fheroes2::cursor().isSoftwareEmulation() );
 #endif
 
                 // Update the window position, in case we get queried for it
                 SDL_GetWindowPosition( _window, &_prevWindowPos.x, &_prevWindowPos.y );
 
                 // If the window size has been manually changed to one that does not match any of the resolutions supported by the display, then after switching
-                // to full-screen mode, the in-game display area may not occupy the entire screen, and black bars will remain on the sides of the screen. In this
-                // case, even if it is specified to use the SDL_WINDOW_FULLSCREEN, the SDL_WINDOW_FULLSCREEN_DESKTOP will still be used under the hood. To avoid
-                // this, we need to remember the window size (to restore it later when turning off full-screen mode) and then set the window size to the size of
+                // to full-screen mode, the in-game display area may not occupy the entire screen, and black bars will remain on the sides of the screen. To
+                // avoid this, we remember the window size (to restore it later when turning off full-screen mode) and then set the window size to the size of
                 // the in-game display area before switching to the full-screen mode.
                 SDL_GetWindowSize( _window, &_windowedSize.width, &_windowedSize.height );
 
@@ -883,8 +652,24 @@ namespace
                 }
             }
 
-            if ( const int returnCode = SDL_SetWindowFullscreen( _window, flags ); returnCode < 0 ) {
-                ERROR_LOG( "Failed to set fullscreen mode flags. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            // SDL3 splits fullscreen into a "fullscreen mode" (nullptr = borderless desktop, otherwise exclusive at given mode) and a fullscreen on/off toggle.
+            if ( !wasFullScreen ) {
+                const SDL_DisplayMode * targetMode = nullptr;
+                SDL_DisplayMode closestMode{};
+                if ( useExclusiveFullscreen ) {
+                    const SDL_DisplayID displayID = SDL_GetDisplayForWindow( _window );
+                    if ( displayID != 0 ) {
+                        const fheroes2::Display & display = fheroes2::Display::instance();
+                        if ( SDL_GetClosestFullscreenDisplayMode( displayID, display.screenSize().width, display.screenSize().height, 0.0f, false, &closestMode ) ) {
+                            targetMode = &closestMode;
+                        }
+                    }
+                }
+                SDL_SetWindowFullscreenMode( _window, targetMode );
+            }
+
+            if ( !SDL_SetWindowFullscreen( _window, !wasFullScreen ) ) {
+                ERROR_LOG( "Failed to set fullscreen mode. The error: " << SDL_GetError() )
             }
 
             _syncFullScreen();
@@ -904,39 +689,33 @@ namespace
                 return BaseRenderEngine::isFullScreen();
             }
 
-            const uint32_t flags = SDL_GetWindowFlags( _window );
-            return ( flags & ( SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP ) );
+            const SDL_WindowFlags flags = SDL_GetWindowFlags( _window );
+            return ( flags & SDL_WINDOW_FULLSCREEN ) != 0;
         }
 
         std::vector<fheroes2::ResolutionInfo> getAvailableResolutions() const override
         {
             std::set<fheroes2::ResolutionInfo> resolutionSet;
 
-            const int displayCount = SDL_GetNumVideoDisplays();
-            if ( displayCount >= 1 ) {
+            int displayCount = 0;
+            SDL_DisplayID * displays = SDL_GetDisplays( &displayCount );
+            if ( displays != nullptr && displayCount >= 1 ) {
                 for ( int displayId = 0; displayId < displayCount; ++displayId ) {
-                    const int displayModeCount = SDL_GetNumDisplayModes( displayId );
-                    if ( displayModeCount >= 1 ) {
+                    int displayModeCount = 0;
+                    SDL_DisplayMode ** modes = SDL_GetFullscreenDisplayModes( displays[displayId], &displayModeCount );
+                    if ( modes != nullptr && displayModeCount >= 1 ) {
                         for ( int i = 0; i < displayModeCount; ++i ) {
-                            SDL_DisplayMode videoMode;
-                            const int returnCode = SDL_GetDisplayMode( displayId, i, &videoMode );
-                            if ( returnCode != 0 ) {
-                                ERROR_LOG( "Failed to get display mode on display " << displayId << ". The error value: " << returnCode
-                                                                                    << ", description: " << SDL_GetError() )
-                            }
-                            else {
-                                resolutionSet.emplace( videoMode.w, videoMode.h );
-                            }
+                            resolutionSet.emplace( modes[i]->w, modes[i]->h );
                         }
                     }
                     else {
-                        ERROR_LOG( "Failed to get the number of display modes for display" << displayId << ". The error value: " << displayModeCount
-                                                                                           << ", description: " << SDL_GetError() )
+                        ERROR_LOG( "Failed to get the number of display modes for display " << displayId << ". The error: " << SDL_GetError() )
                     }
+                    SDL_free( modes );
                 }
             }
             else {
-                ERROR_LOG( "Failed to get the number of displays. The error value: " << displayCount << ", description: " << SDL_GetError() )
+                ERROR_LOG( "Failed to get the number of displays. The error: " << SDL_GetError() )
             }
 
 #if defined( TARGET_NINTENDO_SWITCH )
@@ -946,13 +725,15 @@ namespace
 #endif
             resolutionSet = FilterResolutions( resolutionSet );
 
-            if ( displayCount < 1 ) {
+            if ( displays == nullptr || displayCount < 1 ) {
+                SDL_free( displays );
                 return std::vector<fheroes2::ResolutionInfo>{ resolutionSet.rbegin(), resolutionSet.rend() };
             }
 
             if ( !shouldUseFullscreenDesktopMode() ) {
                 // If software emulation is not enabled it means that we need to use resolutions supported
                 // by the hardware.
+                SDL_free( displays );
                 return std::vector<fheroes2::ResolutionInfo>{ resolutionSet.rbegin(), resolutionSet.rend() };
             }
 
@@ -961,20 +742,19 @@ namespace
             SDL_DisplayMode maxDisplayMode{};
 
             for ( int displayId = 0; displayId < displayCount; ++displayId ) {
-                SDL_DisplayMode displayMode;
-
-                const int returnValue = SDL_GetCurrentDisplayMode( displayId, &displayMode );
-                if ( returnValue < 0 ) {
-                    ERROR_LOG( "Failed to retrieve the current display mode for display " << displayId << ". The error value: " << returnValue
-                                                                                          << ", description: " << SDL_GetError() )
+                const SDL_DisplayMode * displayMode = SDL_GetCurrentDisplayMode( displays[displayId] );
+                if ( displayMode == nullptr ) {
+                    ERROR_LOG( "Failed to retrieve the current display mode for display " << displayId << ". The error: " << SDL_GetError() )
                     continue;
                 }
 
                 // There is no an ideal formula of how to choose the biggest resolution among multiple displays
                 // so let's use a simple and well-known approach.
-                maxDisplayMode.w = std::max( maxDisplayMode.w, displayMode.w );
-                maxDisplayMode.h = std::max( maxDisplayMode.h, displayMode.h );
+                maxDisplayMode.w = std::max( maxDisplayMode.w, displayMode->w );
+                maxDisplayMode.h = std::max( maxDisplayMode.h, displayMode->h );
             }
+
+            SDL_free( displays );
 
             if ( maxDisplayMode.w == 0 || maxDisplayMode.h == 0 ) {
                 // None of displays returned a value display mode.
@@ -1017,7 +797,7 @@ namespace
 
             SDL_SetWindowIcon( _window, surface );
 
-            SDL_FreeSurface( surface );
+            SDL_DestroySurface( surface );
         }
 
         fheroes2::Rect getActiveWindowROI() const override
@@ -1059,6 +839,13 @@ namespace
             return result;
         }
 
+        void convertWindowToRenderCoordinates( float & x, float & y ) const override
+        {
+            if ( _renderer != nullptr ) {
+                SDL_RenderCoordinatesFromWindow( _renderer, x, y, &x, &y );
+            }
+        }
+
         void setWindowPos( const fheroes2::Point pos ) override
         {
             if ( pos == fheroes2::Point{ -1, -1 } ) {
@@ -1086,16 +873,31 @@ namespace
         bool _isVSyncEnabled{ false };
 
         // Streaming RGBA32 texture sized to Display dimensions. Pure-RGBA Display upload target —
-        // one SDL_UpdateTexture + SDL_RenderCopy per frame, with SDL_RenderSetLogicalSize handling
-        // the upscale to the physical window.
+        // one SDL_UpdateTexture + SDL_RenderTexture per frame, with SDL_SetRenderLogicalPresentation
+        // handling the upscale to the physical window.
         SDL_Texture * _screenTexture{ nullptr };
         int32_t _screenTextureW{ 0 };
         int32_t _screenTextureH{ 0 };
+
+        // Composite-on-top cursor overlay: the software cursor is rendered as a separate texture
+        // after the main screen texture is presented, so the framebuffer never accumulates cursor
+        // pixels. Re-uploaded each frame the cursor is shown (cursor sprites are tiny — 15x21).
+        SDL_Texture * _cursorTexture{ nullptr };
+        int32_t _cursorTextureW{ 0 };
+        int32_t _cursorTextureH{ 0 };
+        std::vector<uint8_t> _cursorRgbaScratch;
 
         RenderEngine() = default;
 
         void clear() override
         {
+            if ( _cursorTexture != nullptr ) {
+                SDL_DestroyTexture( _cursorTexture );
+                _cursorTexture = nullptr;
+                _cursorTextureW = 0;
+                _cursorTextureH = 0;
+            }
+
             if ( _screenTexture != nullptr ) {
                 SDL_DestroyTexture( _screenTexture );
                 _screenTexture = nullptr;
@@ -1125,7 +927,7 @@ namespace
             }
 
             if ( _surface != nullptr ) {
-                SDL_FreeSurface( _surface );
+                SDL_DestroySurface( _surface );
                 _surface = nullptr;
             }
 
@@ -1145,9 +947,8 @@ namespace
 
             const bool fullFrame = ( roi.width == display.width() ) && ( roi.height == display.height() );
             if ( fullFrame ) {
-                const int returnCode = SDL_UpdateTexture( _texture, nullptr, _surface->pixels, _surface->pitch );
-                if ( returnCode < 0 ) {
-                    ERROR_LOG( "Failed to update texture. The error value: " << returnCode << ", description: " << SDL_GetError() )
+                if ( !SDL_UpdateTexture( _texture, nullptr, _surface->pixels, _surface->pitch ) ) {
+                    ERROR_LOG( "Failed to update texture. The error: " << SDL_GetError() )
                 }
             }
             else {
@@ -1157,21 +958,18 @@ namespace
                 area.w = roi.width;
                 area.h = roi.height;
 
-                const int returnCode = SDL_UpdateTexture( _texture, &area, _surface->pixels, _surface->pitch );
-                if ( returnCode < 0 ) {
-                    ERROR_LOG( "Failed to update texture. The error value: " << returnCode << ", description: " << SDL_GetError() )
+                if ( !SDL_UpdateTexture( _texture, &area, _surface->pixels, _surface->pitch ) ) {
+                    ERROR_LOG( "Failed to update texture. The error: " << SDL_GetError() )
                 }
             }
 
-            int returnCode = SDL_RenderClear( _renderer );
-            if ( returnCode < 0 ) {
-                ERROR_LOG( "Failed to clear renderer. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            if ( !SDL_RenderClear( _renderer ) ) {
+                ERROR_LOG( "Failed to clear renderer. The error: " << SDL_GetError() )
                 return;
             }
 
-            returnCode = SDL_RenderCopy( _renderer, _texture, nullptr, nullptr );
-            if ( returnCode < 0 ) {
-                ERROR_LOG( "Failed to copy render.The error value: " << returnCode << ", description: " << SDL_GetError() )
+            if ( !SDL_RenderTexture( _renderer, _texture, nullptr, nullptr ) ) {
+                ERROR_LOG( "Failed to copy render. The error: " << SDL_GetError() )
                 return;
             }
 
@@ -1212,24 +1010,92 @@ namespace
                 _screenTextureH = h;
             }
 
-            const int updateCode = SDL_UpdateTexture( _screenTexture, nullptr, display.image(), w * 4 );
-            if ( updateCode < 0 ) {
+            if ( !SDL_UpdateTexture( _screenTexture, nullptr, display.image(), w * 4 ) ) {
                 ERROR_LOG( "Failed to update screen RGBA texture. Error: " << SDL_GetError() )
                 return;
             }
 
             SDL_SetRenderDrawColor( _renderer, 0, 0, 0, 255 );
-            const int clearCode = SDL_RenderClear( _renderer );
-            if ( clearCode < 0 ) {
+            if ( !SDL_RenderClear( _renderer ) ) {
                 ERROR_LOG( "Failed to clear renderer. Error: " << SDL_GetError() )
             }
 
-            const int copyCode = SDL_RenderCopy( _renderer, _screenTexture, nullptr, nullptr );
-            if ( copyCode < 0 ) {
+            if ( !SDL_RenderTexture( _renderer, _screenTexture, nullptr, nullptr ) ) {
                 ERROR_LOG( "Failed to copy screen RGBA texture. Error: " << SDL_GetError() )
             }
 
+            // Composite the software cursor on top of the framebuffer (never blitted into
+            // display._data, so the buffer stays clean across frames).
+            const fheroes2::Cursor & cursorRef = fheroes2::cursor();
+            if ( cursorRef.isVisible() && cursorRef.isSoftwareEmulation() && !cursorRef.getImage().empty() ) {
+                renderCursorOverlay( cursorRef );
+            }
+
             SDL_RenderPresent( _renderer );
+        }
+
+        void renderCursorOverlay( const fheroes2::Cursor & cursorRef )
+        {
+            const fheroes2::Sprite & cursorSprite = cursorRef.getImage();
+            const int32_t cw = cursorSprite.width();
+            const int32_t ch = cursorSprite.height();
+            if ( cw <= 0 || ch <= 0 ) {
+                return;
+            }
+
+            // Allocate / resize the cursor texture if needed.
+            if ( _cursorTexture == nullptr || _cursorTextureW != cw || _cursorTextureH != ch ) {
+                if ( _cursorTexture != nullptr ) {
+                    SDL_DestroyTexture( _cursorTexture );
+                    _cursorTexture = nullptr;
+                }
+                _cursorTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, cw, ch );
+                if ( _cursorTexture == nullptr ) {
+                    _cursorTextureW = 0;
+                    _cursorTextureH = 0;
+                    ERROR_LOG( "Failed to create cursor overlay texture: " << SDL_GetError() )
+                    return;
+                }
+                SDL_SetTextureBlendMode( _cursorTexture, SDL_BLENDMODE_BLEND );
+                SDL_SetTextureScaleMode( _cursorTexture, isNearestScaling() ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR );
+                _cursorTextureW = cw;
+                _cursorTextureH = ch;
+            }
+
+            // Convert indexed cursor sprite to RGBA32 via the current palette.
+            _cursorRgbaScratch.resize( static_cast<size_t>( cw ) * ch * 4 );
+            const uint8_t * idxData = cursorSprite.image();
+            const uint8_t * transformData = cursorSprite.transform();
+            uint8_t * outRgba = _cursorRgbaScratch.data();
+            const int32_t totalPixels = cw * ch;
+            for ( int32_t i = 0; i < totalPixels; ++i ) {
+                uint8_t * out = outRgba + i * 4;
+                if ( transformData[i] == 0 ) {
+                    const uint8_t * c = currentPalette + idxData[i] * 3;
+                    out[0] = c[0];
+                    out[1] = c[1];
+                    out[2] = c[2];
+                    out[3] = 255;
+                }
+                else {
+                    out[0] = 0;
+                    out[1] = 0;
+                    out[2] = 0;
+                    out[3] = 0;
+                }
+            }
+
+            if ( !SDL_UpdateTexture( _cursorTexture, nullptr, _cursorRgbaScratch.data(), cw * 4 ) ) {
+                ERROR_LOG( "Failed to update cursor overlay texture: " << SDL_GetError() )
+                return;
+            }
+
+            // Position is the cursor sprite's logical (game) position; logical presentation maps
+            // it to physical pixels.
+            SDL_FRect dstRect{ static_cast<float>( cursorSprite.x() ), static_cast<float>( cursorSprite.y() ), static_cast<float>( cw ), static_cast<float>( ch ) };
+            if ( !SDL_RenderTexture( _renderer, _cursorTexture, nullptr, &dstRect ) ) {
+                ERROR_LOG( "Failed to render cursor overlay: " << SDL_GetError() )
+            }
         }
 
         bool allocate( fheroes2::ResolutionInfo & resolutionInfo, bool isFullScreen ) override
@@ -1244,24 +1110,17 @@ namespace
 
 #if defined( ANDROID ) || defined( __IPHONEOS__ )
             // Same as ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            if ( SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" ) == SDL_FALSE ) {
+            if ( !SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" ) ) {
                 ERROR_LOG( "Failed to set the " SDL_HINT_ORIENTATIONS " hint." )
             }
 #endif
 
-            uint32_t flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+            // SDL3 windows are visible by default; SDL_WINDOW_SHOWN is gone.
+            // SDL_WINDOW_FULLSCREEN_DESKTOP is gone — set the fullscreen mode separately via
+            // SDL_SetWindowFullscreenMode (nullptr = borderless desktop).
+            SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
             if ( isFullScreen ) {
-#if defined( _WIN32 )
-                // We force fullscreen at desktop resolution for nearest scaling to disable hardware scaling of game resolution by the monitor.
-                if ( isNearestScaling() || fheroes2::cursor().isSoftwareEmulation() ) {
-                    flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-                }
-                else {
-                    flags |= SDL_WINDOW_FULLSCREEN;
-                }
-#else
-                flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-#endif
+                flags |= SDL_WINDOW_FULLSCREEN;
             }
 
             std::optional<bool> isInDisplay = isWindowInAnyDisplay( resolutionInfo, _prevWindowPos );
@@ -1272,8 +1131,7 @@ namespace
                 _prevWindowPos = { SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED };
             }
 
-            _window = SDL_CreateWindow( System::encLocalToUTF8( _previousWindowTitle ).c_str(), _prevWindowPos.x, _prevWindowPos.y, resolutionInfo.screenWidth,
-                                        resolutionInfo.screenHeight, flags );
+            _window = SDL_CreateWindow( System::encLocalToUTF8( _previousWindowTitle ).c_str(), resolutionInfo.screenWidth, resolutionInfo.screenHeight, flags );
             if ( _window == nullptr ) {
                 ERROR_LOG( "Failed to create an application window of " << resolutionInfo.screenWidth << " x " << resolutionInfo.screenHeight
                                                                         << " size. The error: " << SDL_GetError() )
@@ -1281,50 +1139,41 @@ namespace
                 return false;
             }
 
-            _syncFullScreen();
+            // Restore previous window position (SDL3 splits this from SDL_CreateWindow).
+            SDL_SetWindowPosition( _window, _prevWindowPos.x, _prevWindowPos.y );
 
-            bool isPaletteModeSupported = false;
-
-            SDL_RendererInfo rendererInfo;
-            _driverIndex = -1;
-
-            if ( const int driverCount = SDL_GetNumRenderDrivers(); driverCount >= 0 ) {
-                const uint32_t requiredFlags = SDL_RENDERER_ACCELERATED;
-
-                for ( int driverId = 0; driverId < driverCount; ++driverId ) {
-                    int returnCode = SDL_GetRenderDriverInfo( driverId, &rendererInfo );
-                    if ( returnCode < 0 ) {
-                        ERROR_LOG( "Failed to get renderer driver info. The error value: " << returnCode << ", description: " << SDL_GetError() )
-                        continue;
-                    }
-
-                    if ( ( rendererInfo.flags & requiredFlags ) != requiredFlags ) {
-                        continue;
-                    }
-
-                    for ( uint32_t i = 0; i < rendererInfo.num_texture_formats; ++i ) {
-                        if ( rendererInfo.texture_formats[i] == SDL_PIXELFORMAT_INDEX8 ) {
-                            // Bingo! This is the best driver and format.
-                            isPaletteModeSupported = true;
-                            _driverIndex = driverId;
-                            break;
+            if ( isFullScreen ) {
+                bool useExclusiveFullscreen = false;
+#if defined( _WIN32 )
+                useExclusiveFullscreen = !( isNearestScaling() || fheroes2::cursor().isSoftwareEmulation() );
+#endif
+                const SDL_DisplayMode * targetMode = nullptr;
+                SDL_DisplayMode closestMode{};
+                if ( useExclusiveFullscreen ) {
+                    const SDL_DisplayID displayID = SDL_GetDisplayForWindow( _window );
+                    if ( displayID != 0 ) {
+                        if ( SDL_GetClosestFullscreenDisplayMode( displayID, resolutionInfo.screenWidth, resolutionInfo.screenHeight, 0.0f, false, &closestMode ) ) {
+                            targetMode = &closestMode;
                         }
                     }
-
-                    if ( isPaletteModeSupported ) {
-                        break;
-                    }
-
-                    if ( _driverIndex < 0 ) {
-                        _driverIndex = driverId;
-                    }
                 }
-            }
-            else {
-                ERROR_LOG( "Failed to get the number of render drivers. The error value: " << driverCount << ", description: " << SDL_GetError() )
+                SDL_SetWindowFullscreenMode( _window, targetMode );
             }
 
-            _surface = SDL_CreateRGBSurface( 0, resolutionInfo.gameWidth, resolutionInfo.gameHeight, isPaletteModeSupported ? 8 : 32, 0, 0, 0, 0 );
+            _syncFullScreen();
+
+            // SDL3 has dropped SDL_RendererInfo / SDL_GetRenderDriverInfo / SDL_RENDERER_ACCELERATED.
+            // The pure-RGBA Display already always uses an RGBA8888 streaming texture, so we don't
+            // need to detect indexed-format support at the driver level. Always go RGBA.
+            _driverIndex = -1;
+
+            // Setting this hint prevents the window to regain focus after losing it in fullscreen mode.
+            // It also fixes issues when SDL_UpdateTexture() calls fail because of refocusing.
+            if ( !SDL_SetHint( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0" ) ) {
+                ERROR_LOG( "Failed to set the " SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS " hint." )
+            }
+
+            _surface = SDL_CreateSurface( resolutionInfo.gameWidth, resolutionInfo.gameHeight, SDL_PIXELFORMAT_XRGB8888 );
             if ( _surface == nullptr ) {
                 ERROR_LOG( "Failed to create a surface of " << resolutionInfo.gameWidth << " x " << resolutionInfo.gameHeight << " size. The error: " << SDL_GetError() )
                 clear();
@@ -1338,7 +1187,8 @@ namespace
 
             _createPalette();
 
-            _renderer = SDL_CreateRenderer( _window, _driverIndex, SDL_RENDERER_ACCELERATED );
+            // SDL3: SDL_CreateRenderer takes (window, name) — pass nullptr to pick the default.
+            _renderer = SDL_CreateRenderer( _window, nullptr );
             if ( _renderer == nullptr ) {
                 ERROR_LOG( "Failed to create a window renderer of " << resolutionInfo.gameWidth << " x " << resolutionInfo.gameHeight
                                                                     << " size. The error: " << SDL_GetError() )
@@ -1346,27 +1196,24 @@ namespace
                 return false;
             }
 
-            if ( const int returnCode = SDL_SetRenderDrawColor( _renderer, 0, 0, 0, SDL_ALPHA_OPAQUE ); returnCode < 0 ) {
-                ERROR_LOG( "Failed to set default color for renderer. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            if ( !SDL_SetRenderDrawColor( _renderer, 0, 0, 0, SDL_ALPHA_OPAQUE ) ) {
+                ERROR_LOG( "Failed to set default color for renderer. The error: " << SDL_GetError() )
             }
 
-            if ( const int returnCode = SDL_SetRenderTarget( _renderer, nullptr ); returnCode < 0 ) {
-                ERROR_LOG( "Failed to set render target to window. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            if ( !SDL_SetRenderTarget( _renderer, nullptr ) ) {
+                ERROR_LOG( "Failed to set render target to window. The error: " << SDL_GetError() )
             }
 
-            if ( SDL_SetHint( SDL_HINT_RENDER_SCALE_QUALITY, ( isNearestScaling() ? "nearest" : "linear" ) ) == SDL_FALSE ) {
-                ERROR_LOG( "Failed to set the " SDL_HINT_RENDER_SCALE_QUALITY " hint." )
-            }
-
-            // Setting this hint prevents the window to regain focus after losing it in fullscreen mode.
-            // It also fixes issues when SDL_UpdateTexture() calls fail because of refocusing.
-            if ( SDL_SetHint( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0" ) == SDL_FALSE ) {
-                ERROR_LOG( "Failed to set the " SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS " hint." )
-            }
-
-            if ( const int returnCode = SDL_RenderSetLogicalSize( _renderer, resolutionInfo.gameWidth, resolutionInfo.gameHeight ); returnCode < 0 ) {
-                ERROR_LOG( "Failed to create logical size of " << resolutionInfo.gameWidth << " x " << resolutionInfo.gameHeight
-                                                               << " size. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            // SDL3: SDL_HINT_RENDER_SCALE_QUALITY is gone — scale mode is set per texture below.
+            // Always use LETTERBOX presentation: the Display buffer is already at physical
+            // resolution (matching screenSize), so 1:1 mapping happens naturally and there's no
+            // extra downsample. The "screen scaling type = nearest" preference is honoured by
+            // the texture's scale mode, not by forcing INTEGER_SCALE here (which would constrain
+            // the on-screen size to the largest integer multiple of the game res — e.g. 2× on a
+            // 1920×1080 monitor — and add a lossy 1440→1280 downsample of the physical buffer).
+            if ( !SDL_SetRenderLogicalPresentation( _renderer, resolutionInfo.gameWidth, resolutionInfo.gameHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX ) ) {
+                ERROR_LOG( "Failed to set logical presentation of " << resolutionInfo.gameWidth << " x " << resolutionInfo.gameHeight
+                                                                    << ". The error: " << SDL_GetError() )
                 clear();
                 return false;
             }
@@ -1378,6 +1225,7 @@ namespace
                 clear();
                 return false;
             }
+            SDL_SetTextureScaleMode( _texture, isNearestScaling() ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR );
 
             // Physical-resolution Display upload texture: lazily (re)allocated in
             // renderScreenRGBA() once Display has computed its physical buffer dims. The
@@ -1390,6 +1238,7 @@ namespace
                 return false;
             }
             SDL_SetTextureBlendMode( _screenTexture, SDL_BLENDMODE_NONE );
+            SDL_SetTextureScaleMode( _screenTexture, isNearestScaling() ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR );
             _screenTextureW = 1;
             _screenTextureH = 1;
 
@@ -1410,10 +1259,12 @@ namespace
                 return;
 
             generatePalette( colorIds, _surface );
-            if ( _surface->format->BitsPerPixel == 8 ) {
-                const int returnCode = SDL_SetPaletteColors( _surface->format->palette, _palette8Bit.data(), 0, 256 );
-                if ( returnCode < 0 ) {
-                    ERROR_LOG( "Failed to set palette color. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            if ( SDL_BYTESPERPIXEL( _surface->format ) == 1 ) {
+                SDL_Palette * surfacePalette = SDL_GetSurfacePalette( _surface );
+                if ( surfacePalette != nullptr ) {
+                    if ( !SDL_SetPaletteColors( surfacePalette, _palette8Bit.data(), 0, 256 ) ) {
+                        ERROR_LOG( "Failed to set palette color. The error: " << SDL_GetError() )
+                    }
                 }
             }
         }
@@ -1437,22 +1288,20 @@ namespace
         {
             assert( _window != nullptr );
 
-            const int displayIndex = SDL_GetWindowDisplayIndex( _window );
-            if ( displayIndex < 0 ) {
-                ERROR_LOG( "Failed to get window display index. The error value: " << displayIndex << ", description: " << SDL_GetError() )
+            const SDL_DisplayID displayID = SDL_GetDisplayForWindow( _window );
+            if ( displayID == 0 ) {
+                ERROR_LOG( "Failed to get window display ID. The error: " << SDL_GetError() )
                 return false;
             }
 
-            SDL_DisplayMode displayMode;
-
-            const int returnCode = SDL_GetCurrentDisplayMode( displayIndex, &displayMode );
-            if ( returnCode < 0 ) {
-                ERROR_LOG( "Failed to retrieve current display mode. The error value: " << returnCode << ", description: " << SDL_GetError() )
+            const SDL_DisplayMode * displayMode = SDL_GetCurrentDisplayMode( displayID );
+            if ( displayMode == nullptr ) {
+                ERROR_LOG( "Failed to retrieve current display mode. The error: " << SDL_GetError() )
                 return false;
             }
 
-            _currentScreenResolution.width = displayMode.w;
-            _currentScreenResolution.height = displayMode.h;
+            _currentScreenResolution.width = displayMode->w;
+            _currentScreenResolution.height = displayMode->h;
 
 #if defined( TARGET_NINTENDO_SWITCH )
             // On a Nintendo Switch the game is always fullscreen
@@ -1469,13 +1318,8 @@ namespace
         {
             assert( _renderer != nullptr );
 
-#if !SDL_VERSION_ATLEAST( 2, 0, 18 )
-#error SDL_RenderSetVSync() is only supported since SDL 2.0.18
-#endif
-
-            if ( const int returnCode = SDL_RenderSetVSync( _renderer, _isVSyncEnabled ? SDL_ENABLE : SDL_DISABLE ); returnCode != 0 ) {
-                ERROR_LOG( "Failed to " << ( _isVSyncEnabled ? "enable" : "disable" ) << " vsync mode for renderer. The error value: " << returnCode
-                                        << ", description: " << SDL_GetError() )
+            if ( !SDL_SetRenderVSync( _renderer, _isVSyncEnabled ? 1 : 0 ) ) {
+                ERROR_LOG( "Failed to " << ( _isVSyncEnabled ? "enable" : "disable" ) << " vsync mode for renderer. The error: " << SDL_GetError() )
             }
         }
 
@@ -1485,7 +1329,7 @@ namespace
 
             // To properly support fullscreen mode on devices with multiple displays or devices with notch,
             // it is important to lock the mouse in the application window area.
-            SDL_SetWindowGrab( _window, isFullScreen() ? SDL_TRUE : SDL_FALSE );
+            SDL_SetWindowMouseGrab( _window, isFullScreen() );
         }
 
         void _syncFullScreen()
@@ -1499,7 +1343,6 @@ namespace
             assert( isFullScreen() == BaseRenderEngine::isFullScreen() );
         }
     };
-#endif
 }
 
 namespace fheroes2
@@ -1610,19 +1453,9 @@ namespace fheroes2
             }
         }
 
-        // Software cursor — last paint, on top of everything. Cursor is an indexed Sprite;
-        // Blit() takes the indexed-to-RGBA branch automatically since Display is RGBA.
-        if ( _cursor->isVisible() && _cursor->isSoftwareEmulation() && !_cursor->_image.empty() ) {
-            const Sprite & cursorImage = _cursor->_image;
-            int32_t cursorX = cursorImage.x();
-            int32_t cursorY = cursorImage.y();
-            if ( _cursor->_keepInScreenArea ) {
-                cursorX = std::clamp( cursorX, 0, width() - cursorImage.width() );
-                cursorY = std::clamp( cursorY, 0, height() - cursorImage.height() );
-            }
-            Blit( cursorImage, *this, cursorX, cursorY );
-        }
-
+        // Pure-RGBA Display: don't blit the cursor into the framebuffer (it would accumulate
+        // since there's no indexed→RGBA mirror to regenerate the buffer). The engine composites
+        // the cursor as a separate overlay layer on top of the presented framebuffer.
         _engine->renderScreenRGBA( *this );
 
         if ( _postprocessing ) {

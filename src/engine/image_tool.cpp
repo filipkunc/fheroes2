@@ -37,14 +37,13 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
-#include <SDL_error.h>
-#include <SDL_pixels.h>
-#include <SDL_stdinc.h>
-#include <SDL_surface.h>
-#include <SDL_version.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_pixels.h>
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_surface.h>
 
 #if defined( WITH_IMAGE )
-#include <SDL_image.h>
+#include <SDL3_image/SDL_image.h>
 #endif
 
 // Managing compiler warnings for SDL headers
@@ -125,13 +124,13 @@ namespace
         const int32_t width = image.width();
         const int32_t height = image.height();
 
-        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_CreateRGBSurface( 0, width, height, 8, 0, 0, 0, 0 ), SDL_FreeSurface );
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_CreateSurface( width, height, SDL_PIXELFORMAT_INDEX8 ), SDL_DestroySurface );
         if ( !surface ) {
             ERROR_LOG( "Error while creating a SDL surface for an image to be saved under " << path << ". Error " << SDL_GetError() )
             return false;
         }
 
-        assert( surface->format->BitsPerPixel == 8 );
+        assert( SDL_BYTESPERPIXEL( surface->format ) == 1 );
 
         std::vector<SDL_Color> paletteSDL;
         paletteSDL.resize( 256 );
@@ -145,7 +144,10 @@ namespace
             col.a = 255;
         }
 
-        SDL_SetPaletteColors( surface->format->palette, paletteSDL.data(), 0, 256 );
+        SDL_Palette * surfacePalette = SDL_CreateSurfacePalette( surface.get() );
+        if ( surfacePalette != nullptr ) {
+            SDL_SetPaletteColors( surfacePalette, paletteSDL.data(), 0, 256 );
+        }
 
         if ( surface->pitch != width ) {
             const uint8_t * imageIn = image.image();
@@ -159,7 +161,7 @@ namespace
         }
 
 #if defined( WITH_IMAGE )
-        int res = 0;
+        bool res = false;
 
         if ( isPNGFilePath( path ) ) {
             res = IMG_SavePNG( surface.get(), System::encLocalToUTF8( path ).c_str() );
@@ -172,10 +174,10 @@ namespace
             memcpy( path.data() + path.size() - 3, "bmp", 3 );
         }
 
-        const int res = SDL_SaveBMP( surface.get(), System::encLocalToUTF8( path ).c_str() );
+        const bool res = SDL_SaveBMP( surface.get(), System::encLocalToUTF8( path ).c_str() );
 #endif
 
-        return res == 0;
+        return res;
     }
 }
 
@@ -210,8 +212,8 @@ namespace fheroes2
             return false;
         }
 
-        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( nullptr, SDL_FreeSurface );
-        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( nullptr, SDL_DestroySurface );
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_DestroySurface );
 
 #if defined( WITH_IMAGE )
         loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
@@ -233,7 +235,7 @@ namespace fheroes2
                         uint8_t * pixels = stbi_load_from_memory( fileData.data(), static_cast<int>( fileData.size() ), &w, &h, &channels, 4 );
                         if ( pixels && w > 0 && h > 0 ) {
                             // Create an SDL_Surface and copy the pixel data into it.
-                            loadedSurface.reset( SDL_CreateRGBSurfaceWithFormat( 0, w, h, 32, SDL_PIXELFORMAT_RGBA32 ) );
+                            loadedSurface.reset( SDL_CreateSurface( w, h, SDL_PIXELFORMAT_RGBA32 ) );
                             if ( loadedSurface ) {
                                 memcpy( loadedSurface->pixels, pixels, static_cast<size_t>( w ) * h * 4 );
                             }
@@ -252,23 +254,14 @@ namespace fheroes2
             return false;
         }
 
-#if !SDL_VERSION_ATLEAST( 2, 0, 5 )
-#error SDL_PIXELFORMAT_BGRA32 and other RGBA color variants are only supported since SDL 2.0.5
-#endif
-
         // Image loading functions can theoretically return SDL_Surface in any supported color format, so we will convert it to a specific format for subsequent
         // processing
-        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_BGRA32 ), SDL_FreeFormat );
-        if ( !pixelFormat ) {
-            return false;
-        }
-
-        surface.reset( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ) );
+        surface.reset( SDL_ConvertSurface( loadedSurface.get(), SDL_PIXELFORMAT_BGRA32 ) );
         if ( !surface ) {
             return false;
         }
 
-        assert( SDL_MUSTLOCK( surface.get() ) == SDL_FALSE && surface->format->BytesPerPixel == 4 );
+        assert( !SDL_MUSTLOCK( surface.get() ) && SDL_BYTESPERPIXEL( surface->format ) == 4 );
 
         image.resize( surface->w, surface->h );
         image.reset();
@@ -356,7 +349,7 @@ namespace fheroes2
         }
 #endif
 
-        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_DestroySurface );
 
 #if defined( WITH_IMAGE )
         loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
@@ -367,17 +360,12 @@ namespace fheroes2
             return false;
         }
 
-        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
-        if ( !pixelFormat ) {
-            return false;
-        }
-
-        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ), SDL_FreeSurface );
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_ConvertSurface( loadedSurface.get(), SDL_PIXELFORMAT_RGBA32 ), SDL_DestroySurface );
         if ( !surface ) {
             return false;
         }
 
-        assert( surface->format->BytesPerPixel == 4 );
+        assert( SDL_BYTESPERPIXEL( surface->format ) == 4 );
 
         image = Image( surface->w, surface->h, ImageFormat::RGBA_32BIT );
 
@@ -399,7 +387,7 @@ namespace fheroes2
             return false;
         }
 
-        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_DestroySurface );
 
 #if defined( WITH_IMAGE )
         loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
@@ -410,23 +398,18 @@ namespace fheroes2
             return false;
         }
 
-        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
-        if ( !pixelFormat ) {
-            return false;
-        }
-
-        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> rgbaSurface( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ), SDL_FreeSurface );
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> rgbaSurface( SDL_ConvertSurface( loadedSurface.get(), SDL_PIXELFORMAT_RGBA32 ), SDL_DestroySurface );
         if ( !rgbaSurface ) {
             return false;
         }
 
         const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> scaledSurface(
-            SDL_CreateRGBSurfaceWithFormat( 0, targetWidth, targetHeight, 32, SDL_PIXELFORMAT_RGBA32 ), SDL_FreeSurface );
+            SDL_CreateSurface( targetWidth, targetHeight, SDL_PIXELFORMAT_RGBA32 ), SDL_DestroySurface );
         if ( !scaledSurface ) {
             return false;
         }
 
-        if ( SDL_BlitScaled( rgbaSurface.get(), nullptr, scaledSurface.get(), nullptr ) != 0 ) {
+        if ( !SDL_BlitSurfaceScaled( rgbaSurface.get(), nullptr, scaledSurface.get(), nullptr, SDL_SCALEMODE_LINEAR ) ) {
             return false;
         }
 
@@ -446,7 +429,7 @@ namespace fheroes2
 
     bool LoadAsRGBA( const std::string & path, Image & image )
     {
-        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_DestroySurface );
 
 #if defined( WITH_IMAGE )
         loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
@@ -457,17 +440,12 @@ namespace fheroes2
             return false;
         }
 
-        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
-        if ( !pixelFormat ) {
-            return false;
-        }
-
-        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ), SDL_FreeSurface );
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_ConvertSurface( loadedSurface.get(), SDL_PIXELFORMAT_RGBA32 ), SDL_DestroySurface );
         if ( !surface ) {
             return false;
         }
 
-        assert( surface->format->BytesPerPixel == 4 );
+        assert( SDL_BYTESPERPIXEL( surface->format ) == 4 );
 
         image = Image( surface->w, surface->h, ImageFormat::RGBA_32BIT );
 
@@ -489,7 +467,7 @@ namespace fheroes2
             return false;
         }
 
-        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_DestroySurface );
 
 #if defined( WITH_IMAGE )
         loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
@@ -500,24 +478,19 @@ namespace fheroes2
             return false;
         }
 
-        const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_RGBA32 ), SDL_FreeFormat );
-        if ( !pixelFormat ) {
-            return false;
-        }
-
-        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> rgbaSurface( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ), SDL_FreeSurface );
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> rgbaSurface( SDL_ConvertSurface( loadedSurface.get(), SDL_PIXELFORMAT_RGBA32 ), SDL_DestroySurface );
         if ( !rgbaSurface ) {
             return false;
         }
 
         // Create a target surface and scale into it.
         const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> scaledSurface(
-            SDL_CreateRGBSurfaceWithFormat( 0, targetWidth, targetHeight, 32, SDL_PIXELFORMAT_RGBA32 ), SDL_FreeSurface );
+            SDL_CreateSurface( targetWidth, targetHeight, SDL_PIXELFORMAT_RGBA32 ), SDL_DestroySurface );
         if ( !scaledSurface ) {
             return false;
         }
 
-        if ( SDL_BlitScaled( rgbaSurface.get(), nullptr, scaledSurface.get(), nullptr ) != 0 ) {
+        if ( !SDL_BlitSurfaceScaled( rgbaSurface.get(), nullptr, scaledSurface.get(), nullptr, SDL_SCALEMODE_LINEAR ) ) {
             return false;
         }
 

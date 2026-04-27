@@ -45,9 +45,9 @@ target_include_directories(
 target_link_libraries(
 	engine
 	smacker
-	${USE_SDL_VERSION}::${USE_SDL_VERSION}
-	${USE_SDL_VERSION}_mixer::${USE_SDL_VERSION}_mixer
-	$<$<BOOL:${ENABLE_IMAGE}>:${USE_SDL_VERSION}_image::${USE_SDL_VERSION}_image>
+	SDL3::SDL3
+	SDL3_mixer::SDL3_mixer
+	$<$<BOOL:${ENABLE_IMAGE}>:SDL3_image::SDL3_image>
 	$<$<BOOL:${ENABLE_IMAGE}>:PNG::PNG>
 	Threads::Threads
 	ZLIB::ZLIB

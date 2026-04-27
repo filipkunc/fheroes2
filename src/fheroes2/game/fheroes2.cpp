@@ -42,10 +42,10 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
-#include <SDL_error.h>
-#include <SDL_events.h>
-#include <SDL_main.h> // IWYU pragma: keep
-#include <SDL_mouse.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_main.h> // IWYU pragma: keep
+#include <SDL3/SDL_mouse.h>
 
 // Managing compiler warnings for SDL headers
 #if defined( __GNUC__ )
@@ -185,8 +185,7 @@ namespace
             fheroes2::engine().setTitle( GetCaption() );
 
             // Hide system cursor.
-            const int returnValue = SDL_ShowCursor( SDL_DISABLE );
-            if ( returnValue < 0 ) {
+            if ( !SDL_HideCursor() ) {
                 ERROR_LOG( "Failed to hide system cursor. Error description: " << SDL_GetError() )
             }
 
@@ -310,7 +309,7 @@ int main( int argc, char ** argv )
         std::set<fheroes2::SystemInitializationComponent> coreComponents{ fheroes2::SystemInitializationComponent::Audio,
                                                                           fheroes2::SystemInitializationComponent::Video };
 
-#if defined( TARGET_PS_VITA ) || defined( TARGET_NINTENDO_SWITCH )
+#if defined( TARGET_NINTENDO_SWITCH )
         coreComponents.emplace( fheroes2::SystemInitializationComponent::GameController );
 #endif
 

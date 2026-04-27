@@ -110,5 +110,5 @@ target_include_directories(
 target_link_libraries(
 	fheroes2
 	engine
-	${USE_SDL_VERSION}::${USE_SDL_VERSION}main
+	SDL3::Headers
 	)

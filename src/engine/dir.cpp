@@ -25,12 +25,8 @@
 
 #include <utility>
 
-#if defined( TARGET_PS_VITA )
-#include <psp2/io/dirent.h>
-#else
 #include <filesystem>
 #include <system_error>
-#endif
 
 #if defined( _WIN32 )
 #include <cstring>
@@ -75,62 +71,6 @@ namespace
         auto * const strCmp = strcasecmp;
 #endif
 
-#if defined( TARGET_PS_VITA )
-        // On PS Vita, getting a list of files using std::filesystem for some reason works much slower than using the native file system API
-        class SceUIDWrapper
-        {
-        public:
-            SceUIDWrapper( const std::string & path )
-                : uid( sceIoDopen( path.c_str() ) )
-            {}
-
-            SceUIDWrapper( const SceUIDWrapper & ) = delete;
-
-            ~SceUIDWrapper()
-            {
-                if ( !isValid() ) {
-                    return;
-                }
-
-                sceIoDclose( uid );
-            }
-
-            SceUIDWrapper & operator=( const SceUIDWrapper & ) = delete;
-
-            bool isValid() const
-            {
-                return uid >= 0;
-            }
-
-            SceUID get() const
-            {
-                return uid;
-            }
-
-        private:
-            const SceUID uid;
-        };
-
-        const SceUIDWrapper uid( path );
-        if ( !uid.isValid() ) {
-            return;
-        }
-
-        SceIoDirent entry;
-
-        while ( sceIoDread( uid.get(), &entry ) > 0 ) {
-            // Ensure that this directory entry is a regular file
-            if ( !SCE_S_ISREG( entry.d_stat.st_mode ) ) {
-                continue;
-            }
-
-            if ( !nameFilter( entry.d_name, needExactMatch, filter, strCmp ) ) {
-                continue;
-            }
-
-            files.emplace_back( System::concatPath( path, entry.d_name ) );
-        }
-#else
         std::error_code ec;
 
         // Using the non-throwing overload
@@ -148,7 +88,6 @@ namespace
 
             files.emplace_back( System::fsPathToString( entryPath ) );
         }
-#endif
     }
 }
 

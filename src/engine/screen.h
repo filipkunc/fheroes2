@@ -151,6 +151,14 @@ namespace fheroes2
             // Do nothing
         }
 
+        // SDL3 no longer auto-remaps mouse event coords through the renderer's logical
+        // presentation (unlike SDL2's SDL_RenderSetLogicalSize). LocalEvent calls this
+        // for every mouse/touch event so coords reach the game in logical (game) space.
+        virtual void convertWindowToRenderCoordinates( float & /* x */, float & /* y */ ) const
+        {
+            // Default: identity.
+        }
+
     protected:
         BaseRenderEngine()
             : _isFullScreen( false )

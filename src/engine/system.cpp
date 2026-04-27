@@ -38,11 +38,9 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#elif defined( TARGET_PS_VITA )
-#include <algorithm>
 #endif
 
-#if !defined( _WIN32 ) && !defined( ANDROID ) && !defined( TARGET_PS_VITA )
+#if !defined( _WIN32 ) && !defined( ANDROID )
 #include <dirent.h>
 #include <strings.h>
 #endif
@@ -56,17 +54,16 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
-#include <SDL_touch.h>
-#include <SDL_version.h>
+#include <SDL3/SDL_touch.h>
 
 #if defined( ANDROID )
-#include <SDL_error.h>
-#include <SDL_system.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_system.h>
 #endif
 
-#if SDL_VERSION_ATLEAST( 2, 0, 1 ) && ( !defined( __linux__ ) || defined( ANDROID ) )
-#include <SDL_filesystem.h>
-#include <SDL_stdinc.h>
+#if !defined( __linux__ ) || defined( ANDROID )
+#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
 #endif
 
 // Managing compiler warnings for SDL headers
@@ -79,14 +76,12 @@ namespace
 #if !defined( __linux__ ) || defined( ANDROID )
     std::string GetHomeDirectory( const std::string_view appName )
     {
-#if defined( TARGET_PS_VITA )
-        return System::concatPath( "ux0:data", appName );
-#elif defined( TARGET_NINTENDO_SWITCH )
+#if defined( TARGET_NINTENDO_SWITCH )
         return System::concatPath( "/switch", appName );
 #elif defined( ANDROID )
         (void)appName;
 
-        if ( const char * storagePath = SDL_AndroidGetExternalStoragePath(); storagePath != nullptr ) {
+        if ( const char * storagePath = SDL_GetAndroidExternalStoragePath(); storagePath != nullptr ) {
             return storagePath;
         }
 
@@ -112,11 +107,9 @@ namespace
             return System::concatPath( dataEnvPath, appName );
         }
 
-#if SDL_VERSION_ATLEAST( 2, 0, 1 )
         if ( const std::unique_ptr<char, void ( * )( void * )> path( SDL_GetPrefPath( "", System::encLocalToUTF8( std::string{ appName } ).c_str() ), SDL_free ); path ) {
             return System::encUTF8ToLocal( path.get() );
         }
-#endif
 
         return {};
     }
@@ -276,12 +269,15 @@ bool System::isHandheldDevice()
 
 bool System::isTouchInputAvailable()
 {
-    return SDL_GetNumTouchDevices() > 0;
+    int count = 0;
+    SDL_TouchID * devices = SDL_GetTouchDevices( &count );
+    SDL_free( devices );
+    return count > 0;
 }
 
 bool System::isVirtualKeyboardSupported()
 {
-#if defined( ANDROID ) || defined( TARGET_PS_VITA ) || defined( TARGET_NINTENDO_SWITCH ) || defined( __IPHONEOS__ )
+#if defined( ANDROID ) || defined( TARGET_NINTENDO_SWITCH ) || defined( __IPHONEOS__ )
     return true;
 #else
     return false;
@@ -320,14 +316,7 @@ std::string System::concatPath( const std::string_view left, const std::string_v
 
 void System::appendOSSpecificDirectories( std::vector<std::string> & directories )
 {
-#if defined( TARGET_PS_VITA )
-    const char * path = "ux0:app/FHOMM0002";
-    if ( std::find( directories.begin(), directories.end(), path ) == directories.end() ) {
-        directories.emplace_back( path );
-    }
-#else
     (void)directories;
-#endif
 }
 
 std::string System::GetConfigDirectory( const std::string_view appName )
@@ -453,7 +442,7 @@ bool System::IsDirectory( const std::string_view path )
 
 bool System::GetCaseInsensitivePath( const std::string_view path, std::string & correctedPath )
 {
-#if !defined( _WIN32 ) && !defined( ANDROID ) && !defined( TARGET_PS_VITA ) && !defined( __IPHONEOS__ )
+#if !defined( _WIN32 ) && !defined( ANDROID ) && !defined( __IPHONEOS__ )
     // The following code is based on https://github.com/OneSadCookie/fcaseopen and assumes the use of POSIX IEEE Std 1003.1-2001 pathnames
     correctedPath.clear();
 

@@ -33,8 +33,9 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
-#include <SDL.h>
-#include <SDL_error.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_init.h>
 
 // Managing compiler warnings for SDL headers
 #if defined( __GNUC__ )
@@ -45,34 +46,8 @@
 #include "localevent.h"
 #include "logging.h"
 
-#if defined( TARGET_PS_VITA )
-#include <psp2/kernel/processmgr.h>
-#include <psp2/power.h>
-
-// PlayStation Vita requires definition of such global variable for memory usage.
-int _newlib_heap_size_user = 192 * 1024 * 1024;
-#endif
-
 namespace
 {
-#if defined( TARGET_PS_VITA )
-    void initHardwareInternally()
-    {
-        // CPU clock speed, MHz. Possible values: 41, 83, 111, 166, 222, 333, 444, 500
-        scePowerSetArmClockFrequency( 444 );
-        // CPU memory clock speed, MHz. Possible values: 55, 83, 111, 166, 222
-        scePowerSetBusClockFrequency( 222 );
-        // GPU clock speed, MHz. Possible values: 41, 55, 83, 111, 166, 222
-        scePowerSetGpuClockFrequency( 222 );
-        // GPU memory clock speed, MHz. Possible values: 83, 111, 166
-        scePowerSetGpuXbarClockFrequency( 166 );
-    }
-
-    void freeHardwareInternally()
-    {
-        sceKernelExitProcess( 0 );
-    }
-#else
     void initHardwareInternally()
     {
         // Do nothing.
@@ -82,9 +57,8 @@ namespace
     {
         // Do nothing.
     }
-#endif
 
-    uint32_t convertToSDLFlag( const fheroes2::SystemInitializationComponent component )
+    SDL_InitFlags convertToSDLFlag( const fheroes2::SystemInitializationComponent component )
     {
         switch ( component ) {
         case fheroes2::SystemInitializationComponent::Audio:
@@ -92,7 +66,7 @@ namespace
         case fheroes2::SystemInitializationComponent::Video:
             return SDL_INIT_VIDEO;
         case fheroes2::SystemInitializationComponent::GameController:
-            return SDL_INIT_GAMECONTROLLER;
+            return SDL_INIT_GAMEPAD;
         default:
             // Did you add a new component?
             assert( 0 );
@@ -102,9 +76,9 @@ namespace
         return 0;
     }
 
-    uint32_t getSDLInitFlags( const std::set<fheroes2::SystemInitializationComponent> & components )
+    SDL_InitFlags getSDLInitFlags( const std::set<fheroes2::SystemInitializationComponent> & components )
     {
-        uint32_t flags = 0;
+        SDL_InitFlags flags = 0;
         for ( const fheroes2::SystemInitializationComponent component : components ) {
             flags |= convertToSDLFlag( component );
         }
@@ -114,9 +88,9 @@ namespace
     // For now only SDL library is supported.
     bool initCoreInternally( const std::set<fheroes2::SystemInitializationComponent> & components )
     {
-        const uint32_t sdlFlags = getSDLInitFlags( components );
+        const SDL_InitFlags sdlFlags = getSDLInitFlags( components );
 
-        if ( SDL_Init( sdlFlags ) < 0 ) {
+        if ( !SDL_Init( sdlFlags ) ) {
             ERROR_LOG( SDL_GetError() )
             return false;
         }
@@ -149,7 +123,7 @@ namespace
 
     bool isComponentInitializedInternally( const fheroes2::SystemInitializationComponent component )
     {
-        const uint32_t sdlFlag = convertToSDLFlag( component );
+        const SDL_InitFlags sdlFlag = convertToSDLFlag( component );
         assert( sdlFlag != 0 );
 
         return SDL_WasInit( sdlFlag ) != 0;

@@ -45,22 +45,22 @@ cmake_dependent_option(MACOS_APP_BUNDLE "Create a Mac app bundle" OFF "APPLE" OF
 # Should not be available if we are creating a Mac app bundle
 cmake_dependent_option(GET_HOMM2_DEMO "Fetch and install the HoMM II demo data" OFF "NOT MACOS_APP_BUNDLE" OFF)
 
-set(USE_SDL_VERSION SDL2 CACHE STRING "Version of the SDL library used")
+set(USE_SDL_VERSION SDL3 CACHE STRING "Version of the SDL library used")
 set(FHEROES2_DATA ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME} CACHE STRING "Path to the fheroes2 data directory (relative to CMAKE_INSTALL_PREFIX)")
 
 # For ComboBox in CMake GUI
-set_property(CACHE USE_SDL_VERSION PROPERTY STRINGS SDL2)
+set_property(CACHE USE_SDL_VERSION PROPERTY STRINGS SDL3)
 
 #
 # Library & feature detection
 #
-find_package(${USE_SDL_VERSION} REQUIRED)
-find_package(${USE_SDL_VERSION}_mixer REQUIRED)
+find_package(${USE_SDL_VERSION} CONFIG REQUIRED)
+find_package(${USE_SDL_VERSION}_mixer CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Threads)
 
 if(ENABLE_IMAGE)
-	find_package(${USE_SDL_VERSION}_image REQUIRED)
+	find_package(${USE_SDL_VERSION}_image CONFIG REQUIRED)
 	find_package(PNG REQUIRED)
 endif(ENABLE_IMAGE)
 
