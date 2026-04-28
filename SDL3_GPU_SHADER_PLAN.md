@@ -124,6 +124,7 @@ These came up during testing and are documented separately so anyone repeating t
 4. **Software cursor accumulates pixels in the framebuffer.** The pure-RGBA Display blits the cursor sprite directly into `_data` each frame; without a save/restore (which the indexed-buffer mirror used to provide implicitly), every frame stamps a new cursor on top of the previous one. Fix: do **not** blit the cursor into Display at all. Render the cursor as a **separate composite layer** at present time — `RenderEngine` keeps a small `_cursorTexture` (re-created when the sprite size changes), uploads the indexed→RGBA cursor pixels to it each frame, and renders it via `SDL_RenderTexture` with `SDL_BLENDMODE_BLEND` after the main framebuffer texture. The framebuffer stays clean, no save/restore needed.
 5. **`SDL_CreateColorCursor` rejects negative hot spots in SDL3.** SDL2 silently accepted out-of-bounds hot spots. SDL3 returns NULL with `SDL_SetError("Cursor hot spot doesn't lie within cursor")`. Not actually hit by fheroes2 since `Cursor::SetOffset` already negates negative offsets back into [0, w/h) range, but worth knowing.
 6. **`HOME` env var on Windows changes config dir.** When the user runs from git-bash, `HOME=C:\Users\<user>` is set, so `GetHomeDirectory` returns `~/.fheroes2` and writes log/cfg there. When run from PowerShell or VS Code's debugger, `HOME` is unset and `APPDATA` path is used (`~/AppData/Roaming/fheroes2`). Two parallel state directories. Pre-existing fheroes2 behavior, but a frequent debugging trap.
+7. **`SDL_SetTextureScaleMode` doesn't survive `SDL_DestroyTexture` + `SDL_CreateTexture`.** When `_screenTexture` is reallocated lazily on the first frame after each resolution change, the freshly-created texture defaults to `SDL_SCALEMODE_LINEAR`. Combined with the `LOGICAL_PRESENTATION_LETTERBOX` from Surprise #2, the GPU bilinear-downsamples the physical-resolution texture into the logical 640×480 rect and back, smearing every game-pixel boundary — visible as rainbow noise on detail-heavy art (POL campaign-selection X_IVY background was the canary). Surprise #2 warned about choosing the wrong *presentation*; this one's about the *scale mode* regressing on every reallocation. Fix: re-call `SDL_SetTextureScaleMode(_screenTexture, isNearestScaling() ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR)` after every `SDL_CreateTexture`, not just the initial one. Landed in commit `aa5ab271e` along with several render-pipeline follow-ups: `paletteIdxToRGBA` now reads from a swappable 8-bit render palette so sprite blits track `Display::changePalette` again (relevant to Phase 5), `BlitRGBAScaled` / `BlitRGBAScaledAlpha` use alpha-weighted box-filter averaging on downscale (replaces nearest-neighbour), and two `*ToIndexed` callsites that silently OOB-read `GetPALColorId`'s 6-bit table got their `>> 2` input scaling.
 
 #### Phase 1B — TODO (Session B)
 
@@ -229,6 +230,8 @@ For RGBA-source primitives:
 
 Mixed primitives (`AlphaBlitIndexedToRGBAOutput` with alpha < 255): the result is a blended RGB that doesn't correspond to a single palette index. Treat as RGBA: materialize the source palette index, blend, write to RGBA, clear indexed. Cycling doesn't apply to alpha-blended sprites (which is the current behaviour anyway).
 
+**Defensive: harden `GetPALColorId` first.** The 6-bit RGB lookup table (`rgbToId[64*64*64]`) has no bounds check, and any caller that accidentally passes 8-bit values silently OOB-reads up to 1 MB past the table — commit `aa5ab271e` fixed two such cases (`BlitRGBAToIndexed`, `AlphaBlitRGBAToIndexed`) but Phase 4 introduces *more* `*ToIndexed` write sites. Either shift/mask the input internally (and remove the existing explicit `>> 2` from each caller) or add `assert((red | green | blue) < 64)` in debug builds. The latter is one line and catches new offenders during phase-4 visual checks instead of producing weird garbled palette indices on screen.
+
 This is the bulk of the work — same scope as the physical-res refactor's step 4 (~80% in `image.cpp`). Land one primitive at a time with a visual check after each.
 
 Estimated: 1 week.
@@ -236,6 +239,10 @@ Estimated: 1 week.
 ### Phase 5 — Palette upload hook + cycling animation tick
 
 `Display::changePalette` triggers a re-upload of the palette texture. With the GPU shader, that's all that's needed — every pixel that has a non-zero indexed value resamples through the new palette next frame.
+
+The hook exists already: `Display::changePalette(p)` calls `fheroes2::setRenderPalette8Bit(p)` (in `image_palette.{h,cpp}`, introduced in commit `aa5ab271e`) so CPU-side `paletteIdxToRGBA` already tracks palette changes. Add the GPU upload right next to the `setRenderPalette8Bit` call — same lifetime, same trigger, no new injection point needed.
+
+**Caveat**: `ui_tool.cpp::colorFade` (line 489) passes a raw 6-bit `getGamePalette()` pointer to `screenRestorer.changePalette` — interpreting 6-bit values as 8-bit produces one too-dark fade frame at end of video. Harmless today (the screenRestorer dtor restores defaults a frame later), but once cycling reactivates and the GPU palette texture reads from the same source path, the misinterpretation can become a longer-lived glitch. Fix while you're here: pass `nullptr` (lets the default kick in) or `PALPalette()` (the 8-bit shifted copy already maintained for this purpose).
 
 Re-enable color cycling animations (gold/water/lava). Find where the cycling tick was disabled or no-op'd (`agg_image.cpp` cycling preprocessing) and reactivate.
 
@@ -308,7 +315,8 @@ Quick orientation for whoever continues this work:
 - The current branch (`FK/Azure-Dragon`) builds and runs against SDL3 on Windows. `cmake --preset default && cmake --build build --config Debug` is green; the game launches, navigates menus, opens dialogs, and renders cleanly.
 - Audio is fully stubbed in `engine/audio.cpp` — re-enabling sound is the explicit goal of Phase 1B. The stub exposes the same `Audio::` / `Mixer::` / `Music::` namespace API, so callers compile unchanged.
 - The cursor follows mouse movement correctly (after the SDL3 coord-conversion fix) and is composited as a separate texture overlay each frame, so the framebuffer stays clean (see "Surprise #4" above).
-- Out-of-scope cleanups identified during the migration but **not yet done**: improving `BlitRGBAScaled`'s downscale filter (currently nearest neighbor — fine for pixel-art sources like Thor, blurry for photo-painted sources like the current Dachshund frames), and migrating the legacy `VisualStudio/*.props` files (probably just delete them, the CMake build is canonical).
+- Render-pipeline follow-ups landed in commit `aa5ab271e` after Phase 1A: texture-scale-mode regression on `_screenTexture` recreation (Surprise #7), `paletteIdxToRGBA` now reads from a swappable 8-bit render palette set by `Display::changePalette`, `BlitRGBAScaled` / `BlitRGBAScaledAlpha` upgraded to alpha-weighted box-filter on downscale, and two RGBA→indexed paths got their 8-bit→6-bit input scaling. See Surprises #2 / #7 and the Phase 4 / Phase 5 notes for how these interact with the upcoming work.
+- Out-of-scope cleanup still **not yet done**: migrating the legacy `VisualStudio/*.props` files (probably just delete them, the CMake build is canonical).
 
 ## Build / debug quick-ref
 
