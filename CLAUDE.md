@@ -97,7 +97,11 @@ Hi-res RGBA paints (`renderHiResMonsterPortrait`, battle scene, spell effects) b
 
 `Display::render` is just: cursor blit + one `SDL_UpdateTexture` + `SDL_RenderCopy`.
 
-`Display::changePalette` triggers a full re-mirror of the indexed buffer under the new palette table — color cycling animations (gold/water/lava) update on screen.
+`Display::changePalette(p)` swaps the active 8-bit render palette via `setRenderPalette8Bit(p)` (in `image_palette.{h,cpp}`). `paletteIdxToRGBA` reads from this palette, so any sprite blit *after* the call resolves indices against `p` instead of the static KB.PAL — the original Succession Wars and POL campaign-selection screens rely on this so X_IVY etc. render through the SMK video palette they were authored against. Already-drawn framebuffer pixels stay at the old colours until the affected widgets repaint themselves; full re-mirror and color cycling animations (gold/water/lava) remain disabled until a shader-LUT path lands.
+
+### `ArmyBar::RedrawItem` overrides and hi-res portraits
+
+Any subclass that overrides `RedrawItem` must handle the custom-portrait path itself — the base class's mini-sprite branch direct-paints `renderHiResMonsterPortrait` for hi-res monsters (Dachshund, Thor, …), and an override that only blits `MONS32` ends up showing the palette-quantised baked downscale instead of the hi-res RGBA art. `MeetingArmyBar::RedrawItem` in `heroes_meeting.cpp` is the reference pattern.
 
 ### Hi-res portrait callers
 
