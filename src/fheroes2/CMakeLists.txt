@@ -78,6 +78,20 @@ else(MACOS_APP_BUNDLE)
 		${PROJECT_SOURCE_DIR}/$<TARGET_FILE_NAME:fheroes2>
 		)
 
+	# Symlink dev resource directories (maps/, anim/) into the build output so
+	# <exe_dir>/<name> resolves without having to place copies next to each build
+	# configuration manually. Sources that don't exist at the project root are
+	# silently skipped by the helper script.
+	foreach(_resourceDir maps anim)
+		add_custom_command(
+			TARGET fheroes2 POST_BUILD
+			COMMAND ${CMAKE_COMMAND}
+				-DLINK_SOURCE=${PROJECT_SOURCE_DIR}/${_resourceDir}
+				-DLINK_DEST=$<TARGET_FILE_DIR:fheroes2>/${_resourceDir}
+				-P ${PROJECT_SOURCE_DIR}/cmake/dev_symlink.cmake
+			)
+	endforeach()
+
 	install(TARGETS fheroes2 DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif(MACOS_APP_BUNDLE)
 

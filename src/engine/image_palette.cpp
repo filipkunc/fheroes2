@@ -80,6 +80,28 @@ namespace
     };
 }
 
+namespace
+{
+    // Active 8-bit RGB palette pointer used by paletteIdxToRGBA (in image.cpp). When null,
+    // getRenderPalette8Bit() returns a lazily-built copy of the static gamePalette expanded
+    // from 6-bit to 8-bit.
+    const uint8_t * activeRenderPalette8Bit = nullptr;
+
+    // Cached 8-bit copy of PaletteHolder::gamePalette. Rebuilt on first use after the static
+    // gamePalette changes (i.e. setGamePalette() is called).
+    std::array<uint8_t, paletteSize> renderPaletteDefault8Bit{};
+    bool renderPaletteDefault8BitValid = false;
+
+    void rebuildRenderPaletteDefault8Bit()
+    {
+        const auto & src = PaletteHolder::instance().gamePalette;
+        for ( size_t i = 0; i < paletteSize; ++i ) {
+            renderPaletteDefault8Bit[i] = static_cast<uint8_t>( src[i] << 2 );
+        }
+        renderPaletteDefault8BitValid = true;
+    }
+}
+
 namespace fheroes2
 {
     const uint8_t * getGamePalette()
@@ -95,5 +117,22 @@ namespace fheroes2
         }
 
         std::copy_n( palette.begin(), paletteSize, PaletteHolder::instance().gamePalette.begin() );
+        renderPaletteDefault8BitValid = false;
+    }
+
+    const uint8_t * getRenderPalette8Bit()
+    {
+        if ( activeRenderPalette8Bit != nullptr ) {
+            return activeRenderPalette8Bit;
+        }
+        if ( !renderPaletteDefault8BitValid ) {
+            rebuildRenderPaletteDefault8Bit();
+        }
+        return renderPaletteDefault8Bit.data();
+    }
+
+    void setRenderPalette8Bit( const uint8_t * palette )
+    {
+        activeRenderPalette8Bit = palette;
     }
 }

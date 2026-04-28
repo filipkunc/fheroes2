@@ -201,14 +201,17 @@ namespace
     // Transform 2 = strongest shadow, transform 5 = weakest.
     constexpr float shadowFactor[6] = { 1.0f, 1.0f, 0.25f, 0.40f, 0.55f, 0.70f };
 
-    // Convert a palette index to RGBA bytes (R, G, B, A=255). The game palette stores 6-bit
-    // values (0-63); shift left by 2 to get 8-bit (0-252).
+    // Convert a palette index to RGBA bytes (R, G, B, A=255). Uses the currently active
+    // render palette (8-bit RGB) — by default the static gamePalette expanded from 6-bit to
+    // 8-bit, but Display::changePalette() can point this at e.g. an SMK video's own palette
+    // so sprite blits during video playback render with the colours the artwork was authored
+    // against (matches the indexed-Display behaviour pre-RGBA refactor).
     inline void paletteIdxToRGBA( const uint8_t idx, uint8_t & r, uint8_t & g, uint8_t & b )
     {
-        const uint8_t * pal = fheroes2::getGamePalette() + ( static_cast<ptrdiff_t>( idx ) * 3 );
-        r = static_cast<uint8_t>( pal[0] << 2 );
-        g = static_cast<uint8_t>( pal[1] << 2 );
-        b = static_cast<uint8_t>( pal[2] << 2 );
+        const uint8_t * pal = fheroes2::getRenderPalette8Bit() + ( static_cast<ptrdiff_t>( idx ) * 3 );
+        r = pal[0];
+        g = pal[1];
+        b = pal[2];
     }
 
     // Physical-pixel rectangle covered by a single game pixel at (gameX, gameY) when written
@@ -1355,7 +1358,10 @@ namespace fheroes2
                         continue;
                     }
 
-                    *imageOutX = GetPALColorId( px[0], px[1], px[2] );
+                    // GetPALColorId expects 6-bit RGB (0..63) — its internal lookup table
+                    // is sized 64×64×64. Display RGBA bytes are 8-bit (0..255); shifting
+                    // right by 2 converts to the 6-bit scale.
+                    *imageOutX = GetPALColorId( px[0] >> 2, px[1] >> 2, px[2] >> 2 );
                     if ( transformOutX ) {
                         *transformOutX = 0;
                         ++transformOutX;
@@ -1410,9 +1416,12 @@ namespace fheroes2
                     const uint32_t behindAlpha = 255 - combinedAlpha;
                     const uint8_t * outPAL = gamePalette + ( static_cast<ptrdiff_t>( *imageOutX ) * 3 );
 
-                    const uint32_t red = ( static_cast<uint32_t>( px[0] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[0] ) * behindAlpha );
-                    const uint32_t green = ( static_cast<uint32_t>( px[1] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[1] ) * behindAlpha );
-                    const uint32_t blue = ( static_cast<uint32_t>( px[2] ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[2] ) * behindAlpha );
+                    // outPAL values are 6-bit (0..63, gamePalette format); px values are 8-bit
+                    // (0..255, RGBA Display). Shift px to 6-bit so the alpha blend stays in a
+                    // single colour scale and the result fits GetPALColorId's 6-bit input.
+                    const uint32_t red = ( static_cast<uint32_t>( px[0] >> 2 ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[0] ) * behindAlpha );
+                    const uint32_t green = ( static_cast<uint32_t>( px[1] >> 2 ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[1] ) * behindAlpha );
+                    const uint32_t blue = ( static_cast<uint32_t>( px[2] >> 2 ) * combinedAlpha ) + ( static_cast<uint32_t>( outPAL[2] ) * behindAlpha );
 
                     *imageOutX = GetPALColorId( static_cast<uint8_t>( red / 255 ), static_cast<uint8_t>( green / 255 ), static_cast<uint8_t>( blue / 255 ) );
                 }
@@ -4321,23 +4330,58 @@ namespace fheroes2
         const uint8_t * srcData = in.image();
         uint8_t * dstData = out.image();
 
+        // For significant downscales (e.g. army-bar mini-icon: ~1136×736 source → ~96×96
+        // physical), nearest-neighbour throws away ~99% of the source pixels and produces a
+        // chunky, aliased result. Use alpha-weighted box-filter averaging across the source
+        // block that each physical destination pixel covers — same approach as
+        // writeIndexedSpriteFromRGBA. For 1:1 / minor scaling / upscaling each block reduces
+        // to a single source pixel, which collapses to nearest-neighbour at no extra cost.
         for ( int32_t py = pStartY; py < pEndY; ++py ) {
-            const int32_t srcY = ( ( py - pOutY ) * srcH ) / pDstH;
-            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
+            const int32_t relPy = py - pOutY;
+            const int32_t sy0 = ( relPy * srcH ) / pDstH;
+            const int32_t sy1 = std::max( sy0 + 1, ( ( relPy + 1 ) * srcH ) / pDstH );
             uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( py ) * bufStride * 4;
 
             for ( int32_t px = pStartX; px < pEndX; ++px ) {
                 const int32_t relPx = px - pOutX;
-                const int32_t srcX = ( ( flip ? ( pDstW - 1 - relPx ) : relPx ) * srcW ) / pDstW;
-                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
-                if ( srcPx[3] == 0 ) {
+                const int32_t flippedX = flip ? ( pDstW - 1 - relPx ) : relPx;
+                const int32_t sx0 = ( flippedX * srcW ) / pDstW;
+                const int32_t sx1 = std::max( sx0 + 1, ( ( flippedX + 1 ) * srcW ) / pDstW );
+
+                uint32_t rSum = 0;
+                uint32_t gSum = 0;
+                uint32_t bSum = 0;
+                uint32_t aSum = 0;
+                uint32_t rgbCount = 0;
+                uint32_t totalCount = 0;
+                for ( int32_t sy = sy0; sy < sy1; ++sy ) {
+                    const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( sy ) * srcW * 4;
+                    for ( int32_t sx = sx0; sx < sx1; ++sx ) {
+                        const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( sx ) * 4;
+                        const uint8_t alpha = srcPx[3];
+                        aSum += alpha;
+                        ++totalCount;
+                        if ( alpha > 0 ) {
+                            rSum += srcPx[0];
+                            gSum += srcPx[1];
+                            bSum += srcPx[2];
+                            ++rgbCount;
+                        }
+                    }
+                }
+
+                if ( rgbCount == 0 ) {
+                    // Whole source block fully transparent — leave destination as-is so
+                    // sprite shapes still composite over the existing framebuffer (matches
+                    // the alpha==0 skip in the previous nearest-neighbour code path).
                     continue;
                 }
+
                 uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( px ) * 4;
-                dstPx[0] = srcPx[0];
-                dstPx[1] = srcPx[1];
-                dstPx[2] = srcPx[2];
-                dstPx[3] = srcPx[3];
+                dstPx[0] = static_cast<uint8_t>( rSum / rgbCount );
+                dstPx[1] = static_cast<uint8_t>( gSum / rgbCount );
+                dstPx[2] = static_cast<uint8_t>( bSum / rgbCount );
+                dstPx[3] = static_cast<uint8_t>( aSum / totalCount );
             }
         }
     }
@@ -4390,28 +4434,61 @@ namespace fheroes2
         const uint8_t * srcData = in.image();
         uint8_t * dstData = out.image();
 
+        // Same alpha-weighted box-filter strategy as BlitRGBAScaled — average the source
+        // block that each physical destination pixel covers, then alpha-blend the averaged
+        // colour over the existing destination. Degenerates to nearest-neighbour at 1:1
+        // scale or upscaling.
         for ( int32_t py = pStartY; py < pEndY; ++py ) {
-            const int32_t srcY = ( ( py - pOutY ) * srcH ) / pDstH;
-            const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( srcY ) * srcW * 4;
+            const int32_t relPy = py - pOutY;
+            const int32_t sy0 = ( relPy * srcH ) / pDstH;
+            const int32_t sy1 = std::max( sy0 + 1, ( ( relPy + 1 ) * srcH ) / pDstH );
             uint8_t * dstRow = dstData + static_cast<ptrdiff_t>( py ) * bufStride * 4;
 
             for ( int32_t px = pStartX; px < pEndX; ++px ) {
                 const int32_t relPx = px - pOutX;
-                const int32_t srcX = ( ( flip ? ( pDstW - 1 - relPx ) : relPx ) * srcW ) / pDstW;
-                const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcX ) * 4;
-                if ( srcPx[3] == 0 ) {
+                const int32_t flippedX = flip ? ( pDstW - 1 - relPx ) : relPx;
+                const int32_t sx0 = ( flippedX * srcW ) / pDstW;
+                const int32_t sx1 = std::max( sx0 + 1, ( ( flippedX + 1 ) * srcW ) / pDstW );
+
+                uint32_t rSum = 0;
+                uint32_t gSum = 0;
+                uint32_t bSum = 0;
+                uint32_t aSum = 0;
+                uint32_t rgbCount = 0;
+                uint32_t totalCount = 0;
+                for ( int32_t sy = sy0; sy < sy1; ++sy ) {
+                    const uint8_t * srcRow = srcData + static_cast<ptrdiff_t>( sy ) * srcW * 4;
+                    for ( int32_t sx = sx0; sx < sx1; ++sx ) {
+                        const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( sx ) * 4;
+                        const uint8_t a = srcPx[3];
+                        aSum += a;
+                        ++totalCount;
+                        if ( a > 0 ) {
+                            rSum += srcPx[0];
+                            gSum += srcPx[1];
+                            bSum += srcPx[2];
+                            ++rgbCount;
+                        }
+                    }
+                }
+
+                if ( rgbCount == 0 ) {
                     continue;
                 }
-                const uint32_t srcA = ( static_cast<uint32_t>( srcPx[3] ) * alpha ) / 255;
+                const uint32_t avgAlpha = aSum / totalCount;
+                const uint32_t srcA = ( avgAlpha * alpha ) / 255;
                 if ( srcA == 0 ) {
                     continue;
                 }
                 uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( px ) * 4;
                 const uint32_t dstA = dstPx[3];
                 const uint32_t invSrcA = 255 - srcA;
-                dstPx[0] = static_cast<uint8_t>( ( srcPx[0] * srcA + dstPx[0] * invSrcA ) / 255 );
-                dstPx[1] = static_cast<uint8_t>( ( srcPx[1] * srcA + dstPx[1] * invSrcA ) / 255 );
-                dstPx[2] = static_cast<uint8_t>( ( srcPx[2] * srcA + dstPx[2] * invSrcA ) / 255 );
+                const uint32_t srcR = rSum / rgbCount;
+                const uint32_t srcG = gSum / rgbCount;
+                const uint32_t srcB = bSum / rgbCount;
+                dstPx[0] = static_cast<uint8_t>( ( srcR * srcA + dstPx[0] * invSrcA ) / 255 );
+                dstPx[1] = static_cast<uint8_t>( ( srcG * srcA + dstPx[1] * invSrcA ) / 255 );
+                dstPx[2] = static_cast<uint8_t>( ( srcB * srcA + dstPx[2] * invSrcA ) / 255 );
                 dstPx[3] = static_cast<uint8_t>( std::min( srcA + ( dstA * invSrcA ) / 255, static_cast<uint32_t>( 255 ) ) );
             }
         }

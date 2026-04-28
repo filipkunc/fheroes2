@@ -1006,6 +1006,12 @@ namespace
                     return;
                 }
                 SDL_SetTextureBlendMode( _screenTexture, SDL_BLENDMODE_NONE );
+                // Re-apply the user's nearest/linear preference. SDL3's default for a freshly-created
+                // texture is LINEAR, which combined with SDL_LOGICAL_PRESENTATION_LETTERBOX at game
+                // dims (640×480) bilinear-downsamples our physical-resolution texture into the
+                // logical rect and back, smearing colours across every game-pixel boundary on
+                // detail-heavy art (e.g. the X_IVY leafy campaign-selection background).
+                SDL_SetTextureScaleMode( _screenTexture, isNearestScaling() ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR );
                 _screenTextureW = w;
                 _screenTextureH = h;
             }
@@ -1489,11 +1495,15 @@ namespace fheroes2
 
         _engine->updatePalette( StandardPaletteIndexes() );
 
-        // POSTPONED: with the pure-RGBA Display we have no indexed buffer to re-mirror under
-        // the new palette. Color cycling animations (gold/water/lava) won't update on screen
-        // until a shader-LUT path lands. The currentPalette is kept up to date so newly drawn
-        // primitives use the latest colours, but already-drawn pixels stay at the old colours
-        // until the affected widgets redraw themselves.
+        // Make sprite blits (paletteIdxToRGBA) follow the current palette too, so e.g. the
+        // X_IVY background drawn during the POL campaign-selection screen renders through the
+        // SMK video's palette rather than the static KB.PAL. Pass nullptr to revert to the
+        // default 8-bit gamePalette.
+        fheroes2::setRenderPalette8Bit( palette );
+
+        // POSTPONED: existing already-drawn framebuffer pixels stay at the old colours until
+        // the affected widgets redraw themselves. Color cycling animations (gold/water/lava)
+        // remain disabled until a shader-LUT path lands.
     }
 
     bool Cursor::isFocusActive() const

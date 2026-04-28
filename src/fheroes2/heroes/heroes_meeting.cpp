@@ -175,29 +175,54 @@ public:
 
         const fheroes2::Text text( std::to_string( troop.GetCount() ), fheroes2::FontType::smallWhite() );
 
-        const fheroes2::Sprite & mons32 = fheroes2::AGG::GetICN( ICN::MONS32, troop.GetSpriteIndex() );
-        fheroes2::Rect srcrt( 0, 0, mons32.width(), mons32.height() );
+        // For monsters that ship a hi-res RGBA portrait (Dachshund, Thor, …) skip the indexed
+        // MONS32 sprite — it's a palette-quantised downscale of the same source — and direct-
+        // paint the RGBA portrait at render time, matching ArmyBar's base mini-sprite branch
+        // (army_bar.cpp:277-298) and the adventure-map status panel. Otherwise the dachshund
+        // looks visibly softer than the surrounding original 32×32 pixel-art icons.
+        const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( troop.GetID() );
+        const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
-        if ( mons32.width() > roi.width ) {
-            srcrt.x = ( mons32.width() - roi.width ) / 2;
-            srcrt.width = roi.width;
+        if ( useCustomPortrait ) {
+            const int32_t srcW = portrait->width();
+            const int32_t srcH = portrait->height();
+            const int32_t boxW = roi.width;
+            const int32_t boxH = roi.height - 2;
+            int32_t overlayW = boxW;
+            int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
+            if ( overlayH > boxH ) {
+                overlayH = boxH;
+                overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
+            }
+            const int32_t overlayX = roi.x + ( boxW - overlayW ) / 2;
+            const int32_t overlayY = roi.y + ( boxH - overlayH );
+            fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
         }
+        else {
+            const fheroes2::Sprite & mons32 = fheroes2::AGG::GetICN( ICN::MONS32, troop.GetSpriteIndex() );
+            fheroes2::Rect srcrt( 0, 0, mons32.width(), mons32.height() );
 
-        if ( mons32.height() > roi.height ) {
-            srcrt.y = ( mons32.height() - roi.height ) / 2;
-            srcrt.height = roi.height;
+            if ( mons32.width() > roi.width ) {
+                srcrt.x = ( mons32.width() - roi.width ) / 2;
+                srcrt.width = roi.width;
+            }
+
+            if ( mons32.height() > roi.height ) {
+                srcrt.y = ( mons32.height() - roi.height ) / 2;
+                srcrt.height = roi.height;
+            }
+
+            int32_t offsetX = ( roi.width - mons32.width() ) / 2;
+            int32_t offsetY = roi.height - mons32.height() - 3;
+
+            if ( offsetX < 1 )
+                offsetX = 1;
+
+            if ( offsetY < 1 )
+                offsetY = 1;
+
+            fheroes2::Blit( mons32, srcrt.x, srcrt.y, image, roi.x + offsetX, roi.y + offsetY, srcrt.width, srcrt.height );
         }
-
-        int32_t offsetX = ( roi.width - mons32.width() ) / 2;
-        int32_t offsetY = roi.height - mons32.height() - 3;
-
-        if ( offsetX < 1 )
-            offsetX = 1;
-
-        if ( offsetY < 1 )
-            offsetY = 1;
-
-        fheroes2::Blit( mons32, srcrt.x, srcrt.y, image, roi.x + offsetX, roi.y + offsetY, srcrt.width, srcrt.height );
 
         text.draw( roi.x + ( roi.width - text.width() ) / 2, roi.y + roi.height + 1, image );
 
