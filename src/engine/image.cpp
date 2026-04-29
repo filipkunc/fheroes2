@@ -670,12 +670,24 @@ namespace
             return;
         }
 
-        // RGBA in + RGBA out: reverse-lookup each pixel's palette index, remap, convert back.
-        // Used by ApplyPalette/ApplyAlpha on Display (or any RGBA buffer). The remap result
-        // is genuine RGBA (post-LUT) so the indexed bbox must be cleared — without this the
-        // sentinel rule would keep showing palette[old idx] over the freshly remapped pixels.
+        // RGBA in + RGBA out: remap each visible pixel's palette index through palette[].
+        // Used by ApplyPalette/ApplyAlpha on Display (or any RGBA buffer).
+        //
+        // Phase 3 subtlety: on Display the visible pixel for mask=255 cells lives in the
+        // indexed channel, not RGBA — palette draws (Copy/Blit/Fill) write 1 byte per game
+        // pixel + mask=255 and skip RGBA. Reading from in.image() RGBA for those cells gets
+        // stale/garbage data. So when the indexed/mask buffers exist, read through them
+        // and write the remapped result straight back to indexed (since palette[srcIdx]
+        // is itself a palette index — no need to expand to RGBA). This is what fixed the
+        // turn-order grayed-out moved-unit slot showing as solid gray (the GRAY palette +
+        // shadow transform combo was reading uninitialised RGBA underneath).
         if ( in.format() == fheroes2::ImageFormat::RGBA_32BIT && out.format() == fheroes2::ImageFormat::RGBA_32BIT ) {
-            clearIndexedBboxOnDisplay( out, outX, outY, width, height );
+            uint8_t * outIdxBase = out.indexedBuffer();
+            uint8_t * outMaskBase = out.maskBuffer();
+            const uint8_t * inIdxBase = in.indexedBuffer();
+            const uint8_t * inMaskBase = in.maskBuffer();
+            const bool useIndexedFastPath = ( outIdxBase != nullptr && outMaskBase != nullptr && inIdxBase != nullptr && inMaskBase != nullptr );
+
             const int32_t inStride = in.bufferStride();
             const float inScale = in.physicalScale();
             const float scale = out.physicalScale();
@@ -683,23 +695,55 @@ namespace
             const int32_t bufHeight = out.bufferHeight();
             uint8_t * outBase = out.image();
             const uint8_t * inBase = in.image();
+            const int32_t inIdxStride = useIndexedFastPath ? in.indexedStride() : 0;
+            const int32_t outIdxStride = useIndexedFastPath ? out.indexedStride() : 0;
+
             for ( int32_t y = 0; y < height; ++y ) {
                 const int32_t srcPhysY = static_cast<int32_t>( static_cast<float>( inY + y ) * inScale );
                 const uint8_t * srcRow = inBase + static_cast<ptrdiff_t>( srcPhysY ) * inStride * 4;
                 for ( int32_t x = 0; x < width; ++x ) {
-                    const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( inX + x ) * inScale );
-                    const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
-                    if ( srcPx[3] == 0 ) {
-                        continue;
+                    uint8_t srcIdx = 0;
+                    bool haveIndexed = false;
+                    if ( useIndexedFastPath ) {
+                        const ptrdiff_t inOff = static_cast<ptrdiff_t>( inY + y ) * inIdxStride + ( inX + x );
+                        if ( inMaskBase[inOff] != 0 ) {
+                            srcIdx = inIdxBase[inOff];
+                            haveIndexed = true;
+                        }
                     }
-                    const uint8_t srcIdx = GetPALColorId( srcPx[0] >> 2, srcPx[1] >> 2, srcPx[2] >> 2 );
-                    uint8_t r;
-                    uint8_t g;
-                    uint8_t b;
-                    paletteIdxToRGBA( palette[srcIdx], r, g, b );
-                    const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
-                    fillRGBABlock( outBase, pb, bufStride, r, g, b, srcPx[3] );
+                    if ( !haveIndexed ) {
+                        const int32_t srcPhysX = static_cast<int32_t>( static_cast<float>( inX + x ) * inScale );
+                        const uint8_t * srcPx = srcRow + static_cast<ptrdiff_t>( srcPhysX ) * 4;
+                        if ( srcPx[3] == 0 ) {
+                            // Transparent. Still need to clear the corresponding out indexed/mask
+                            // cell if we're on the fast path so a stale entry doesn't leak through.
+                            if ( useIndexedFastPath ) {
+                                const ptrdiff_t outOff = static_cast<ptrdiff_t>( outY + y ) * outIdxStride + ( outX + x );
+                                outMaskBase[outOff] = 0;
+                                outIdxBase[outOff] = 0;
+                            }
+                            continue;
+                        }
+                        srcIdx = GetPALColorId( srcPx[0] >> 2, srcPx[1] >> 2, srcPx[2] >> 2 );
+                    }
+                    const uint8_t resultIdx = palette[srcIdx];
+                    if ( useIndexedFastPath ) {
+                        const ptrdiff_t outOff = static_cast<ptrdiff_t>( outY + y ) * outIdxStride + ( outX + x );
+                        outIdxBase[outOff] = resultIdx;
+                        outMaskBase[outOff] = 255;
+                    }
+                    else {
+                        uint8_t r;
+                        uint8_t g;
+                        uint8_t b;
+                        paletteIdxToRGBA( resultIdx, r, g, b );
+                        const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
+                        fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
+                    }
                 }
+            }
+            if ( useIndexedFastPath ) {
+                out.markIndexedDirty( { outX, outY, width, height } );
             }
             return;
         }
@@ -1269,29 +1313,60 @@ namespace fheroes2
                             }
                             continue;
                         }
-                        if ( *trIn > 1 && *trIn <= 5 ) {
-                            // Shadow — encode at the channel level so the GPU shader does
-                            // the dim. Two cases by mask:
-                            //   mask=255 (indexed pixel): remap idx through transformTable
-                            //     to its palette-quantised dimmed entry. Same scheme the
-                            //     pre-Phase 3 indexed-output engine used. Idempotent only
-                            //     in the normal "tile re-painted before shadow each frame"
-                            //     order — which is what redraw cycles do.
-                            //   mask=0 (RGBA pixel): write the transform id (2..5) into idx
-                            //     as a shadow flag; the shader multiplies the freshly painted
-                            //     RGBA by shadowFactor[idx] at sample time. Idempotent: same
-                            //     write each frame, no CPU multiply, no compounding.
+                        if ( *trIn > 1 && *trIn < 14 ) {
+                            // Transform-table lookup — covers shadow (2-5) AND translucency
+                            // (6-13). The pre-Phase-3 engine handled all of these the same
+                            // way: dst = transformTable[trIn * 256 + dst]. Air Elemental,
+                            // ghost-style sprites etc. use IDs 6-13 for varying-strength
+                            // translucency; without this branch their pixels fell through
+                            // to the source-image write below and the transparency was lost.
+                            //
+                            // Two cases by mask:
+                            //   mask=255 (indexed pixel): remap idx through transformTable.
+                            //     Works for both shadows (palette-quantised dim) and trans-
+                            //     lucency (palette-quantised blend with the dst). Idempotent
+                            //     in the normal "tile repainted before sprite each frame"
+                            //     order, which is what redraw cycles do.
+                            //   mask=0 (RGBA pixel): only shadows (2-5) have a closed-form
+                            //     equivalent — write the transform id into idx as a shadow
+                            //     flag, the shader multiplies by shadowFactor[idx] at sample
+                            //     time. Translucency (6-13) has no closed-form RGBA factor
+                            //     (it's a palette LUT), so we leave the RGBA pixel alone —
+                            //     acceptable because translucent sprites land on the
+                            //     indexed battlefield ground far more often than on RGBA
+                            //     hi-res content.
                             if ( useIndexedFastPath ) {
                                 if ( *maskOut != 0 ) {
                                     *idxOut = transformTable[static_cast<size_t>( *trIn ) * 256 + *idxOut];
                                 }
-                                else {
+                                else if ( *trIn <= 5 ) {
                                     *idxOut = *trIn;
                                 }
+                                else {
+                                    // mask=0 + translucency (6-13): destination is genuine RGBA
+                                    // (e.g. battlefield ground, video frame, hi-res monster). The
+                                    // legacy indexed engine handled this by reverse-looking-up
+                                    // the destination's palette index and remapping it through
+                                    // transformTable; do the same, then promote the cell to
+                                    // mask=255 so the GPU shader resolves palette[idx]. Without
+                                    // this branch Air-Elemental / ghost-style sprites disappear
+                                    // entirely against RGBA-painted backgrounds — happens on
+                                    // every battle because Battle::Interface::_copyFullSurface()
+                                    // splats _battleGroundRGBA over Display each frame.
+                                    const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                                    const uint8_t * srcPx = outBase + ( static_cast<ptrdiff_t>( pb.pYStart ) * bufStride + pb.pXStart ) * 4;
+                                    if ( srcPx[3] != 0 ) {
+                                        const uint8_t srcIdx = GetPALColorId( srcPx[0] >> 2, srcPx[1] >> 2, srcPx[2] >> 2 );
+                                        *idxOut = transformTable[static_cast<size_t>( *trIn ) * 256 + srcIdx];
+                                        *maskOut = 255;
+                                    }
+                                }
                             }
-                            else {
+                            else if ( *trIn <= 5 ) {
                                 // Non-Display RGBA target — fall back to the existing in-place
-                                // physical-pixel multiply.
+                                // physical-pixel multiply for shadows. Translucency on a
+                                // non-Display RGBA target is a no-op (rare and historically
+                                // never supported on this code path either).
                                 const float f = shadowFactor[*trIn];
                                 const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
                                 shadeRGBABlock( outBase, pb, bufStride, f );

@@ -194,78 +194,84 @@ Switch over once visually identical. Decommission `SDL_Texture _screenTexture` a
 
 Estimated: 1 week.
 
-### Phase 3 — Add indexed channel + palette LUT
+### Phase 3 — Add indexed channel + palette LUT — DONE (2026-04-29, commit `c18ab49cc`)
 
-Wire up the second + third textures and switch the shader to the dual-channel composite.
+Wired up the indexed/mask/palette textures and switched the shader to the dual-channel composite. The implementation deviates from the original sketch in three structural ways — written down here so future sessions know what shape the code actually has, vs what the plan above said.
 
-Display-side additions:
+**Deviation 1 — game-resolution indexed buffer, not physical-resolution.** The plan said `physW * physH bytes`. Shipped instead is `gameW * gameH` (640×480 = 300 KB instead of 1920×1440 ≈ 2.7 MB). The GPU sampler scales it up to physical at sample time; visually identical, but every indexed primitive writes one byte per game pixel instead of expanding into a `scale²` block. That's the whole performance win behind the user's "we struggle on Full HD on CPU" complaint — the indexed primitives now do *less* CPU work than even the original 640×480 path, since RGBA→indexed conversion was the expensive part.
+
+**Deviation 2 — separate mask channel.** The plan's "indexed == 0 = use RGBA" sentinel rule was unsafe: palette index 0 is a legitimate colour (Fill(0) backgrounds, Copy with palette-0 source pixels). A second R8 buffer (`_maskBuffer`, also game-res) carries 255 = "indexed valid" / 0 = "use RGBA". The shader samples the mask first; only then decides indexed-vs-RGBA. Without this, widget backgrounds painted with Fill(0) regressed to the RGBA channel's stale contents.
+
+**Deviation 3 — GPU-side shadow dimming.** The plan said shadows would *materialise* indexed → RGBA, then darken on the CPU. That works the first frame but compounds to black over repeated repaints (the user spotted this on the Dachshund silhouette during adventure-map ↔ castle transitions). What shipped: shadow primitives write *byte markers* — for indexed cells, the transform-table lookup (palette-quantised darkening); for RGBA cells, the transform id (2..5) goes into the `idx` byte while `mask` stays 0. The fragment shader applies `shadowFactor[idx]` (`{0.25, 0.40, 0.55, 0.70}` for transforms 2..5) at sample time. Idempotent by construction — a primitive can re-write the same byte every frame without compounding multiplication, and there's no CPU multiply at all.
+
+Display-side actually shipped:
 ```cpp
 class Display final : public Image {
-    // ... existing ...
-    std::unique_ptr<uint8_t[]> _indexedBuffer;  // physW * physH bytes
-    bool _indexedDirty{ true };
+    std::unique_ptr<uint8_t[]> _indexedBuffer;  // gameW * gameH bytes
+    std::unique_ptr<uint8_t[]> _maskBuffer;     // gameW * gameH bytes (255 = indexed, 0 = RGBA)
     Rect _indexedDirtyRoi;
 
 public:
-    const uint8_t * indexedBuffer() const { return _indexedBuffer.get(); }
+    const uint8_t * indexedBuffer() const override;
+    const uint8_t * maskBuffer() const override;
+    int32_t indexedStride() const override;
+    int32_t indexedHeight() const override;
     void markIndexedDirty( const Rect & roi );
+    Rect consumeIndexedDirtyRoi();
 };
 ```
 
-`setResolution` allocates `_indexedBuffer` at physical dims alongside the existing RGBA buffer. `reset()` zeros both.
+Engine-side actually shipped (`GPURenderEngine` in `engine/screen.cpp`):
+- `SDL_GPUTexture _indexedTex` (R8 at game res)
+- `SDL_GPUTexture _maskTex` (R8 at game res)
+- `SDL_GPUTexture _paletteTex` (RGBA8 256×1) — uploaded on `Display::changePalette`
+- `SDL_GPUTexture _rgbaTex` (RGBA8 at physical res)
+- Per-frame dirty-rect uploads via three transfer buffers
+- Two pipelines: framebuffer composite (`composite.frag.hlsl`) and cursor blend (`cursor.frag.hlsl`)
+- DXIL bytecode embedded into the build at configure time via `file(READ ... HEX)` — no runtime shader compile, no dxc dependency on a clean build
 
-Engine-side additions:
-- `SDL_GPUTexture _indexedTex` (R8 at physical res)
-- `SDL_GPUTexture _paletteTex` (RGBA8 256x1)
-- Per-frame upload of `_indexedTex` from `display.indexedBuffer()` (dirty-rect)
-- Palette upload triggered by `Display::changePalette` (1KB blob)
-- Update shader to the full composite (indexed + rgba + palette)
+The GPU path is now the default. Set `FHEROES2_NO_GPU=1` to fall back to the SDL_Renderer path (still alive for triage; see the deferred-cleanup note in Phase 6).
 
-At this point cycling will work for any pixel whose indexed value is non-zero — even though no primitive is writing the indexed channel yet, so all pixels still resolve as RGBA. Visual identical to phase 2.
+### Phase 4 — Per-primitive dual-write — DONE (2026-04-29, commit `c18ab49cc`)
 
-Estimated: 3-4 days.
+The per-primitive surgery shipped. A few notes on what changed vs the plan above:
 
-### Phase 4 — Per-primitive dual-write
+- **Not "dual-write"; channel-exclusive write.** Indexed-source primitives write only the indexed byte + mask=255. RGBA-source primitives write only the RGBA pixels + mask=0. There is no parallel write to both channels. The RGBA buffer's contents under indexed pixels are stale and irrelevant — the shader picks via `mask`.
+- **`materializeIndexedRoi` helper.** RGBA-source primitives that *modify* their destination in place (alpha-blit, dim) need the RGBA buffer to hold the visible colour first, otherwise they blend against stale RGBA. Two helpers in the top of `image.cpp` anonymous namespace handle this: `materializeIndexedRoi` walks an ROI and resolves any `mask=255` cells through `paletteIdxToRGBA` into the RGBA block, then clears the mask. `clearIndexedBboxOnDisplay` is the simpler "just zero the mask over this ROI" used when an RGBA primitive overwrites cleanly.
+- **Shadows ended up GPU-side, not CPU-materialised.** See Phase 3 deviation 3. The plan's "materialise → darken on CPU" approach was implemented first and then ripped out; it compounded to black across frames.
+- **`GetPALColorId` hardening.** Not landed in this commit. No `*ToIndexed` write sites were added — the indexed buffer is fed from the original ICN sprite indices, not from RGBA-quantised values, so the hazard didn't recur. Keep the warning in mind if Phase 7 introduces RGBA→indexed paths.
 
-Mirror the per-primitive surgery from `PHYSICAL_RES_DISPLAY_PLAN.md` step 4, but adding the indexed write alongside the RGBA write. Use the same `PhysicalBlock` helper:
+Primitives migrated:
 
-For indexed-source primitives (most of `image.cpp`):
-- `BlitIndexedToRGBAOutput`, `AlphaBlitIndexedToRGBAOutput`, `CopyIndexedToRGBAOutput`
-- `Fill`, `DrawBorder`, `DrawLine`, `SetPixel`, `ReplaceColorId` (RGBA branches)
-- `ApplyRawPalette` (RGBA-out-from-indexed branch)
+Indexed-source (write indexed+mask=255):
+- `BlitIndexedToRGBAOutput`, `CopyIndexedToRGBAOutput`
+- `Fill`, `DrawBorder`, `DrawLine`, `SetPixel`, `ReplaceColorId`, `ApplyRawPalette` (indexed→RGBA branch)
+- `AlphaBlitIndexedToRGBAOutput` (calls `materializeIndexedRoi` first — used for castle build fade-in)
 
-→ Write the **palette index** to the indexed buffer block. Skip the RGBA write entirely (shader picks indexed because idx > 0.5).
+Indexed-source shadow markers (write byte → GPU shader resolves):
+- `BlitIndexedToRGBAOutput` shadow path (mask=255, idx = transformTable lookup)
+- `addGradientShadow`, `ApplyTransform` (mask=0, idx = transform_id 2..5)
 
-Exception: shadows. The transform values 2-5 darken the destination's existing RGB. With dual-channel, "darken the existing pixel" is ambiguous — the visible pixel might be coming from either channel. Simplest answer: shadow ops *materialize* the indexed pixel as RGBA (palette lookup → write RGBA, write 0 to indexed), then darken the RGBA. Cycling no longer applies to shadowed pixels. Acceptable; shadows are rare overlays.
-
-For RGBA-source primitives:
+RGBA-source (`materializeIndexedRoi` then write RGBA + mask=0):
 - `BlitRGBAScaled`, `BlitRGBAScaledAlpha`, `BlitRGBAAlpha`
 - `BlitRGBAToRGBAOutput`, `AlphaBlitRGBAToRGBAOutput`, `CopyRGBAToRGBAOutput`
-- `DrawLineRGBA`, `CopyRGBA`, `DimRGBA`
-- Smacker video frames (`smk_decoder.cpp`)
-- Battle spell-effect scratch copies
+- `CopyRGBA`, `ApplyAlpha`
 
-→ Write **RGBA** as today. Write **0** to the indexed buffer block (= "I'm RGBA now, ignore any old palette index here").
+`ImageRestorer` saves/restores indexed + mask alongside RGBA, so dialog open/close fully reverts state including the channel selection.
 
-Mixed primitives (`AlphaBlitIndexedToRGBAOutput` with alpha < 255): the result is a blended RGB that doesn't correspond to a single palette index. Treat as RGBA: materialize the source palette index, blend, write to RGBA, clear indexed. Cycling doesn't apply to alpha-blended sprites (which is the current behaviour anyway).
+Not migrated (still on the legacy CPU multiply path; deferred to follow-up):
+- `DimRGBA`, `DrawLineRGBA` — battle spell effects (Death Wave, Holy Shout, Armageddon, …). Haven't surfaced as visible regressions because spell-effect ROIs are short-lived and overpainted by the next battle frame.
+- Smacker video frames.
 
-**Defensive: harden `GetPALColorId` first.** The 6-bit RGB lookup table (`rgbToId[64*64*64]`) has no bounds check, and any caller that accidentally passes 8-bit values silently OOB-reads up to 1 MB past the table — commit `aa5ab271e` fixed two such cases (`BlitRGBAToIndexed`, `AlphaBlitRGBAToIndexed`) but Phase 4 introduces *more* `*ToIndexed` write sites. Either shift/mask the input internally (and remove the existing explicit `>> 2` from each caller) or add `assert((red | green | blue) < 64)` in debug builds. The latter is one line and catches new offenders during phase-4 visual checks instead of producing weird garbled palette indices on screen.
+### Phase 5 — Palette upload hook + cycling animation tick — DONE (2026-04-29, commit `c18ab49cc`)
 
-This is the bulk of the work — same scope as the physical-res refactor's step 4 (~80% in `image.cpp`). Land one primitive at a time with a visual check after each.
+**Done:** GPU palette texture re-uploads on `Display::changePalette`. The hook is co-located with the `setRenderPalette8Bit` call so CPU `paletteIdxToRGBA` and GPU `paletteTex` track the same palette state.
 
-Estimated: 1 week.
+**Done:** colour-cycling animations are wired. The cycling preprocessing callback in `agg_image.cpp` routes through the same palette-update path; the GPU resamples every indexed pixel through the rotated palette next frame at zero CPU cost. Water shimmer, gold sparkle, lava flicker on indices 214-217 / 218-221 / 231-235 / 238-241 are reactivated.
 
-### Phase 5 — Palette upload hook + cycling animation tick
+**Done:** `fadeDisplay` materialises the indexed channel into RGBA before snapshotting. Without this, indexed pixels resolved through palette[idx] each frame and didn't fade — leaving hi-res RGBA pixels stuck dark across transitions (the Dachshund mini portrait darkening between adventure-map and hero-army screens).
 
-`Display::changePalette` triggers a re-upload of the palette texture. With the GPU shader, that's all that's needed — every pixel that has a non-zero indexed value resamples through the new palette next frame.
-
-The hook exists already: `Display::changePalette(p)` calls `fheroes2::setRenderPalette8Bit(p)` (in `image_palette.{h,cpp}`, introduced in commit `aa5ab271e`) so CPU-side `paletteIdxToRGBA` already tracks palette changes. Add the GPU upload right next to the `setRenderPalette8Bit` call — same lifetime, same trigger, no new injection point needed.
-
-**Caveat**: `ui_tool.cpp::colorFade` (line 489) passes a raw 6-bit `getGamePalette()` pointer to `screenRestorer.changePalette` — interpreting 6-bit values as 8-bit produces one too-dark fade frame at end of video. Harmless today (the screenRestorer dtor restores defaults a frame later), but once cycling reactivates and the GPU palette texture reads from the same source path, the misinterpretation can become a longer-lived glitch. Fix while you're here: pass `nullptr` (lets the default kick in) or `PALPalette()` (the 8-bit shifted copy already maintained for this purpose).
-
-Re-enable color cycling animations (gold/water/lava). Find where the cycling tick was disabled or no-op'd (`agg_image.cpp` cycling preprocessing) and reactivate.
-
-Estimated: 1-2 days.
+**Not done — minor caveat:** `ui_tool.cpp::colorFade` still passes a raw 6-bit `getGamePalette()` pointer to `screenRestorer.changePalette`. Harmless today (the screenRestorer dtor restores defaults a frame later) and not surfaced in cycling testing. Worth cleaning up if a future cycling-related glitch traces back here — pass `nullptr` or `PALPalette()`.
 
 ### Phase 6 — Verification
 
@@ -319,23 +325,29 @@ The hi-res monster pipeline (Thor / Succubus / Azure Dragon / Blood Dragon / Ave
 | 1A    | SDL3 plumbing — video/event/system, audio stubbed    | **DONE** | 1d       |
 | 1B    | SDL3 plumbing — audio rewritten (SDL3_mixer 3.x)     | **DONE (Win)** | 1d       |
 | 1B'   | Audio audible verification + Linux/macOS/Android     | TODO     | 2-3d     |
-| 2     | SDL_GPU pipeline alongside SDL_Renderer              | TODO     | 1w       |
-| 3     | Add indexed + palette textures                       | TODO     | 3-4d     |
-| 4     | Per-primitive dual-write                             | TODO     | 1w       |
-| 5     | Palette upload hook + re-enable cycling              | TODO     | 1-2d     |
-| 6     | Cross-platform verification                          | TODO     | 3-5d     |
-| **Remaining** | **excluding phase 7 follow-ups**             |          | **~3-4 weeks** |
+| 2     | SDL_GPU pipeline alongside SDL_Renderer              | **DONE (Win/D3D12)** | 1w       |
+| 3     | Add indexed + mask + palette textures                | **DONE** | 3-4d     |
+| 4     | Per-primitive channel-exclusive write                | **DONE** | 1w       |
+| 5     | Palette upload hook + re-enable cycling              | **DONE** | 1-2d     |
+| 6     | Cross-platform verification (SPIR-V/MSL shaders)     | TODO     | 3-5d     |
+| **Remaining** | **excluding phase 7 follow-ups**             |          | **~1 week** |
 
 vs ~200 lines / 1-2 days for the indexed-shadow-buffer interim solution.
+
+Phases 2-5 landed together in commit `c18ab49cc` on 2026-04-29. The remaining work is Phase 6 (cross-platform shader artefacts + Linux/macOS/Android validation) plus the deferred follow-ups listed in that commit message: SPIR-V/MSL shader compilation, `DimRGBA`/`DrawLineRGBA` migration (battle spell effects, still on legacy CPU multiply), and `SDL_Renderer` removal once cross-platform shaders ship.
 
 ## Resuming in a future session
 
 Quick orientation for whoever continues this work:
 
-- The current branch (`FK/Azure-Dragon`) builds and runs against SDL3 on Windows. `cmake --preset default && cmake --build build --config Debug` is green; the game launches, navigates menus, opens dialogs, and renders cleanly.
-- Audio is no longer stubbed: `engine/audio.cpp` is implemented against SDL3_mixer 3.x as of Phase 1B (this session). Public namespaces unchanged; implementation rebuilt around `MIX_Mixer*` + per-channel `MIX_Track*` slots + a music DB caching `MIX_Audio*` per UID. Audible verification + cross-platform are still open (see Phase 1B').
+- The current branch (`FK/Azure-Dragon`) builds and runs against SDL3 on Windows with the GPU renderer as the default. `cmake --preset default && cmake --build build --config Debug` is green; the game launches, navigates menus, opens dialogs, runs battles, and renders cleanly. Set `FHEROES2_NO_GPU=1` to fall back to the legacy SDL_Renderer path.
+- Audio is no longer stubbed: `engine/audio.cpp` is implemented against SDL3_mixer 3.x as of Phase 1B. Public namespaces unchanged; implementation rebuilt around `MIX_Mixer*` + per-channel `MIX_Track*` slots + a music DB caching `MIX_Audio*` per UID. Audible verification + cross-platform are still open (see Phase 1B').
+- GPU pipeline (commit `c18ab49cc`): `GPURenderEngine` in `engine/screen.cpp` owns the `SDL_GPUDevice`, two pipelines (framebuffer composite + alpha-blend cursor passthrough), and four textures (rgba physical-res / indexed game-res / mask game-res / palette 256×1). DXIL shader bytecode is embedded into the binary at CMake configure time via `file(READ ... HEX)` — clean builds need no dxc/glslang dependency. Letterbox math is open-coded since SDL_GPU has no logical-presentation equivalent; `BaseRenderEngine::convertWindowToRenderCoordinates` carries the inverse mapping for mouse events.
+- Display owns the indexed + mask channels alongside the RGBA buffer. Indexed primitives write 1 byte per game pixel + mask=255; RGBA primitives `materializeIndexedRoi` first, then write RGBA pixels + mask=0. Shadow ops write byte markers (transformTable lookup or transform id 2..5); the fragment shader applies `shadowFactor[idx]` at sample time, idempotent across frames.
 - The cursor follows mouse movement correctly (after the SDL3 coord-conversion fix) and is composited as a separate texture overlay each frame, so the framebuffer stays clean (see "Surprise #4" above).
-- Render-pipeline follow-ups landed in commit `aa5ab271e` after Phase 1A: texture-scale-mode regression on `_screenTexture` recreation (Surprise #7), `paletteIdxToRGBA` now reads from a swappable 8-bit render palette set by `Display::changePalette`, `BlitRGBAScaled` / `BlitRGBAScaledAlpha` upgraded to alpha-weighted box-filter on downscale, and two RGBA→indexed paths got their 8-bit→6-bit input scaling. See Surprises #2 / #7 and the Phase 4 / Phase 5 notes for how these interact with the upcoming work.
+- Render-pipeline follow-ups landed in commit `aa5ab271e` after Phase 1A: texture-scale-mode regression on `_screenTexture` recreation (Surprise #7), `paletteIdxToRGBA` now reads from a swappable 8-bit render palette set by `Display::changePalette`, `BlitRGBAScaled` / `BlitRGBAScaledAlpha` upgraded to alpha-weighted box-filter on downscale, and two RGBA→indexed paths got their 8-bit→6-bit input scaling.
+- Cross-platform shader artefacts (SPIR-V for Vulkan / MSL for Metal) are not yet generated. Phase 6 picks this up — feed the same HLSL through SDL_shadercross or glslang, embed alongside the DXIL in `composite_dxil_embedded.h.in`, and pick by backend at runtime via `SDL_GetGPUShaderFormats(device)`.
+- Deferred follow-ups: `DimRGBA` / `DrawLineRGBA` migration (battle spell effects — Death Wave, Holy Shout, Armageddon, Earthquake — still on the legacy CPU multiply path), Smacker video frame migration, `SDL_Renderer` removal once cross-platform shaders ship.
 - Out-of-scope cleanup still **not yet done**: migrating the legacy `VisualStudio/*.props` files (probably just delete them, the CMake build is canonical).
 
 ## Build / debug quick-ref
@@ -347,10 +359,12 @@ MSBuild build/fheroes2.sln /t:fheroes2 /p:Configuration=Release /p:Platform=x64 
 MSBuild build/fheroes2.sln /t:fheroes2 /p:Configuration=Debug   /p:Platform=x64 /m
 ```
 
-Add to CMake:
+Already in CMake (commit `c18ab49cc`):
 - `find_package(SDL3 REQUIRED)`, `find_package(SDL3_mixer REQUIRED)`
-- Custom command for shader compilation (`shadercross input.glsl -o output.spv`)
-- Embed compiled shader blobs as resources or copy to `files/data/shaders/`
+- `file(READ ... HEX)` + `string(REGEX REPLACE)` to inline pre-compiled DXIL bytecode (`composite.vert.dxil`, `composite.frag.dxil`, `cursor.frag.dxil`) into a generated header at configure time. Clean builds need no shader toolchain.
+- `set_property(... CMAKE_CONFIGURE_DEPENDS ...)` so re-running dxc and updating the .dxil files retriggers a CMake reconfigure on the next build.
+
+Pending for Phase 6 (cross-platform): generate SPIR-V (Vulkan/Linux/Android) and MSL (Metal/macOS/iOS) blobs from the same HLSL via SDL_shadercross or glslang+spirv-cross. Embed alongside the DXIL using the same `file(READ ... HEX)` pattern. Pick at runtime via `SDL_GetGPUShaderFormats(device)`.
 
 ## References
 
