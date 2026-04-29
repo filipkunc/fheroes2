@@ -71,10 +71,23 @@
 #pragma clang diagnostic ignored "-Wcomma"
 #endif
 
+#if defined( _MSC_VER )
+#pragma warning( push )
+// stb_image v2.30 defines several detection helpers (stbi__cpuid3, stbi__addints_valid,
+// stbi__mul2shorts_valid) that are conditionally unused depending on the targeted format set.
+// MSVC strips them and emits C4505; the equivalent GCC/Clang -Wunused-function suppression is
+// already in place above, this is the MSVC-side complement.
+#pragma warning( disable : 4505 )
+#endif
+
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #define STBI_NO_STDIO
 #include "stb_image.h"
+
+#if defined( _MSC_VER )
+#pragma warning( pop )
+#endif
 
 #if defined( __clang__ )
 #pragma clang diagnostic pop
