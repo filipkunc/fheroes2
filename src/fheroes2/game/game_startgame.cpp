@@ -1375,8 +1375,20 @@ fheroes2::GameMode Interface::AdventureMap::HumanTurn( const bool isLoadedFromSa
             }
         }
 
-        // Animation of the hero's movement
-        if ( Game::validateAnimationDelay( Game::CURRENT_HERO_DELAY ) ) {
+        // Animation of the hero's movement.
+        //
+        // Drain accumulated animation ticks per loop iteration: the delay is short
+        // (8-18ms depending on speed setting) and the adventure-map redraw can take
+        // longer than that on a heavy frame, which used to throttle hero animation
+        // to whatever the loop iteration rate happened to be. validateAnimationDelayCatchUp
+        // advances the delay timer by one interval per fire (instead of resetting to
+        // "now"), so a slow frame catches up by ticking multiple times here. The cap
+        // bounds catch-up to ~2 tiles per iter at the fastest speed so a paused loop
+        // doesn't teleport the hero across the map when it resumes.
+        constexpr int maxHeroTicksPerIter = 16;
+        int heroTicksThisIter = 0;
+        while ( heroTicksThisIter < maxHeroTicksPerIter && Game::validateAnimationDelayCatchUp( Game::CURRENT_HERO_DELAY ) ) {
+            ++heroTicksThisIter;
             Heroes * hero = GetFocusHeroes();
 
             if ( hero ) {

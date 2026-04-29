@@ -317,6 +317,43 @@ namespace fheroes2
             return getPhysicalScale();
         }
 
+        // Phase 3 (SDL_GPU): a second game-resolution buffer carrying palette indices, plus
+        // a parallel mask buffer holding the validity bit (0 = use RGBA, 255 = use indexed).
+        // Indexed-source primitives skip scale² block expansion and write one byte per game
+        // pixel to the indexed buffer (and 255 to the mask). RGBA-source primitives clear the
+        // mask for their bbox so the GPU composite shader resolves through their RGBA result.
+        // Both buffers are sized at width()×height() (game dims).
+        uint8_t * indexedBuffer() override
+        {
+            return _indexedBuffer.get();
+        }
+        const uint8_t * indexedBuffer() const override
+        {
+            return _indexedBuffer.get();
+        }
+        uint8_t * maskBuffer() override
+        {
+            return _maskBuffer.get();
+        }
+        const uint8_t * maskBuffer() const override
+        {
+            return _maskBuffer.get();
+        }
+        int32_t indexedStride() const override
+        {
+            return width();
+        }
+        int32_t indexedHeight() const override
+        {
+            return height();
+        }
+        void markIndexedDirty( const Rect & roi ) override;
+
+        // Returns the game-coord ROI that has been written to the indexed buffer since the
+        // last consumeIndexedDirtyRoi() call, intersected with the framebuffer. Empty Rect
+        // means nothing dirty. Used by the GPU engine to bound per-frame uploads.
+        Rect consumeIndexedDirtyRoi();
+
         friend BaseRenderEngine & engine();
         friend Cursor & cursor();
 
@@ -336,6 +373,14 @@ namespace fheroes2
         // dimensions so primitives can write final-pixel-resolution content directly.
         int32_t _physWidth{ 0 };
         int32_t _physHeight{ 0 };
+
+        // Phase 3: game-resolution indexed buffer + parallel mask buffer, populated by
+        // indexed-source primitives. The mask carries the validity bit (0 = use RGBA at this
+        // game pixel, 255 = use indexed). Both sized at width()×height() bytes; reallocated
+        // on setResolution(). Single dirty rect tracks both.
+        std::unique_ptr<uint8_t[]> _indexedBuffer;
+        std::unique_ptr<uint8_t[]> _maskBuffer;
+        Rect _indexedDirtyRoi;
 
         Display();
     };

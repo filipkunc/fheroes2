@@ -70,12 +70,55 @@ namespace
 
         const fheroes2::Rect fadeRoi( roi ^ fheroes2::Rect( 0, 0, display.width(), display.height() ) );
 
-        // Save the display region directly at physical-pixel resolution and operate on those
-        // bytes for every fade frame. Going through Copy/ApplyAlpha here would round-trip the
-        // capture through a game-resolution Image (because temp has physicalScale == 1), which
-        // downsamples away the hi-res content (Thor / Succubus PNGs blitted by BlitRGBAScaled).
-        // The final fully-bright frame would then write that downsampled snapshot back over
-        // the physical buffer, giving a low-resolution flash of the monster on every fade-in.
+        // Phase 3: the fade operates on the RGBA buffer only, but most of the visible
+        // adventure-map content lives in the indexed channel (palette[idx] resolved at
+        // shader sample time). Without materializing first, the snapshot would only capture
+        // the hi-res RGBA content (e.g. custom monster portraits) and the fade would dim
+        // those pixels in isolation while the indexed scene resolved unchanged through
+        // palette[idx]. The end-state Display.image() would then carry dark RGBA at hi-res
+        // pixel positions; a subsequent fadeIn snapshot would treat that as the bright
+        // baseline and "fade in" to dark. Materialize converts every mask=255 cell into
+        // palette[idx] in the RGBA block (and clears the mask) so the snapshot captures
+        // the full visible scene uniformly.
+        {
+            uint8_t * idxBase = display.indexedBuffer();
+            uint8_t * maskBase = display.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const float dispScale = display.physicalScale();
+                const int32_t dispStride = display.bufferStride();
+                const int32_t dispHeight = display.bufferHeight();
+                const int32_t idxStride = display.indexedStride();
+                const uint8_t * pal = fheroes2::getRenderPalette8Bit();
+                uint8_t * outBase = display.image();
+                for ( int32_t row = 0; row < fadeRoi.height; ++row ) {
+                    for ( int32_t col = 0; col < fadeRoi.width; ++col ) {
+                        const ptrdiff_t cellOff = static_cast<ptrdiff_t>( fadeRoi.y + row ) * idxStride + ( fadeRoi.x + col );
+                        if ( maskBase[cellOff] == 0 ) {
+                            continue;
+                        }
+                        const uint8_t * c = pal + static_cast<ptrdiff_t>( idxBase[cellOff] ) * 3;
+                        // Fill the scale² physical block with palette[idx].
+                        const int32_t pXStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( fadeRoi.x + col ) * dispScale ) );
+                        const int32_t pXEnd = std::min<int32_t>( dispStride, static_cast<int32_t>( static_cast<float>( fadeRoi.x + col + 1 ) * dispScale ) );
+                        const int32_t pYStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( fadeRoi.y + row ) * dispScale ) );
+                        const int32_t pYEnd = std::min<int32_t>( dispHeight, static_cast<int32_t>( static_cast<float>( fadeRoi.y + row + 1 ) * dispScale ) );
+                        for ( int32_t py = pYStart; py < pYEnd; ++py ) {
+                            uint8_t * dstRow = outBase + ( static_cast<ptrdiff_t>( py ) * dispStride + pXStart ) * 4;
+                            for ( int32_t px = pXStart; px < pXEnd; ++px, dstRow += 4 ) {
+                                dstRow[0] = c[0];
+                                dstRow[1] = c[1];
+                                dstRow[2] = c[2];
+                                dstRow[3] = 255;
+                            }
+                        }
+                        maskBase[cellOff] = 0;
+                        idxBase[cellOff] = 0;
+                    }
+                }
+                display.markIndexedDirty( fadeRoi );
+            }
+        }
+
         const float scale = display.physicalScale();
         const int32_t bufStride = display.bufferStride();
         const int32_t bufHeight = display.bufferHeight();

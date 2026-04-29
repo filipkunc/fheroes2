@@ -108,6 +108,47 @@ namespace fheroes2
             return 1.0f;
         }
 
+        // Phase 3 (SDL_GPU): Display owns a separate game-resolution indexed buffer that
+        // indexed-source primitives can target directly (1 byte per game pixel, no scale²
+        // block expansion). Returns nullptr on every Image other than Display, which lets
+        // the indexed-write fast path detect "this is the framebuffer" without dynamic_cast.
+        //
+        // The validity bit lives in a separate parallel mask buffer (same dims) so any
+        // indexed value 0..255 is meaningful — the GPU composite shader treats mask==0 as
+        // "use the RGBA channel here" and any non-zero mask as "use palette[indexed]".
+        // Indexed primitives write mask=255 alongside the index byte; RGBA-output primitives
+        // clear mask (and indexed) for the bbox they paint over so the sentinel rule resolves
+        // through the freshly painted RGBA pixels.
+        virtual uint8_t * indexedBuffer()
+        {
+            return nullptr;
+        }
+        virtual const uint8_t * indexedBuffer() const
+        {
+            return nullptr;
+        }
+        virtual uint8_t * maskBuffer()
+        {
+            return nullptr;
+        }
+        virtual const uint8_t * maskBuffer() const
+        {
+            return nullptr;
+        }
+        virtual int32_t indexedStride() const
+        {
+            return 0;
+        }
+        virtual int32_t indexedHeight() const
+        {
+            return 0;
+        }
+        // Notify the engine that the indexed/mask buffers were modified within the given
+        // (game-coord) ROI so the next frame's GPU upload can be dirty-rect bounded. The
+        // mask is uploaded in lock-step with indexed; one dirty rect tracks both. No-op on
+        // non-Display.
+        virtual void markIndexedDirty( const Rect & /* roi */ ) {}
+
         virtual uint8_t * image();
 
         virtual const uint8_t * image() const;
@@ -291,6 +332,13 @@ namespace fheroes2
     private:
         Image & _image;
         Image _copy;
+        // Phase 3 (SDL_GPU): when _image is the Display, the indexed + mask channels hold
+        // most of the visible adventure-map content (RGBA may be stale where indexed
+        // primitives painted). Save/restore them alongside the RGBA copy so a dialog
+        // open/close cycle truly reverts the area. Empty when _image has no indexed
+        // buffer (every Image except Display).
+        std::vector<uint8_t> _indexedCopy;
+        std::vector<uint8_t> _maskCopy;
 
         int32_t _x{ 0 };
         int32_t _y{ 0 };
@@ -298,6 +346,9 @@ namespace fheroes2
         int32_t _height{ 0 };
 
         void _updateRoi();
+        // Phase 3: capture / restore the game-resolution indexed bytes for the saved ROI.
+        void _captureIndexed();
+        void _restoreIndexed();
 
         bool _isRestored{ false };
     };

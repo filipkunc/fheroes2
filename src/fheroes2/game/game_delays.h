@@ -70,6 +70,19 @@ namespace Game
     // If delay is passed reset it and return true. Otherwise return false. DelayType::CUSTOM_DELAY must not be passed!
     bool validateAnimationDelay( const DelayType delayType );
 
+    // Like validateAnimationDelay but advances the timer by exactly delayMs instead of jumping to "now"
+    // when it fires, so accumulated time is preserved. Designed to be drained from a `while` loop:
+    //
+    //     while ( Game::validateAnimationDelayCatchUp( Game::CURRENT_HERO_DELAY ) ) {
+    //         ... advance one tick of animation ...
+    //     }
+    //
+    // This keeps animation rate locked to wall-clock time rather than the main-loop iteration rate,
+    // so heroes (and other animations using this) stay at the configured speed even when individual
+    // frames take much longer than the delay (e.g. heavy adventure-map redraws). Do not use with the
+    // CUSTOM_DELAY entry.
+    bool validateAnimationDelayCatchUp( const DelayType delayType );
+
     // If custom delay (DelayType::CUSTOM_DELAY) is passed reset it and return true. Otherwise return false.
     bool validateCustomAnimationDelay( const uint64_t delayMs );
 

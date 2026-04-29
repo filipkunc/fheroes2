@@ -98,6 +98,16 @@ namespace fheroes2
             _prevTime = std::chrono::steady_clock::now();
         }
 
+        // Advance the delay by exactly one interval. Unlike reset(), this preserves
+        // any leftover time when the caller noticed isPassed() late (e.g. because
+        // the main loop was slow). Pair with a `while ( isPassed() ) consumeOne()`
+        // pattern in callers that want to drain accumulated ticks rather than
+        // throttle their animation rate to the loop-iteration rate.
+        void consumeOne()
+        {
+            _prevTime += std::chrono::milliseconds( _delayMs );
+        }
+
         // Explicitly set delay to passed state. Can be used in cases when first call of isPassed() must return true.
         void pass()
         {

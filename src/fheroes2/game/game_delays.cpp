@@ -158,6 +158,18 @@ bool Game::validateAnimationDelay( const DelayType delayType )
     return false;
 }
 
+bool Game::validateAnimationDelayCatchUp( const DelayType delayType )
+{
+    assert( delayType != Game::DelayType::CUSTOM_DELAY );
+
+    if ( delays[delayType].isPassed() ) {
+        delays[delayType].consumeOne();
+        return true;
+    }
+
+    return false;
+}
+
 void Game::passAnimationDelay( const DelayType delayType )
 {
     assert( delayType != Game::DelayType::CUSTOM_DELAY );

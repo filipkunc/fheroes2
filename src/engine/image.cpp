@@ -478,6 +478,115 @@ namespace
         return rgbToId[red + green * 64 + blue * 64 * 64];
     }
 
+    // Phase 3: materialize the indexed channel into the RGBA buffer for a game-coord ROI,
+    // so an in-place RGBA modification (alpha blend, dim) reads the correct underlying
+    // colour rather than the stale RGBA that lived under indexed-only pixels. After this
+    // runs, every game pixel where mask was set has palette[indexed] resident in the RGBA
+    // block, and the mask is cleared so the shader resolves through RGBA going forward.
+    //
+    // No-op when the image has no indexed channel (everything but Display).
+    inline void materializeIndexedRoi( fheroes2::Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
+    {
+        uint8_t * idx = out.indexedBuffer();
+        uint8_t * mask = out.maskBuffer();
+        if ( idx == nullptr || mask == nullptr ) {
+            return;
+        }
+        const int32_t fbW = out.width();
+        const int32_t fbH = out.height();
+        if ( outX < 0 ) {
+            width += outX;
+            outX = 0;
+        }
+        if ( outY < 0 ) {
+            height += outY;
+            outY = 0;
+        }
+        if ( width <= 0 || height <= 0 || outX >= fbW || outY >= fbH ) {
+            return;
+        }
+        if ( outX + width > fbW ) {
+            width = fbW - outX;
+        }
+        if ( outY + height > fbH ) {
+            height = fbH - outY;
+        }
+        const int32_t idxStride = out.indexedStride();
+        const float scale = out.physicalScale();
+        const int32_t bufStride = out.bufferStride();
+        const int32_t bufHeight = out.bufferHeight();
+        uint8_t * outBase = out.image();
+        bool anyChange = false;
+        for ( int32_t row = 0; row < height; ++row ) {
+            const ptrdiff_t rowOff = static_cast<ptrdiff_t>( outY + row ) * idxStride + outX;
+            for ( int32_t col = 0; col < width; ++col ) {
+                const ptrdiff_t cellOff = rowOff + col;
+                if ( mask[cellOff] == 0 ) {
+                    continue;
+                }
+                // Indexed pixel — palette LUT to RGBA, clear the mask.
+                uint8_t r;
+                uint8_t g;
+                uint8_t b;
+                paletteIdxToRGBA( idx[cellOff], r, g, b );
+                const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
+                mask[cellOff] = 0;
+                idx[cellOff] = 0;
+                anyChange = true;
+                // RGBA pixels carrying a shadow flag (mask=0, idx in [2..5]) deliberately
+                // pass through unchanged: the GPU shader will multiply the freshly painted
+                // RGBA by shadowFactor[idx] at sample time. Doing the multiply here would
+                // bake the factor into the buffer, and any subsequent in-place alpha or
+                // shadow primitive would re-read the already-dimmed value and compound.
+            }
+        }
+        if ( anyChange ) {
+            out.markIndexedDirty( { outX, outY, width, height } );
+        }
+    }
+
+    // Phase 3: clear the mask channel for a game-coord ROI on the Display so the GPU
+    // composite shader resolves through the freshly painted RGBA pixels (mask == 0 →
+    // use RGBA). The indexed buffer doesn't need to be cleared too — the shader looks
+    // at the mask first — but we zero it anyway to keep the dual buffers in sync, which
+    // simplifies later debugging / cycling logic. No-op on images that don't expose a
+    // mask buffer (everything except Display). File-local linkage.
+    inline void clearIndexedBboxOnDisplay( fheroes2::Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
+    {
+        uint8_t * idx = out.indexedBuffer();
+        uint8_t * mask = out.maskBuffer();
+        if ( idx == nullptr || mask == nullptr ) {
+            return;
+        }
+        const int32_t fbW = out.width();
+        const int32_t fbH = out.height();
+        if ( outX < 0 ) {
+            width += outX;
+            outX = 0;
+        }
+        if ( outY < 0 ) {
+            height += outY;
+            outY = 0;
+        }
+        if ( width <= 0 || height <= 0 || outX >= fbW || outY >= fbH ) {
+            return;
+        }
+        if ( outX + width > fbW ) {
+            width = fbW - outX;
+        }
+        if ( outY + height > fbH ) {
+            height = fbH - outY;
+        }
+        const int32_t stride = out.indexedStride();
+        for ( int32_t row = 0; row < height; ++row ) {
+            const ptrdiff_t off = static_cast<ptrdiff_t>( outY + row ) * stride + outX;
+            std::memset( idx + off, 0, static_cast<size_t>( width ) );
+            std::memset( mask + off, 0, static_cast<size_t>( width ) );
+        }
+        out.markIndexedDirty( { outX, outY, width, height } );
+    }
+
     void ApplyRawPalette( const fheroes2::Image & in, int32_t inX, int32_t inY, fheroes2::Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
                           const uint8_t * palette )
     {
@@ -488,10 +597,44 @@ namespace
         const int32_t widthIn = in.width();
         const int32_t widthOut = out.width();
 
-        // RGBA out + indexed in: read src indexed pixel, remap via palette[], convert to RGBA.
+        // RGBA out + indexed in: read src indexed pixel, remap via palette[]. Phase 3
+        // Display fast path writes 1 byte per game pixel to the indexed buffer + 255 to
+        // the mask buffer; the GPU shader resolves valid mask cells via palette[] at
+        // sample time, so the CPU skips per-game-pixel scale² block expansion + the
+        // paletteIdxToRGBA call.
         if ( out.format() == fheroes2::ImageFormat::RGBA_32BIT && in.format() == fheroes2::ImageFormat::INDEXED_8BIT ) {
             const uint8_t * imageInY = in.image() + static_cast<ptrdiff_t>( inY ) * widthIn + inX;
             const uint8_t * transformInY = in.singleLayer() ? nullptr : ( in.transform() + static_cast<ptrdiff_t>( inY ) * widthIn + inX );
+
+            uint8_t * idxBase = out.indexedBuffer();
+            uint8_t * maskBase = out.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const int32_t idxStride = out.indexedStride();
+                for ( int32_t y = 0; y < height; ++y ) {
+                    const uint8_t * imgIn = imageInY;
+                    const uint8_t * trIn = transformInY;
+                    const ptrdiff_t rowOff = static_cast<ptrdiff_t>( outY + y ) * idxStride + outX;
+                    uint8_t * idxOut = idxBase + rowOff;
+                    uint8_t * maskOut = maskBase + rowOff;
+                    for ( int32_t x = 0; x < width; ++x, ++imgIn, ++idxOut, ++maskOut ) {
+                        if ( trIn && *trIn != 0 ) {
+                            ++trIn;
+                            continue;
+                        }
+                        *idxOut = palette[*imgIn];
+                        *maskOut = 255;
+                        if ( trIn ) {
+                            ++trIn;
+                        }
+                    }
+                    imageInY += widthIn;
+                    if ( transformInY ) {
+                        transformInY += widthIn;
+                    }
+                }
+                out.markIndexedDirty( { outX, outY, width, height } );
+                return;
+            }
 
             const float scale = out.physicalScale();
             const int32_t bufStride = out.bufferStride();
@@ -528,8 +671,11 @@ namespace
         }
 
         // RGBA in + RGBA out: reverse-lookup each pixel's palette index, remap, convert back.
-        // Used by ApplyPalette/ApplyAlpha on Display (or any RGBA buffer).
+        // Used by ApplyPalette/ApplyAlpha on Display (or any RGBA buffer). The remap result
+        // is genuine RGBA (post-LUT) so the indexed bbox must be cleared — without this the
+        // sentinel rule would keep showing palette[old idx] over the freshly remapped pixels.
         if ( in.format() == fheroes2::ImageFormat::RGBA_32BIT && out.format() == fheroes2::ImageFormat::RGBA_32BIT ) {
+            clearIndexedBboxOnDisplay( out, outX, outY, width, height );
             const int32_t inStride = in.bufferStride();
             const float inScale = in.physicalScale();
             const float scale = out.physicalScale();
@@ -896,6 +1042,7 @@ namespace fheroes2
             // Physical-resolution Display: capture at physical-pixel resolution so restore
             // is a full-fidelity byte memcpy back into the physical buffer.
             capturePhysicalCopy( _image, _x, _y, _width, _height, _copy );
+            _captureIndexed();
         }
         else if ( _image.format() == ImageFormat::RGBA_32BIT ) {
             _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
@@ -921,6 +1068,7 @@ namespace fheroes2
         }
         if ( _image.format() == ImageFormat::RGBA_32BIT && isPhysicalBuffer( _image ) ) {
             capturePhysicalCopy( _image, _x, _y, _width, _height, _copy );
+            _captureIndexed();
         }
         else if ( _image.format() == ImageFormat::RGBA_32BIT ) {
             _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
@@ -943,6 +1091,7 @@ namespace fheroes2
 
         if ( _image.format() == ImageFormat::RGBA_32BIT && isPhysicalBuffer( _image ) ) {
             capturePhysicalCopy( _image, _x, _y, _width, _height, _copy );
+            _captureIndexed();
         }
         else if ( _image.format() == ImageFormat::RGBA_32BIT ) {
             _copy = Image( _width, _height, ImageFormat::RGBA_32BIT );
@@ -959,9 +1108,51 @@ namespace fheroes2
         _isRestored = true;
         if ( _image.format() == ImageFormat::RGBA_32BIT && isPhysicalBuffer( _image ) ) {
             restorePhysicalCopy( _copy, _x, _y, _width, _height, _image );
+            _restoreIndexed();
             return;
         }
         Copy( _copy, 0, 0, _image, _x, _y, _width, _height );
+    }
+
+    void ImageRestorer::_captureIndexed()
+    {
+        const uint8_t * idx = _image.indexedBuffer();
+        const uint8_t * mask = _image.maskBuffer();
+        if ( idx == nullptr || mask == nullptr || _width <= 0 || _height <= 0 ) {
+            _indexedCopy.clear();
+            _maskCopy.clear();
+            return;
+        }
+        const int32_t stride = _image.indexedStride();
+        const size_t bytes = static_cast<size_t>( _width ) * static_cast<size_t>( _height );
+        _indexedCopy.resize( bytes );
+        _maskCopy.resize( bytes );
+        for ( int32_t row = 0; row < _height; ++row ) {
+            const ptrdiff_t srcOff = static_cast<ptrdiff_t>( _y + row ) * stride + _x;
+            const ptrdiff_t dstOff = static_cast<ptrdiff_t>( row ) * _width;
+            std::memcpy( _indexedCopy.data() + dstOff, idx + srcOff, static_cast<size_t>( _width ) );
+            std::memcpy( _maskCopy.data() + dstOff, mask + srcOff, static_cast<size_t>( _width ) );
+        }
+    }
+
+    void ImageRestorer::_restoreIndexed()
+    {
+        if ( _indexedCopy.empty() || _maskCopy.empty() ) {
+            return;
+        }
+        uint8_t * idx = _image.indexedBuffer();
+        uint8_t * mask = _image.maskBuffer();
+        if ( idx == nullptr || mask == nullptr ) {
+            return;
+        }
+        const int32_t stride = _image.indexedStride();
+        for ( int32_t row = 0; row < _height; ++row ) {
+            const ptrdiff_t dstOff = static_cast<ptrdiff_t>( _y + row ) * stride + _x;
+            const ptrdiff_t srcOff = static_cast<ptrdiff_t>( row ) * _width;
+            std::memcpy( idx + dstOff, _indexedCopy.data() + srcOff, static_cast<size_t>( _width ) );
+            std::memcpy( mask + dstOff, _maskCopy.data() + srcOff, static_cast<size_t>( _width ) );
+        }
+        _image.markIndexedDirty( { _x, _y, _width, _height } );
     }
 
     void ImageRestorer::_updateRoi()
@@ -1023,6 +1214,13 @@ namespace fheroes2
     namespace
     {
         // Indexed src -> RGBA out, no scale, with optional flip and transform handling.
+        //
+        // Display fast path (Phase 3): when the destination owns a game-resolution indexed
+        // buffer, write 1 byte per game pixel directly to that buffer instead of expanding
+        // each pixel into a scale² physical RGBA block. The GPU composite shader handles the
+        // upscale + palette LUT. Shadow pixels (transform 2..5) still need RGBA work — they
+        // resolve the existing indexed pixel through the palette, darken, and write into the
+        // RGBA buffer (and clear the indexed cell so the sentinel rule picks RGBA).
         void BlitIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
                                       const bool flip )
         {
@@ -1042,6 +1240,11 @@ namespace fheroes2
             const int32_t bufHeight = out.bufferHeight();
             uint8_t * outBase = out.image();
 
+            uint8_t * idxBase = out.indexedBuffer();
+            uint8_t * maskBase = out.maskBuffer();
+            const bool useIndexedFastPath = ( idxBase != nullptr && maskBase != nullptr );
+            const int32_t idxStride = useIndexedFastPath ? out.indexedStride() : 0;
+
             const uint8_t * imageInY = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX );
             const uint8_t * transformInY = hasTransform
                                                ? ( in.transform() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX ) )
@@ -1050,37 +1253,83 @@ namespace fheroes2
             for ( int32_t row = 0; row < height; ++row ) {
                 const uint8_t * imgIn = imageInY;
                 const uint8_t * trIn = transformInY;
+                const ptrdiff_t rowOff = static_cast<ptrdiff_t>( outY + row ) * idxStride + outX;
+                uint8_t * idxOut = useIndexedFastPath ? ( idxBase + rowOff ) : nullptr;
+                uint8_t * maskOut = useIndexedFastPath ? ( maskBase + rowOff ) : nullptr;
 
                 for ( int32_t col = 0; col < width; ++col, imgIn += inDir ) {
                     if ( hasTransform ) {
                         if ( *trIn == 1 ) {
-                            // Transparent — skip.
+                            // Transparent — leave indexed/mask alone (preserves the slot
+                            // background painted earlier in the frame).
                             trIn += inDir;
+                            if ( idxOut ) {
+                                ++idxOut;
+                                ++maskOut;
+                            }
                             continue;
                         }
                         if ( *trIn > 1 && *trIn <= 5 ) {
-                            // Shadow — darken every physical pixel in the block.
-                            const float f = shadowFactor[*trIn];
-                            const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
-                            shadeRGBABlock( outBase, pb, bufStride, f );
+                            // Shadow — encode at the channel level so the GPU shader does
+                            // the dim. Two cases by mask:
+                            //   mask=255 (indexed pixel): remap idx through transformTable
+                            //     to its palette-quantised dimmed entry. Same scheme the
+                            //     pre-Phase 3 indexed-output engine used. Idempotent only
+                            //     in the normal "tile re-painted before shadow each frame"
+                            //     order — which is what redraw cycles do.
+                            //   mask=0 (RGBA pixel): write the transform id (2..5) into idx
+                            //     as a shadow flag; the shader multiplies the freshly painted
+                            //     RGBA by shadowFactor[idx] at sample time. Idempotent: same
+                            //     write each frame, no CPU multiply, no compounding.
+                            if ( useIndexedFastPath ) {
+                                if ( *maskOut != 0 ) {
+                                    *idxOut = transformTable[static_cast<size_t>( *trIn ) * 256 + *idxOut];
+                                }
+                                else {
+                                    *idxOut = *trIn;
+                                }
+                            }
+                            else {
+                                // Non-Display RGBA target — fall back to the existing in-place
+                                // physical-pixel multiply.
+                                const float f = shadowFactor[*trIn];
+                                const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                                shadeRGBABlock( outBase, pb, bufStride, f );
+                            }
                             trIn += inDir;
+                            if ( idxOut ) {
+                                ++idxOut;
+                                ++maskOut;
+                            }
                             continue;
                         }
                         trIn += inDir;
                     }
 
-                    uint8_t r;
-                    uint8_t g;
-                    uint8_t b;
-                    paletteIdxToRGBA( *imgIn, r, g, b );
-                    const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
-                    fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
+                    if ( useIndexedFastPath ) {
+                        *idxOut = *imgIn;
+                        *maskOut = 255;
+                        ++idxOut;
+                        ++maskOut;
+                    }
+                    else {
+                        uint8_t r;
+                        uint8_t g;
+                        uint8_t b;
+                        paletteIdxToRGBA( *imgIn, r, g, b );
+                        const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                        fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
+                    }
                 }
 
                 imageInY += widthIn;
                 if ( transformInY ) {
                     transformInY += widthIn;
                 }
+            }
+
+            if ( useIndexedFastPath ) {
+                out.markIndexedDirty( { outX, outY, width, height } );
             }
         }
 
@@ -1094,6 +1343,14 @@ namespace fheroes2
             if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
                 return;
             }
+
+            // Phase 3: src_over alpha blend produces a non-palette RGB result that can't
+            // be represented as an indexed value, so we must write through RGBA. The blend
+            // reads the existing dst RGBA, so any game pixel currently resident only in
+            // the indexed channel must be materialized to RGBA first — otherwise the
+            // blend baseline is the stale RGBA leftovers (black). Used for the castle
+            // building fade-in animation, hero pickup fades, etc.
+            materializeIndexedRoi( out, outX, outY, width, height );
 
             const int32_t widthIn = in.width();
             const bool hasTransform = !in.singleLayer();
@@ -1169,6 +1426,10 @@ namespace fheroes2
                 return;
             }
 
+            uint8_t * outMaskBase = out.maskBuffer();
+            uint8_t * outIdxBase = out.indexedBuffer();
+            const int32_t outIdxStride = ( outMaskBase != nullptr ) ? out.indexedStride() : 0;
+
             const int32_t inStride = in.bufferStride();
             const float inScale = in.physicalScale();
             const float scale = out.physicalScale();
@@ -1191,11 +1452,23 @@ namespace fheroes2
                     }
                     const PhysicalBlock pb = toPhysicalBlock( outX + x, outY + y, scale, bufStride, bufHeight );
                     fillRGBABlock( outBase, pb, bufStride, srcPx[0], srcPx[1], srcPx[2], srcPx[3] );
+
+                    // Mask-clear only at game pixels we actually paint. Transparent source
+                    // pixels leave the slot frame's indexed channel intact.
+                    if ( outMaskBase != nullptr ) {
+                        const ptrdiff_t off = static_cast<ptrdiff_t>( outY + y ) * outIdxStride + ( outX + x );
+                        outMaskBase[off] = 0;
+                        outIdxBase[off] = 0;
+                    }
                 }
+            }
+            if ( outMaskBase != nullptr ) {
+                out.markIndexedDirty( { outX, outY, width, height } );
             }
         }
 
-        // RGBA src -> RGBA out, alpha-blended.
+        // RGBA src -> RGBA out, alpha-blended. Indexed bbox is cleared so the destination's
+        // sentinel rule resolves through the freshly blended RGBA result.
         void AlphaBlitRGBAToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
                                         const uint8_t alpha, const bool flip )
         {
@@ -1205,6 +1478,11 @@ namespace fheroes2
             if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
                 return;
             }
+
+            // Phase 3: src_over alpha blend reads the destination — materialize indexed
+            // pixels into RGBA first so the blend baseline is the correct visible colour.
+            // Clears the mask at touched pixels.
+            materializeIndexedRoi( out, outX, outY, width, height );
 
             const int32_t inStride = in.bufferStride();
             const float inScale = in.physicalScale();
@@ -1237,6 +1515,8 @@ namespace fheroes2
         }
 
         // Indexed src -> RGBA out, plain memcpy of palette[]->RGBA per pixel (no transform, no flip).
+        // Phase 3 Display fast path: write 1 byte per game pixel to the indexed buffer (memcpy
+        // by row) and skip the scale² block expansion entirely.
         void CopyIndexedToRGBAOutput( const Image & in, int32_t inX, int32_t inY, Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height )
         {
             assert( in.format() == ImageFormat::INDEXED_8BIT );
@@ -1247,13 +1527,28 @@ namespace fheroes2
             }
 
             const int32_t widthIn = in.width();
+
+            uint8_t * idxBase = out.indexedBuffer();
+            uint8_t * maskBase = out.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const int32_t idxStride = out.indexedStride();
+                const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + inX;
+                for ( int32_t row = 0; row < height; ++row ) {
+                    const ptrdiff_t off = static_cast<ptrdiff_t>( outY + row ) * idxStride + outX;
+                    std::memcpy( idxBase + off, srcRow, static_cast<size_t>( width ) );
+                    std::memset( maskBase + off, 255, static_cast<size_t>( width ) );
+                    srcRow += widthIn;
+                }
+                out.markIndexedDirty( { outX, outY, width, height } );
+                return;
+            }
+
+            // Non-Display RGBA target — keep the existing physical-resolution write path.
             const float scale = out.physicalScale();
             const int32_t bufStride = out.bufferStride();
             const int32_t bufHeight = out.bufferHeight();
             uint8_t * outBase = out.image();
-
             const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + inX;
-
             for ( int32_t row = 0; row < height; ++row ) {
                 const uint8_t * src = srcRow;
                 for ( int32_t col = 0; col < width; ++col, ++src ) {
@@ -1280,6 +1575,12 @@ namespace fheroes2
             if ( !Verify( in, inX, inY, out, outX, outY, width, height ) ) {
                 return;
             }
+
+            // Phase 3: this primitive overwrites every dst pixel with src content (the src
+            // is read at physical-pixel scale, not transparency-aware). The whole destination
+            // bbox becomes RGBA-resolved, so a coarse mask clear is correct here — there are
+            // no "transparent pixels" that should preserve the underlying indexed channel.
+            clearIndexedBboxOnDisplay( out, outX, outY, width, height );
 
             const int32_t inStride = in.bufferStride();
             const float inScale = in.physicalScale();
@@ -1494,6 +1795,16 @@ namespace fheroes2
                 return ( *( transformIn + offsetX + static_cast<ptrdiff_t>( offsetY ) * inWidth ) == 1 );
             };
 
+            // Phase 3: shadow encoded at the channel level for GPU-side dimming.
+            //   mask=255 → remap idx through transformTable (palette-quantised dim).
+            //   mask=0   → write transformTableId into idx as a shadow flag; shader
+            //              multiplies RGBA by shadowFactor[id] at sample time.
+            // Idempotent — same byte written each frame, no CPU multiply, no compound.
+            uint8_t * idxBase = out.indexedBuffer();
+            uint8_t * maskBase = out.maskBuffer();
+            const int32_t idxStride = ( idxBase != nullptr ) ? out.indexedStride() : 0;
+            bool anyMaskChange = false;
+
             for ( int32_t y = 0; y < maxY; ++y ) {
                 const int32_t offsetY = y + shadowOffsetY;
                 const int32_t dstY = baseY + y;
@@ -1521,10 +1832,25 @@ namespace fheroes2
                     if ( dstX < 0 || dstX >= outWidth ) {
                         continue;
                     }
-                    const float f = shadowFactor[transformTableId];
-                    const PhysicalBlock pb = toPhysicalBlock( dstX, dstY, scale, bufStride, bufHeight );
-                    shadeRGBABlock( out.image(), pb, bufStride, f );
+                    if ( idxBase != nullptr ) {
+                        const ptrdiff_t idxOff = static_cast<ptrdiff_t>( dstY ) * idxStride + dstX;
+                        if ( maskBase[idxOff] != 0 ) {
+                            idxBase[idxOff] = transformTable[static_cast<size_t>( transformTableId ) * 256 + idxBase[idxOff]];
+                        }
+                        else {
+                            idxBase[idxOff] = transformTableId;
+                        }
+                        anyMaskChange = true;
+                    }
+                    else {
+                        const float f = shadowFactor[transformTableId];
+                        const PhysicalBlock pb = toPhysicalBlock( dstX, dstY, scale, bufStride, bufHeight );
+                        shadeRGBABlock( out.image(), pb, bufStride, f );
+                    }
                 }
+            }
+            if ( anyMaskChange ) {
+                out.markIndexedDirty( { baseX, baseY, maxX, maxY } );
             }
             return;
         }
@@ -1903,6 +2229,16 @@ namespace fheroes2
                 return;
             }
 
+            // Phase 3: this is an in-place fade — multiplies the existing visible colour
+            // by alpha. If the dst pixel currently lives only in the indexed channel,
+            // materialize it to RGBA first so the multiply has the correct baseline.
+            if ( &in == &out ) {
+                materializeIndexedRoi( out, lOutX, lOutY, lW, lH );
+            }
+            else {
+                clearIndexedBboxOnDisplay( out, lOutX, lOutY, lW, lH );
+            }
+
             const float alphaF = static_cast<float>( alpha ) / 255.0f;
             const int32_t inStride = in.bufferStride();
             const float inScale = in.physicalScale();
@@ -1954,11 +2290,32 @@ namespace fheroes2
             return;
         }
 
-        // RGBA target: shadow transforms (2-5) darken the existing RGBA pixels in-place.
+        // RGBA target: shadow transforms (2-5) encoded at the channel level for the GPU
+        // shader to apply. mask=255 → palette-quantised remap via transformTable;
+        // mask=0 → store transform id in idx as the shadow flag.
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
             if ( transformId < 2 || transformId > 5 ) {
                 return;
             }
+            uint8_t * idxBase = image.indexedBuffer();
+            uint8_t * maskBase = image.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const int32_t idxStride = image.indexedStride();
+                for ( int32_t ry = 0; ry < height; ++ry ) {
+                    for ( int32_t rx = 0; rx < width; ++rx ) {
+                        const ptrdiff_t idxOff = static_cast<ptrdiff_t>( y + ry ) * idxStride + ( x + rx );
+                        if ( maskBase[idxOff] != 0 ) {
+                            idxBase[idxOff] = transformTable[static_cast<size_t>( transformId ) * 256 + idxBase[idxOff]];
+                        }
+                        else {
+                            idxBase[idxOff] = transformId;
+                        }
+                    }
+                }
+                image.markIndexedDirty( { x, y, width, height } );
+                return;
+            }
+
             const float f = shadowFactor[transformId];
             const float scale = image.physicalScale();
             const int32_t bufStride = image.bufferStride();
@@ -2630,6 +2987,36 @@ namespace fheroes2
         const int32_t height = image.height();
 
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            // Phase 3 Display fast path: indexed/mask one-byte writes per game pixel.
+            uint8_t * idxBase = image.indexedBuffer();
+            uint8_t * maskBase = image.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const int32_t idxStride = image.indexedStride();
+                const auto setIdxPixel = [&]( int32_t px, int32_t py ) {
+                    const ptrdiff_t off = static_cast<ptrdiff_t>( py ) * idxStride + px;
+                    idxBase[off] = value;
+                    maskBase[off] = 255;
+                };
+
+                uint32_t counter = 1;
+                for ( int32_t x = 0; x < width; ++x ) {
+                    if ( skipFactor < 2 || counter % skipFactor != 0 ) {
+                        setIdxPixel( x, 0 );
+                        setIdxPixel( x, height - 1 );
+                    }
+                    ++counter;
+                }
+                for ( int32_t y = 1; y < height - 1; ++y ) {
+                    if ( skipFactor < 2 || counter % skipFactor != 0 ) {
+                        setIdxPixel( 0, y );
+                        setIdxPixel( width - 1, y );
+                    }
+                    ++counter;
+                }
+                image.markIndexedDirty( { 0, 0, width, height } );
+                return;
+            }
+
             uint8_t r;
             uint8_t g;
             uint8_t b;
@@ -2659,6 +3046,9 @@ namespace fheroes2
                     setPixel( width - 1, y );
                 }
                 ++counter;
+            }
+            if ( idxBase != nullptr ) {
+                clearIndexedBboxOnDisplay( image, 0, 0, width, height );
             }
             return;
         }
@@ -2856,6 +3246,53 @@ namespace fheroes2
         }
 
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            // Phase 3 Display fast path: write the index byte + mask per game pixel.
+            uint8_t * idxBase = image.indexedBuffer();
+            uint8_t * maskBase = image.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const int32_t idxStride = image.indexedStride();
+                const auto plotIdx = [&]( int32_t px, int32_t py ) {
+                    if ( px < minX || px >= maxX || py < minY || py >= maxY ) {
+                        return;
+                    }
+                    const ptrdiff_t off = static_cast<ptrdiff_t>( py ) * idxStride + px;
+                    idxBase[off] = value;
+                    maskBase[off] = 255;
+                };
+                int32_t lx1 = x1;
+                int32_t ly1 = y1;
+                if ( dx >= dy ) {
+                    int32_t ns = dx / 2;
+                    for ( int32_t i = 0; i <= dx; ++i ) {
+                        plotIdx( lx1, ly1 );
+                        lx1 < x2 ? ++lx1 : --lx1;
+                        ns -= dy;
+                        if ( ns < 0 ) {
+                            ly1 < y2 ? ++ly1 : --ly1;
+                            ns += dx;
+                        }
+                    }
+                }
+                else {
+                    int32_t ns = dy / 2;
+                    for ( int32_t i = 0; i <= dy; ++i ) {
+                        plotIdx( lx1, ly1 );
+                        ly1 < y2 ? ++ly1 : --ly1;
+                        ns -= dx;
+                        if ( ns < 0 ) {
+                            lx1 < x2 ? ++lx1 : --lx1;
+                            ns += dy;
+                        }
+                    }
+                }
+                const int32_t lx = std::min( start.x, end.x );
+                const int32_t ly = std::min( start.y, end.y );
+                const int32_t lw = std::abs( end.x - start.x ) + 1;
+                const int32_t lh = std::abs( end.y - start.y ) + 1;
+                image.markIndexedDirty( { lx, ly, lw, lh } );
+                return;
+            }
+
             uint8_t r;
             uint8_t g;
             uint8_t b;
@@ -2897,6 +3334,13 @@ namespace fheroes2
                         ns += dy;
                     }
                 }
+            }
+            if ( idxBase != nullptr ) {
+                const int32_t lx = std::min( start.x, end.x );
+                const int32_t ly = std::min( start.y, end.y );
+                const int32_t lw = std::abs( end.x - start.x ) + 1;
+                const int32_t lh = std::abs( end.y - start.y ) + 1;
+                clearIndexedBboxOnDisplay( image, lx, ly, lw, lh );
             }
             return;
         }
@@ -3106,6 +3550,22 @@ namespace fheroes2
         }
 
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            // Phase 3 Display fast path: memset both indexed and mask buffers per row.
+            // The mask channel carries the validity bit so any colorId 0..255 is
+            // representable (palette[0] is a real colour and Fill(0) should show it).
+            uint8_t * idxBase = image.indexedBuffer();
+            uint8_t * maskBase = image.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const int32_t idxStride = image.indexedStride();
+                for ( int32_t row = 0; row < height; ++row ) {
+                    const ptrdiff_t off = static_cast<ptrdiff_t>( y + row ) * idxStride + x;
+                    std::memset( idxBase + off, colorId, static_cast<size_t>( width ) );
+                    std::memset( maskBase + off, 255, static_cast<size_t>( width ) );
+                }
+                image.markIndexedDirty( { x, y, width, height } );
+                return;
+            }
+
             uint8_t r;
             uint8_t g;
             uint8_t b;
@@ -3116,8 +3576,6 @@ namespace fheroes2
             const int32_t bufHeight = image.bufferHeight();
             uint8_t * outBase = image.image();
 
-            // Compute the physical-pixel rect spanning the entire game-coord region in one
-            // go (the rect is always solid, so we don't need per-game-pixel block math).
             const int32_t pXStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( x ) * scale ) );
             const int32_t pXEnd = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( x + width ) * scale ) );
             const int32_t pYStart = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( y ) * scale ) );
@@ -3579,9 +4037,30 @@ namespace fheroes2
             return;
         }
 
-        // RGBA target: replace pixels matching palette[oldColorId] RGB with palette[newColorId] RGB.
-        // Scan the ENTIRE backing buffer (Display's buffer is physical-sized).
+        // RGBA target: replace pixels matching palette[oldColorId] with palette[newColorId].
+        // Phase 3 Display fast path: scan the indexed buffer (game-res, 1 byte per pixel)
+        // and remap directly. The shader resolves to palette[newIdx] at sample time.
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            uint8_t * idxBase = image.indexedBuffer();
+            const uint8_t * maskBase = image.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const int32_t idxW = image.indexedStride();
+                const int32_t idxH = image.indexedHeight();
+                for ( int32_t row = 0; row < idxH; ++row ) {
+                    uint8_t * idxRow = idxBase + static_cast<ptrdiff_t>( row ) * idxW;
+                    const uint8_t * maskRow = maskBase + static_cast<ptrdiff_t>( row ) * idxW;
+                    for ( int32_t col = 0; col < idxW; ++col ) {
+                        // Only remap cells the shader resolves through the indexed channel.
+                        if ( maskRow[col] != 0 && idxRow[col] == oldColorId ) {
+                            idxRow[col] = newColorId;
+                        }
+                    }
+                }
+                image.markIndexedDirty( { 0, 0, idxW, idxH } );
+                // Fall through to also rewrite RGBA: areas that have legitimate RGBA content
+                // (hi-res monsters, video frames) might still match the old colour.
+            }
+
             uint8_t oldR;
             uint8_t oldG;
             uint8_t oldB;
@@ -3814,6 +4293,16 @@ namespace fheroes2
         }
 
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            uint8_t * idxBase = image.indexedBuffer();
+            uint8_t * maskBase = image.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const ptrdiff_t off = static_cast<ptrdiff_t>( y ) * image.indexedStride() + x;
+                idxBase[off] = value;
+                maskBase[off] = 255;
+                image.markIndexedDirty( { x, y, 1, 1 } );
+                return;
+            }
+
             uint8_t r;
             uint8_t g;
             uint8_t b;
@@ -3840,6 +4329,40 @@ namespace fheroes2
         const int32_t height = image.height();
 
         if ( image.format() == ImageFormat::RGBA_32BIT ) {
+            uint8_t * idxBase = image.indexedBuffer();
+            uint8_t * maskBase = image.maskBuffer();
+            if ( idxBase != nullptr && maskBase != nullptr ) {
+                const int32_t idxStride = image.indexedStride();
+                int32_t minX = width;
+                int32_t maxX = -1;
+                int32_t minY = height;
+                int32_t maxY = -1;
+                for ( const Point & p : points ) {
+                    if ( p.x < 0 || p.y < 0 || p.x >= width || p.y >= height ) {
+                        continue;
+                    }
+                    const ptrdiff_t off = static_cast<ptrdiff_t>( p.y ) * idxStride + p.x;
+                    idxBase[off] = value;
+                    maskBase[off] = 255;
+                    if ( p.x < minX ) {
+                        minX = p.x;
+                    }
+                    if ( p.x > maxX ) {
+                        maxX = p.x;
+                    }
+                    if ( p.y < minY ) {
+                        minY = p.y;
+                    }
+                    if ( p.y > maxY ) {
+                        maxY = p.y;
+                    }
+                }
+                if ( maxX >= 0 ) {
+                    image.markIndexedDirty( { minX, minY, maxX - minX + 1, maxY - minY + 1 } );
+                }
+                return;
+            }
+
             uint8_t r;
             uint8_t g;
             uint8_t b;
@@ -3855,6 +4378,8 @@ namespace fheroes2
                 const PhysicalBlock pb = toPhysicalBlock( p.x, p.y, scale, bufStride, bufHeight );
                 fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
             }
+            // Conservative bbox clear over the whole image bounds is too coarse; skip for the
+            // value == 0 case, which is rare and falls through to RGBA only.
             return;
         }
 
@@ -4291,6 +4816,26 @@ namespace fheroes2
         }
         assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
 
+        // Phase 3: BlitRGBAScaled iterates per physical destination pixel and writes only
+        // where the (downsampled) source block has rgbCount > 0. For a game pixel whose
+        // source block is partially transparent, only some of the scale² physical pixels
+        // get a fresh RGBA write — the rest keep stale content. Marking the whole game
+        // pixel as mask=0 (RGBA wins) then exposes those stale physical pixels (often
+        // zeros from initial reset, sometimes leftovers from older frames), producing
+        // edge artefacts on hi-res monster downscales.
+        //
+        // Materialize the dst ROI first: every mask=255 cell becomes mask=0+idx=0 with
+        // palette[idx] written into its scale² RGBA block. After this, the source-
+        // transparent physical pixels show the underlying slot frame and the source-
+        // opaque physical pixels get the freshly averaged RGBA on top.
+        materializeIndexedRoi( out, outX, outY, dstW, dstH );
+
+        uint8_t * outMaskBase = out.maskBuffer();
+        uint8_t * outIdxBase = out.indexedBuffer();
+        const int32_t outIdxStride = ( outMaskBase != nullptr ) ? out.indexedStride() : 0;
+        const int32_t outFbW = out.width();
+        const int32_t outFbH = out.height();
+
         const int32_t srcW = in.width();
         const int32_t srcH = in.height();
         const int32_t outW = out.width();
@@ -4382,7 +4927,24 @@ namespace fheroes2
                 dstPx[1] = static_cast<uint8_t>( gSum / rgbCount );
                 dstPx[2] = static_cast<uint8_t>( bSum / rgbCount );
                 dstPx[3] = static_cast<uint8_t>( aSum / totalCount );
+
+                // Mark this game pixel as RGBA-resolved so the shader's sentinel picks
+                // the just-written RGBA. Multiple physical pixels covering one game
+                // pixel write the same byte redundantly — cheap and keeps the inner
+                // loop branch-free.
+                if ( outMaskBase != nullptr ) {
+                    const int32_t gx = static_cast<int32_t>( static_cast<float>( px ) / scale );
+                    const int32_t gy = static_cast<int32_t>( static_cast<float>( py ) / scale );
+                    if ( gx >= 0 && gx < outFbW && gy >= 0 && gy < outFbH ) {
+                        const ptrdiff_t off = static_cast<ptrdiff_t>( gy ) * outIdxStride + gx;
+                        outMaskBase[off] = 0;
+                        outIdxBase[off] = 0;
+                    }
+                }
             }
+        }
+        if ( outMaskBase != nullptr ) {
+            out.markIndexedDirty( { startX, startY, endX - startX, endY - startY } );
         }
     }
 
@@ -4397,6 +4959,13 @@ namespace fheroes2
             return;
         }
         assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
+
+        // Phase 3: alpha blend reads the destination RGBA, so we materialize the underlying
+        // indexed pixels into RGBA first; otherwise the blend baseline is the stale RGBA
+        // leftovers (zero / previous frame), which produces wrong colours. materializeIndexedRoi
+        // clears the mask in the touched pixels so the shader resolves through the freshly
+        // blended RGBA going forward.
+        materializeIndexedRoi( out, outX, outY, dstW, dstH );
 
         const int32_t srcW = in.width();
         const int32_t srcH = in.height();
@@ -4506,6 +5075,10 @@ namespace fheroes2
         const int32_t dstW = out.width();
         const int32_t dstH = out.height();
 
+        // Phase 3: src_over alpha blend reads the existing dst — materialize indexed
+        // first so the blend baseline is correct. Clears the mask at touched pixels.
+        materializeIndexedRoi( out, outX, outY, srcW, srcH );
+
         const int32_t startX = std::max( outX, 0 );
         const int32_t startY = std::max( outY, 0 );
         const int32_t endX = std::min( outX + srcW, dstW );
@@ -4606,6 +5179,8 @@ namespace fheroes2
             return;
         }
         assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
+
+        clearIndexedBboxOnDisplay( out, outX, outY, w, h );
 
         const int32_t srcW = in.width();
         const int32_t srcH = in.height();
