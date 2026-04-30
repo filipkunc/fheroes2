@@ -293,13 +293,39 @@ Not migrated (deferred to follow-up):
 - Performance regression check on adventure map
 - Cross-platform: Windows + macOS + Linux + Android (Samsung Galaxy A56 with Xclipse 540 / Vulkan 1.3). PSV out of scope.
 
+### Where work happens today — CPU vs GPU split
+
+Snapshot as of `108f17cea` (Windows + GPU). Useful for picking what to tackle in Phase 7 — anything currently on the CPU side that's hot or pixel-heavy is a candidate to push down.
+
+**GPU does (per frame, fragment / vertex shaders):**
+1. **Palette LUT resolution** — `paletteTex[idx]` per pixel for every `mask=255` cell. The main Phase 3 win: used to be a CPU walk over every game pixel.
+2. **Shadow factor multiply** — `RGBA × shadowFactor[idx]` for `mask=0, idx ∈ [2..5]`. Idempotent across frames.
+3. **Letterbox math** — open-coded in the vertex shader (no SDL_GPU equivalent of SDL2's `LOGICAL_PRESENTATION`).
+4. **Game-res → physical-res upscale** — texture sampling stretches the 300 KB indexed + 300 KB mask game-res buffers to physical-res at sample time.
+5. **Cursor alpha-blend pass** — separate pipeline, composites the cursor texture over the framebuffer.
+6. **Color cycling sample** — palette texture is re-uploaded on cycling tick (1 KB blob); the shader resamples every indexed pixel through the rotated palette at zero per-pixel CPU cost.
+
+**CPU does (per frame, `image.cpp` primitives):**
+7. **All sprite blit / draw primitives** — `Blit`, `Fill`, `Copy`, `DrawLine`, `DrawBorder`, `SetPixel`, `ReplaceColorId`, etc. Indexed-source primitives write 1 byte per game pixel (300 K cells); RGBA-source primitives write `scale²` physical-pixel blocks.
+8. **`materializeIndexedRoi`** — CPU palette LUT to bring `mask=255` cells into RGBA when an in-place RGBA primitive needs the visible colour as its blend baseline.
+9. **In-place RGBA effects** — `DimRGBA`, `AlphaBlit`, `ApplyAlpha`, `ApplyPalette`, `BlitRGBAAlpha`, `DrawLineRGBA`, etc.
+10. **Translucency lookup** — `transformTable[trIn * 256 + dst]` runs on CPU; the GPU just resolves the resulting indexed cell.
+11. **Hi-res RGBA scaling** — `BlitRGBAScaled` / `BlitRGBAScaledAlpha` alpha-weighted box-filter downscale for hi-res monster portraits.
+12. **Battle spell composite effects** — Death Wave (`CreateDeathWaveEffectRGBA` reshapes captured RGBA), Holy Shout (`CreateHolyShoutEffectRGBA`), Armageddon, Earthquake, Cold Ring, Bloodlust tint.
+13. **Smacker video decode + frame copy.**
+14. **Color cycling table rotation** — the index permutation runs on CPU; the GPU just samples the new palette.
+
+**Net assessment.** The original plan goal — "cycling works + palette LUT off the CPU" — is met. ~80% of pixel-touching work is still CPU-side, but most of it is now per-game-pixel (640×480 = 300 K cells) instead of per-physical-pixel (1920×1440 = 2.7 M cells at Full HD), which is the Phase 3 performance win the user asked for. Cursor follows mouse, cycling animations resample on GPU, shadows are stable across frames, hi-res monsters keep their fidelity.
+
+The biggest remaining CPU pixel hog is **#11 hi-res RGBA scaling** (per-frame box filter on each hi-res monster sprite at physical res), followed by **#12 battle spell effects** (Death Wave / Holy Shout / Armageddon read-modify-write the framebuffer at physical res). Both are good Phase 7 targets if performance ever becomes a concern.
+
 ### Phase 7 (optional follow-ups, future sessions)
 
 Once the GPU pipeline is in place, the door is open for:
-- **Custom monster shaders**: per-monster fragment shaders that do channel-wise transforms on the base sprite. Replaces palette-table generation in `pal.cpp` for custom monsters with shader uniforms (tint color, gradient stops, etc.). Drops shipping hi-res PNGs for monsters that just need a recolor.
-- **GPU effects**: bloom (`agg_image.cpp::CreateHolyShoutEffectRGBA` could become a shader pass), CRT/scanline filter as a post-process, smooth screen fades.
+- **Custom monster shaders**: per-monster fragment shaders that do channel-wise transforms on the base sprite. Replaces palette-table generation in `pal.cpp` for custom monsters with shader uniforms (tint color, gradient stops, etc.). Drops shipping hi-res PNGs for monsters that just need a recolor. (Addresses CPU item #11 partially — hi-res PNGs only needed for genuinely new artwork, not recolors.)
+- **GPU effects**: bloom (`agg_image.cpp::CreateHolyShoutEffectRGBA` could become a shader pass), CRT/scanline filter as a post-process, smooth screen fades. (Addresses CPU item #12 — the big spell effects move to shader passes.)
 - **Higher-bit palette**: the current 6-bit-per-channel palette could become 8-bit on GPU side. Requires extending `paletteIdxToRGBA` upstream, or doing the bit-shift in the shader.
-- **Cycling timing on GPU clock**: cycling tick driven by uniform `time` instead of CPU-side palette table updates. Reduces the per-frame palette upload to never (palette is constant; only the cycling phase changes).
+- **Cycling timing on GPU clock**: cycling tick driven by uniform `time` instead of CPU-side palette table updates. Reduces the per-frame palette upload to never (palette is constant; only the cycling phase changes). (Addresses CPU item #14.)
 
 ## Risks and gotchas
 
