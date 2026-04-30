@@ -232,14 +232,19 @@ Engine-side actually shipped (`GPURenderEngine` in `engine/screen.cpp`):
 
 The GPU path is now the default. Set `FHEROES2_NO_GPU=1` to fall back to the SDL_Renderer path (still alive for triage; see the deferred-cleanup note in Phase 6).
 
-### Phase 4 — Per-primitive dual-write — DONE (2026-04-29, commit `c18ab49cc`)
+### Phase 4 — Per-primitive dual-write — DONE (2026-04-29, commits `c18ab49cc`, `fa3e53e59`, `ba62d5da1`)
 
-The per-primitive surgery shipped. A few notes on what changed vs the plan above:
+The per-primitive surgery shipped in `c18ab49cc`, with two follow-up commits closing visible regressions:
+- `fa3e53e59` (2026-04-30): translucency transforms 6-13 in `BlitIndexedToRGBAOutput` (Air Elemental, ghost-style sprites had become solid because Phase 3 only kept the 2-5 shadow path); `ApplyRawPalette` RGBA-in-RGBA-out branch reading stale RGBA on Display (turn-order grayed-out moved-unit slot was a solid gray block).
+- `ba62d5da1` (2026-04-30): `DimRGBA`, `DrawLineRGBA`, `CopyRGBA` migrations — closes the originally-deferred Phase 4 follow-ups for the user-visible spell paths (Death Wave, Earthquake, Mage missile beam, Lightning Bolt, settings-dialog fade-out).
+
+A few notes on what changed vs the plan above:
 
 - **Not "dual-write"; channel-exclusive write.** Indexed-source primitives write only the indexed byte + mask=255. RGBA-source primitives write only the RGBA pixels + mask=0. There is no parallel write to both channels. The RGBA buffer's contents under indexed pixels are stale and irrelevant — the shader picks via `mask`.
-- **`materializeIndexedRoi` helper.** RGBA-source primitives that *modify* their destination in place (alpha-blit, dim) need the RGBA buffer to hold the visible colour first, otherwise they blend against stale RGBA. Two helpers in the top of `image.cpp` anonymous namespace handle this: `materializeIndexedRoi` walks an ROI and resolves any `mask=255` cells through `paletteIdxToRGBA` into the RGBA block, then clears the mask. `clearIndexedBboxOnDisplay` is the simpler "just zero the mask over this ROI" used when an RGBA primitive overwrites cleanly.
+- **`materializeIndexedRoi` helper.** RGBA-source primitives that *modify* their destination in place (alpha-blit, dim, line, copy-from-Display) need the RGBA buffer to hold the visible colour first, otherwise they blend against stale RGBA. Two helpers in the top of `image.cpp` anonymous namespace handle this: `materializeIndexedRoi` walks an ROI and resolves any `mask=255` cells through `paletteIdxToRGBA` into the RGBA block, then clears the mask. `clearIndexedBboxOnDisplay` is the simpler "just zero the mask over this ROI" used when an RGBA primitive overwrites cleanly. Materialize is visibly idempotent — calling it on a const source via const-cast (e.g. inside `CopyRGBA`) is sound because it just promotes indexed-channel storage to RGBA-channel storage without changing visible content.
+- **Translucency transforms (6-13) need the same indexed transformTable lookup as shadows (2-5).** The pre-Phase-3 engine handled all `trIn > 1` uniformly with `dst = transformTable[trIn * 256 + dst]`; Phase 3 inadvertently dropped 6-13. mask=255 dst: same `transformTable` remap as shadows. mask=0 dst with translucency 6-13: reverse-look-up the dst RGBA via `GetPALColorId`, remap, store back as `mask=255` indexed cell (see `fa3e53e59` for the rationale — battlefield ground is `_battleGroundRGBA`-copied, so most of it is mask=0, and the no-op fallback was making translucent monsters invisible there).
 - **Shadows ended up GPU-side, not CPU-materialised.** See Phase 3 deviation 3. The plan's "materialise → darken on CPU" approach was implemented first and then ripped out; it compounded to black across frames.
-- **`GetPALColorId` hardening.** Not landed in this commit. No `*ToIndexed` write sites were added — the indexed buffer is fed from the original ICN sprite indices, not from RGBA-quantised values, so the hazard didn't recur. Keep the warning in mind if Phase 7 introduces RGBA→indexed paths.
+- **`GetPALColorId` hardening.** Not landed yet. The translucency-on-RGBA path in `fa3e53e59` introduces a new `GetPALColorId(srcPx[0] >> 2, srcPx[1] >> 2, srcPx[2] >> 2)` call site, but the `>> 2` scaling is already in place. Keep the warning in mind if Phase 7 introduces RGBA→indexed paths without the shift.
 
 Primitives migrated:
 
@@ -247,6 +252,7 @@ Indexed-source (write indexed+mask=255):
 - `BlitIndexedToRGBAOutput`, `CopyIndexedToRGBAOutput`
 - `Fill`, `DrawBorder`, `DrawLine`, `SetPixel`, `ReplaceColorId`, `ApplyRawPalette` (indexed→RGBA branch)
 - `AlphaBlitIndexedToRGBAOutput` (calls `materializeIndexedRoi` first — used for castle build fade-in)
+- `BlitIndexedToRGBAOutput` translucency path (`fa3e53e59`): trIn 2-13 covered uniformly; mask=0 + 6-13 reverse-looks-up dst RGBA and promotes to mask=255
 
 Indexed-source shadow markers (write byte → GPU shader resolves):
 - `BlitIndexedToRGBAOutput` shadow path (mask=255, idx = transformTable lookup)
@@ -256,12 +262,14 @@ RGBA-source (`materializeIndexedRoi` then write RGBA + mask=0):
 - `BlitRGBAScaled`, `BlitRGBAScaledAlpha`, `BlitRGBAAlpha`
 - `BlitRGBAToRGBAOutput`, `AlphaBlitRGBAToRGBAOutput`, `CopyRGBAToRGBAOutput`
 - `CopyRGBA`, `ApplyAlpha`
+- `DimRGBA`, `DrawLineRGBA` (`ba62d5da1`)
+- `ApplyRawPalette` RGBA-in-RGBA-out branch (`fa3e53e59`): reads through indexed channel when mask=255, writes remapped result back via indexed (since palette[idx] is itself an index — keeps GPU fast path alive)
 
 `ImageRestorer` saves/restores indexed + mask alongside RGBA, so dialog open/close fully reverts state including the channel selection.
 
-Not migrated (still on the legacy CPU multiply path; deferred to follow-up):
-- `DimRGBA`, `DrawLineRGBA` — battle spell effects (Death Wave, Holy Shout, Armageddon, …). Haven't surfaced as visible regressions because spell-effect ROIs are short-lived and overpainted by the next battle frame.
-- Smacker video frames.
+Not migrated (deferred to follow-up):
+- Smacker video frames. No visible regression — videos play through `ApplyRawPalette` and `Copy` which now handle the channels correctly. Worth a focused pass to confirm there are no remaining hot paths bypassing the helpers.
+- Other RGBA-source primitives (`BlitRGBAScaled*`, `BlitRGBAAlpha`, `BlitRGBAToRGBAOutput`, `CopyRGBAToRGBAOutput`, `AlphaBlitRGBAToRGBAOutput`) read `in.image()` directly. Their typical callers pass ICN sprites or hi-res PNG sources (non-Display, no indexed/mask buffers, materialize would be no-op), so no visible bug. If a future caller passes Display as source, materialize-on-source needs adding (same shape as the `CopyRGBA` fix in `ba62d5da1`).
 
 ### Phase 5 — Palette upload hook + cycling animation tick — DONE (2026-04-29, commit `c18ab49cc`)
 
@@ -334,7 +342,7 @@ The hi-res monster pipeline (Thor / Succubus / Azure Dragon / Blood Dragon / Ave
 
 vs ~200 lines / 1-2 days for the indexed-shadow-buffer interim solution.
 
-Phases 2-5 landed together in commit `c18ab49cc` on 2026-04-29. The remaining work is Phase 6 (cross-platform shader artefacts + Linux/macOS/Android validation) plus the deferred follow-ups listed in that commit message: SPIR-V/MSL shader compilation, `DimRGBA`/`DrawLineRGBA` migration (battle spell effects, still on legacy CPU multiply), and `SDL_Renderer` removal once cross-platform shaders ship.
+Phases 2-5 landed in `c18ab49cc` (2026-04-29) and were stabilised by `fa3e53e59` + `ba62d5da1` (2026-04-30). Windows + GPU is feature-complete for the original plan goals (cycling, performance, GPU shadow, translucency, dim, line draws, framebuffer captures). The remaining work is Phase 6 (cross-platform shader artefacts + Linux/macOS/Android validation) plus the deferred Smacker pass and `SDL_Renderer` removal.
 
 ## Resuming in a future session
 
@@ -343,12 +351,18 @@ Quick orientation for whoever continues this work:
 - The current branch (`FK/Azure-Dragon`) builds and runs against SDL3 on Windows with the GPU renderer as the default. `cmake --preset default && cmake --build build --config Debug` is green; the game launches, navigates menus, opens dialogs, runs battles, and renders cleanly. Set `FHEROES2_NO_GPU=1` to fall back to the legacy SDL_Renderer path.
 - Audio is no longer stubbed: `engine/audio.cpp` is implemented against SDL3_mixer 3.x as of Phase 1B. Public namespaces unchanged; implementation rebuilt around `MIX_Mixer*` + per-channel `MIX_Track*` slots + a music DB caching `MIX_Audio*` per UID. Audible verification + cross-platform are still open (see Phase 1B').
 - GPU pipeline (commit `c18ab49cc`): `GPURenderEngine` in `engine/screen.cpp` owns the `SDL_GPUDevice`, two pipelines (framebuffer composite + alpha-blend cursor passthrough), and four textures (rgba physical-res / indexed game-res / mask game-res / palette 256×1). DXIL shader bytecode is embedded into the binary at CMake configure time via `file(READ ... HEX)` — clean builds need no dxc/glslang dependency. Letterbox math is open-coded since SDL_GPU has no logical-presentation equivalent; `BaseRenderEngine::convertWindowToRenderCoordinates` carries the inverse mapping for mouse events.
-- Display owns the indexed + mask channels alongside the RGBA buffer. Indexed primitives write 1 byte per game pixel + mask=255; RGBA primitives `materializeIndexedRoi` first, then write RGBA pixels + mask=0. Shadow ops write byte markers (transformTable lookup or transform id 2..5); the fragment shader applies `shadowFactor[idx]` at sample time, idempotent across frames.
+- Display owns the indexed + mask channels alongside the RGBA buffer. Indexed primitives write 1 byte per game pixel + mask=255; RGBA primitives `materializeIndexedRoi` first, then write RGBA pixels + mask=0. Shadow ops write byte markers (transformTable lookup or transform id 2..5); the fragment shader applies `shadowFactor[idx]` at sample time, idempotent across frames. Translucency transforms (6-13, used by Air Elemental / ghost-style sprites) follow the same idea — mask=255 dst gets a `transformTable` remap; mask=0 dst uses `GetPALColorId` to reverse-look-up RGBA, remap, and promote back to mask=255.
+- Visible regressions fixed in `fa3e53e59`: translucency transforms 6-13 (Phase 3 only kept 2-5 shadow path, so see-through monsters rendered solid); `ApplyRawPalette` RGBA-in-RGBA-out branch reading stale RGBA on Display (turn-order grayed-out moved-unit slot was a solid gray block).
+- `DimRGBA` / `DrawLineRGBA` / `CopyRGBA` migrated in `ba62d5da1`. Visible spell effects validated: Lightning Bolt, Mage / Archmage 5-line missile beam, Death Wave (battlefield capture + wave processing). Earthquake / Holy Shout share the `DimRGBA` path and should work by construction.
 - The cursor follows mouse movement correctly (after the SDL3 coord-conversion fix) and is composited as a separate texture overlay each frame, so the framebuffer stays clean (see "Surprise #4" above).
 - Render-pipeline follow-ups landed in commit `aa5ab271e` after Phase 1A: texture-scale-mode regression on `_screenTexture` recreation (Surprise #7), `paletteIdxToRGBA` now reads from a swappable 8-bit render palette set by `Display::changePalette`, `BlitRGBAScaled` / `BlitRGBAScaledAlpha` upgraded to alpha-weighted box-filter on downscale, and two RGBA→indexed paths got their 8-bit→6-bit input scaling.
 - Cross-platform shader artefacts (SPIR-V for Vulkan / MSL for Metal) are not yet generated. Phase 6 picks this up — feed the same HLSL through SDL_shadercross or glslang, embed alongside the DXIL in `composite_dxil_embedded.h.in`, and pick by backend at runtime via `SDL_GetGPUShaderFormats(device)`.
-- Deferred follow-ups: `DimRGBA` / `DrawLineRGBA` migration (battle spell effects — Death Wave, Holy Shout, Armageddon, Earthquake — still on the legacy CPU multiply path), Smacker video frame migration, `SDL_Renderer` removal once cross-platform shaders ship.
-- Out-of-scope cleanup still **not yet done**: migrating the legacy `VisualStudio/*.props` files (probably just delete them, the CMake build is canonical).
+- Remaining deferred follow-ups:
+  - **Smacker video frame migration.** Videos play through `ApplyRawPalette` and `Copy` which now handle channels correctly; no visible regression, but worth a focused pass to confirm there are no bypasses.
+  - **Other RGBA-source primitives** (`BlitRGBAScaled*`, `BlitRGBAAlpha`, `BlitRGBAToRGBAOutput`, `CopyRGBAToRGBAOutput`, `AlphaBlitRGBAToRGBAOutput`) still read `in.image()` directly. No visible bug because their callers pass non-Display sources today, but if a future caller passes Display as source, materialize-on-source needs adding (same shape as the `CopyRGBA` fix in `ba62d5da1`).
+  - **`SDL_Renderer` removal.** The `FHEROES2_NO_GPU=1` legacy path is still alive for triage. Once cross-platform shaders land it can be retired (the indexed/mask channels are GPU-shaped and the legacy path doesn't exercise them in production any more).
+  - **`ui_tool.cpp::colorFade` 6-bit-vs-8-bit caveat.** Minor, not surfaced as visible bug. Pass `nullptr` or `PALPalette()` if a cycling-related glitch traces back here.
+- Out-of-scope cleanup still **not yet done**: migrating the legacy `VisualStudio/*.props` files (probably just delete them, the CMake build is canonical) — kept in place because upstream's MSVC CI workflow builds Windows release artefacts via `Release-SDL2` from those files. Safe to delete only after the upstream CI matrix migrates to SDL3 + CMake.
 
 ## Build / debug quick-ref
 
