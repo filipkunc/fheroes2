@@ -5202,6 +5202,19 @@ namespace fheroes2
 
         const int32_t imgW = image.width();
         const int32_t imgH = image.height();
+
+        // Phase 3: line draws into the RGBA buffer, but on Display the visible pixels for
+        // mask=255 cells live in the indexed channel — the GPU shader resolves palette[idx]
+        // and the line write would be invisible. Materialize the line's bounding box first
+        // so every cell becomes mask=0 RGBA; the alpha-blend case (a < 255) also needs this
+        // because blendRGBABlock reads the existing RGBA, which would be stale on indexed
+        // cells. Materialize is a no-op on non-Display targets.
+        const int32_t bboxMinX = std::min( start.x, end.x );
+        const int32_t bboxMinY = std::min( start.y, end.y );
+        const int32_t bboxMaxX = std::max( start.x, end.x );
+        const int32_t bboxMaxY = std::max( start.y, end.y );
+        materializeIndexedRoi( image, bboxMinX, bboxMinY, bboxMaxX - bboxMinX + 1, bboxMaxY - bboxMinY + 1 );
+
         const float scale = image.physicalScale();
         const int32_t bufStride = image.bufferStride();
         const int32_t bufHeight = image.bufferHeight();
@@ -5254,6 +5267,16 @@ namespace fheroes2
             return;
         }
         assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
+
+        // Phase 3: when reading from Display, the visible pixel for mask=255 cells lives in
+        // the indexed channel; the RGBA backing is stale. Materialize the source ROI first
+        // so the read below picks up palette[idx] for those cells. Const-cast is sound:
+        // materialize is visibly idempotent (the displayed content is unchanged, just
+        // promoted from indexed-channel storage to RGBA-channel storage). No-op on
+        // non-Display sources (no indexed/mask buffers). Without this, Battle::Interface::
+        // _redrawActionDeathWaveSpell captures garbage where low-res monsters were and the
+        // wave effect renders them as solid black holes.
+        materializeIndexedRoi( const_cast<Image &>( in ), inX, inY, w, h );
 
         clearIndexedBboxOnDisplay( out, outX, outY, w, h );
 
@@ -5338,6 +5361,15 @@ namespace fheroes2
         if ( startX >= endX || startY >= endY ) {
             return;
         }
+
+        // Phase 3: pull mask=255 indexed cells into RGBA before the dim — without this the
+        // shader keeps showing palette[idx] over the dimmed RGBA, so the dim only takes
+        // visible effect on the half of the battle area that's already mask=0 (the pre-
+        // rendered _battleGroundRGBA). Used by Death Wave, Holy Shout, Earthquake, and the
+        // bloodlust scratch path (the latter is non-Display so materialize is a no-op).
+        // Shadow markers (mask=0, idx in [2..5]) deliberately survive: dim then shadow at
+        // sample time is the right order.
+        materializeIndexedRoi( image, startX, startY, endX - startX, endY - startY );
 
         const float f = std::max( factor, 0.0f );
         const float scale = image.physicalScale();
