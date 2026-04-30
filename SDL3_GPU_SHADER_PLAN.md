@@ -268,7 +268,7 @@ RGBA-source (`materializeIndexedRoi` then write RGBA + mask=0):
 `ImageRestorer` saves/restores indexed + mask alongside RGBA, so dialog open/close fully reverts state including the channel selection.
 
 Not migrated (deferred to follow-up):
-- Smacker video frames. No visible regression — videos play through `ApplyRawPalette` and `Copy` which now handle the channels correctly. Worth a focused pass to confirm there are no remaining hot paths bypassing the helpers.
+- Smacker video frames — DONE (commit `33a527778`, 2026-04-30). `SMKVideoSequence::getCurrentFrame` was writing RGBA pixels to Display's `_data` buffer but leaving the indexed/mask channels untouched, so any prior indexed paint over the same ROI (X_IVY background under a POL campaign hover portrait, opening intro composite, etc.) kept `mask=255` and the GPU shader resolved through stale palette indices — making the video frame invisible. Fixed by zeroing indexed+mask over the painted ROI and calling `markIndexedDirty()`, matching the Phase 4 RGBA-source rule. No-op on non-Display targets (the indexed-format fallback path in the same function already worked).
 - Other RGBA-source primitives (`BlitRGBAScaled*`, `BlitRGBAAlpha`, `BlitRGBAToRGBAOutput`, `CopyRGBAToRGBAOutput`, `AlphaBlitRGBAToRGBAOutput`) read `in.image()` directly. Their typical callers pass ICN sprites or hi-res PNG sources (non-Display, no indexed/mask buffers, materialize would be no-op), so no visible bug. If a future caller passes Display as source, materialize-on-source needs adding (same shape as the `CopyRGBA` fix in `ba62d5da1`).
 
 ### Phase 5 — Palette upload hook + cycling animation tick — DONE (2026-04-29, commit `c18ab49cc`)
@@ -368,7 +368,7 @@ The hi-res monster pipeline (Thor / Succubus / Azure Dragon / Blood Dragon / Ave
 
 vs ~200 lines / 1-2 days for the indexed-shadow-buffer interim solution.
 
-Phases 2-5 landed in `c18ab49cc` (2026-04-29) and were stabilised by `fa3e53e59` + `ba62d5da1` (2026-04-30). Windows + GPU is feature-complete for the original plan goals (cycling, performance, GPU shadow, translucency, dim, line draws, framebuffer captures). The remaining work is Phase 6 (cross-platform shader artefacts + Linux/macOS/Android validation) plus the deferred Smacker pass and `SDL_Renderer` removal.
+Phases 2-5 landed in `c18ab49cc` (2026-04-29) and were stabilised by `fa3e53e59` + `ba62d5da1` + `33a527778` (2026-04-30). Windows + GPU is feature-complete for the original plan goals (cycling, performance, GPU shadow, translucency, dim, line draws, framebuffer captures, SMK video frames). The remaining work is Phase 6 (cross-platform shader artefacts + Linux/macOS/Android validation) plus `SDL_Renderer` removal.
 
 ## Resuming in a future session
 
@@ -384,7 +384,7 @@ Quick orientation for whoever continues this work:
 - Render-pipeline follow-ups landed in commit `aa5ab271e` after Phase 1A: texture-scale-mode regression on `_screenTexture` recreation (Surprise #7), `paletteIdxToRGBA` now reads from a swappable 8-bit render palette set by `Display::changePalette`, `BlitRGBAScaled` / `BlitRGBAScaledAlpha` upgraded to alpha-weighted box-filter on downscale, and two RGBA→indexed paths got their 8-bit→6-bit input scaling.
 - Cross-platform shader artefacts (SPIR-V for Vulkan / MSL for Metal) are not yet generated. Phase 6 picks this up — feed the same HLSL through SDL_shadercross or glslang, embed alongside the DXIL in `composite_dxil_embedded.h.in`, and pick by backend at runtime via `SDL_GetGPUShaderFormats(device)`.
 - Remaining deferred follow-ups:
-  - **Smacker video frame migration.** Videos play through `ApplyRawPalette` and `Copy` which now handle channels correctly; no visible regression, but worth a focused pass to confirm there are no bypasses.
+  - **Smacker video frames — DONE (commit `33a527778`).** RGBA path now clears indexed+mask over the painted ROI so the GPU composite shader resolves through the freshly-written RGBA pixels. The original "no visible regression" optimism was wrong: the POL campaign-selection hover portraits (X_IVY background) and the campaign intro videos that play after selection were both invisible because the X_IVY indexed paint left mask=255 underneath the video write.
   - **Other RGBA-source primitives** (`BlitRGBAScaled*`, `BlitRGBAAlpha`, `BlitRGBAToRGBAOutput`, `CopyRGBAToRGBAOutput`, `AlphaBlitRGBAToRGBAOutput`) still read `in.image()` directly. No visible bug because their callers pass non-Display sources today, but if a future caller passes Display as source, materialize-on-source needs adding (same shape as the `CopyRGBA` fix in `ba62d5da1`).
   - **`SDL_Renderer` removal.** The `FHEROES2_NO_GPU=1` legacy path is still alive for triage. Once cross-platform shaders land it can be retired (the indexed/mask channels are GPU-shaped and the legacy path doesn't exercise them in production any more).
   - **`ui_tool.cpp::colorFade` 6-bit-vs-8-bit caveat.** Minor, not surfaced as visible bug. Pass `nullptr` or `PALPalette()` if a cycling-related glitch traces back here.
