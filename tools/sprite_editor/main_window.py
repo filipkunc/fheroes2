@@ -443,7 +443,17 @@ class MainWindow(QMainWindow):
                 SPRITES_DIR.glob(f"{config.prefix}_???.png")
             )
             if has_any_custom:
+                # Resolve frame count: prefer manifest value (matches engine's hardcoded
+                # count), then base ICN frame count if extraction worked, then fall back
+                # to highest-numbered PNG on disk so the editor still works without the
+                # extractor binary.
                 frame_count = config.frame_count or (base.frame_count if base else 0)
+                if frame_count == 0:
+                    png_files = list(SPRITES_DIR.glob(f"{config.prefix}_???.png"))
+                    frame_count = max(
+                        (int(p.stem.rsplit("_", 1)[1]) for p in png_files),
+                        default=-1,
+                    ) + 1
                 self._custom_sprites = load_png_sprites(SPRITES_DIR, config.prefix, frame_count)
                 if base:
                     apply_offsets_from_base(self._custom_sprites, base)

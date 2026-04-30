@@ -510,6 +510,7 @@
     "display_name": "Succubus",
     "base_monster": "Gargoyle",
     "faction": "Custom",
+    "frame_count": 32,
     "has_custom_sprites": true
   },
   "fire_elf": {
@@ -529,6 +530,7 @@
     "display_name": "Dachshund",
     "base_monster": "Wolf",
     "faction": "Custom",
+    "frame_count": 33,
     "has_custom_sprites": true,
     "prompt": "Transform into a cute female Dachshund based on the reference image. Please make sure to have SHORTER legs and longer body typical for Dachshund. In the input the legs are too high."
   }

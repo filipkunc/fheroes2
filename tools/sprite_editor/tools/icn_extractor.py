@@ -42,6 +42,59 @@ def resolve_extractor(build_dir: Path) -> Path:
     return build_dir / "extractor"
 
 
+def ensure_extractor_built(build_dir: Path, *, log=print) -> Path | None:
+    """Return the path to a working extractor binary, building it if needed.
+
+    The fheroes2 CMake project gates `extractor` (and the other AGG tools) behind
+    `ENABLE_TOOLS=ON`. When the user's existing build was configured without it,
+    we reconfigure the cache and build only the `extractor` target. Returns the
+    binary path on success, or None if the build is unavailable / failed.
+
+    `log` receives single-line status messages — defaults to `print` so the
+    output is visible in the launching shell.
+    """
+    existing = resolve_extractor(build_dir)
+    if existing.exists():
+        return existing
+
+    # The cache lives in the CMake build dir; on Visual Studio that's the parent
+    # of the per-config Release/ output dir, on make/ninja it IS the output dir.
+    cmake_dir = build_dir if (build_dir / "CMakeCache.txt").exists() else build_dir.parent
+    cache = cmake_dir / "CMakeCache.txt"
+    if not cache.exists():
+        log(f"No CMake cache near {build_dir}; cannot auto-build extractor.")
+        return None
+
+    cache_text = cache.read_text(errors="replace")
+    if "ENABLE_TOOLS:BOOL=OFF" in cache_text:
+        log("Reconfiguring CMake with ENABLE_TOOLS=ON...")
+        result = subprocess.run(
+            ["cmake", "-DENABLE_TOOLS=ON", str(cmake_dir)],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            log(f"CMake reconfigure failed:\n{result.stderr.strip()}")
+            return None
+
+    log("Building extractor target (this may take a minute)...")
+    result = subprocess.run(
+        ["cmake", "--build", str(cmake_dir), "--target", "extractor", "--config", "Release"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        # Show the tail of the build log — the head is mostly project setup noise.
+        tail = "\n".join(result.stdout.splitlines()[-20:])
+        log(f"Extractor build failed:\n{tail}\n{result.stderr.strip()}")
+        return None
+
+    found = resolve_extractor(build_dir)
+    if found.exists():
+        log(f"Built extractor: {found}")
+        return found
+    log("Extractor build reported success but the binary was not found.")
+    return None
+
+
 # Default paths
 DEFAULT_BUILD_DIR = _default_build_dir()
 DEFAULT_AGG_PATH = _default_agg_path()
