@@ -299,6 +299,23 @@ void SMKVideoSequence::getCurrentFrame( fheroes2::Image & image, const int32_t x
                 }
             }
         }
+
+        // Phase 4 RGBA-source rule: clear the indexed/mask channels over the painted ROI so the
+        // GPU composite shader resolves through the freshly written RGBA pixels (mask == 0).
+        // Without this, any prior indexed paint (e.g. the X_IVY background under a POL campaign
+        // hover portrait) leaves mask=255 and the shader keeps reading palette[indexed], making
+        // the video frame invisible. No-op on non-Display targets.
+        uint8_t * idxBase = image.indexedBuffer();
+        uint8_t * maskBase = image.maskBuffer();
+        if ( idxBase != nullptr && maskBase != nullptr ) {
+            const int32_t idxStride = image.indexedStride();
+            for ( int32_t row = 0; row < copiedHeight; ++row ) {
+                const ptrdiff_t off = static_cast<ptrdiff_t>( y + row ) * idxStride + x;
+                std::memset( idxBase + off, 0, static_cast<size_t>( width ) );
+                std::memset( maskBase + off, 0, static_cast<size_t>( width ) );
+            }
+            image.markIndexedDirty( { x, y, width, copiedHeight } );
+        }
     }
     else {
         const uint8_t * inY = data;
