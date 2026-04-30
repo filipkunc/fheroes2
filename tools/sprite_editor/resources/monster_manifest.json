@@ -511,7 +511,8 @@
     "base_monster": "Gargoyle",
     "faction": "Custom",
     "frame_count": 32,
-    "has_custom_sprites": true
+    "has_custom_sprites": true,
+    "prompt": "Transform into reference image keep the CGI look, but try to keep the frame pose from the input to fit the frame"
   },
   "fire_elf": {
     "prefix": "fire_elf",
