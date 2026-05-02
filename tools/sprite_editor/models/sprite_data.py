@@ -50,6 +50,9 @@ class SpriteCollection:
     prefix: str
     frames: list[SpriteFrame] = field(default_factory=list)
     source_dir: Path | None = None
+    # Multiplier applied to the in-game portrait (Set Count, army info, ...).
+    # Stored as a metadata line in {prefix}_offsets.jsonl: {"portrait_zoom": 1.4}.
+    portrait_zoom: float = 1.0
 
     @property
     def frame_count(self) -> int:
@@ -184,6 +187,12 @@ def load_custom_offsets(sprite_dir: Path, prefix: str, collection: SpriteCollect
             entry = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if "portrait_zoom" in entry and "frame" not in entry:
+            try:
+                collection.portrait_zoom = float(entry["portrait_zoom"])
+            except (TypeError, ValueError):
+                pass
+            continue
         frame_idx = entry.get("frame")
         if frame_idx is None:
             continue
@@ -209,30 +218,47 @@ class FrameOverride:
     display_height: int = 0
 
 
+def _load_jsonl_entries(offsets_path: Path) -> tuple[dict[int, dict], dict | None]:
+    """Read frame entries and the (optional) portrait metadata line from a JSONL file."""
+    import json
+    frames: dict[int, dict] = {}
+    meta: dict | None = None
+    if not offsets_path.exists():
+        return frames, meta
+    for line in offsets_path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "frame" in entry:
+            frames[entry["frame"]] = entry
+        elif "portrait_zoom" in entry:
+            meta = entry
+    return frames, meta
+
+
+def _write_jsonl_entries(offsets_path: Path, frames: dict[int, dict], meta: dict | None):
+    """Emit frame entries (sorted by index) followed by the metadata line, if any."""
+    import json
+    lines = [json.dumps(frames[k]) for k in sorted(frames)]
+    if meta is not None:
+        lines.append(json.dumps(meta))
+    offsets_path.write_text("\n".join(lines) + "\n")
+
+
 def save_custom_offsets(sprite_dir: Path, prefix: str, frames: dict[int, FrameOverride]):
     """Save per-frame offset overrides to {prefix}_offsets.jsonl.
 
-    Merges with existing entries. JSONL format: one JSON object per line.
+    Merges with existing entries and preserves any non-frame metadata
+    (e.g. portrait_zoom). JSONL format: one JSON object per line.
     Read by both the sprite editor and the game engine.
     """
-    import json
     offsets_path = sprite_dir / f"{prefix}_offsets.jsonl"
+    existing, meta = _load_jsonl_entries(offsets_path)
 
-    # Load existing entries
-    existing: dict[int, dict] = {}
-    if offsets_path.exists():
-        for line in offsets_path.read_text().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-                if "frame" in entry:
-                    existing[entry["frame"]] = entry
-            except json.JSONDecodeError:
-                pass
-
-    # Merge new entries
     for idx, override in frames.items():
         entry = {"frame": idx, "offset_x": override.offset_x, "offset_y": override.offset_y}
         if override.display_width > 0 and override.display_height > 0:
@@ -240,9 +266,21 @@ def save_custom_offsets(sprite_dir: Path, prefix: str, frames: dict[int, FrameOv
             entry["display_height"] = override.display_height
         existing[idx] = entry
 
-    # Write sorted by frame index
-    lines = [json.dumps(existing[k]) for k in sorted(existing)]
-    offsets_path.write_text("\n".join(lines) + "\n")
+    _write_jsonl_entries(offsets_path, existing, meta)
+
+
+def save_portrait_zoom(sprite_dir: Path, prefix: str, zoom: float):
+    """Update only the portrait_zoom metadata line, preserving all frame entries.
+
+    Removes the line entirely if zoom is 1.0 (the engine default), so the
+    sidecar file stays clean for monsters that don't need an override.
+    """
+    offsets_path = sprite_dir / f"{prefix}_offsets.jsonl"
+    existing, _ = _load_jsonl_entries(offsets_path)
+    meta: dict | None = None
+    if abs(zoom - 1.0) > 1e-6:
+        meta = {"portrait_zoom": round(float(zoom), 3)}
+    _write_jsonl_entries(offsets_path, existing, meta)
 
 
 def set_base_dimensions(custom: SpriteCollection, base: SpriteCollection):

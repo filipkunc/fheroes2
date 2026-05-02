@@ -49,9 +49,23 @@ namespace fheroes2
         // Returns nullptr if no RGBA PNGs are available. The Image is RGBA_32BIT format.
         const Image * GetRGBACustomPortrait( const int monsterId );
 
+        // Per-monster zoom multiplier for the in-game portrait (Set Count / army info / ...).
+        // Sourced from the {prefix}_offsets.jsonl metadata line {"portrait_zoom": V}
+        // written by the sprite editor. Returns 1.0 when no override is present.
+        // Callers apply this to the fit-to-MONH overlay dimensions and clip overflow
+        // against the portrait box.
+        double GetRGBACustomPortraitZoom( const int monsterId );
+
         // Paint a hi-res monster portrait / frame at (gameX, gameY) with logical width gameWidth
         // in game-space pixels. Writes directly to Display (RGBA at game res). Z-order is the
         // order in which the caller invokes drawing primitives.
         void renderHiResMonsterPortrait( const Image & portrait, int32_t gameX, int32_t gameY, int32_t gameWidth, bool flip = false, uint8_t alpha = 255 );
+
+        // Fit `portrait` inside a (boxX, boxY, boxW, boxH) game-pixel rect, horizontally centred
+        // and bottom-anchored (matches the engine's MONH layout). The portrait_zoom knob is
+        // applied at the call site (e.g. MonsterDialogElement::draw expands its fit box from
+        // MONH dimensions toward the STRIP frame), not here — this helper just does the uniform
+        // fit so all the small-portrait sites and the large-portrait site share one anchor rule.
+        void drawCustomPortraitInBox( const Image & portrait, int32_t boxX, int32_t boxY, int32_t boxW, int32_t boxH );
     }
 }

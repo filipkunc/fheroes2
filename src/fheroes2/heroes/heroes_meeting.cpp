@@ -184,19 +184,8 @@ public:
         const bool useCustomPortrait = ( portrait != nullptr && !portrait->empty() );
 
         if ( useCustomPortrait ) {
-            const int32_t srcW = portrait->width();
-            const int32_t srcH = portrait->height();
-            const int32_t boxW = roi.width;
-            const int32_t boxH = roi.height - 2;
-            int32_t overlayW = boxW;
-            int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
-            if ( overlayH > boxH ) {
-                overlayH = boxH;
-                overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
-            }
-            const int32_t overlayX = roi.x + ( boxW - overlayW ) / 2;
-            const int32_t overlayY = roi.y + ( boxH - overlayH );
-            fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+            const int32_t boxH = roi.height - 2; // leave room for the count text
+            fheroes2::AGG::drawCustomPortraitInBox( *portrait, roi.x, roi.y, roi.width, boxH );
         }
         else {
             const fheroes2::Sprite & mons32 = fheroes2::AGG::GetICN( ICN::MONS32, troop.GetSpriteIndex() );

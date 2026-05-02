@@ -6479,7 +6479,7 @@ namespace fheroes2::AGG
         return static_cast<uint32_t>( GetMaximumICNIndex( icnId ) );
     }
 
-    const std::vector<Image> * GetRGBACustomFrames( const int monsterId )
+    namespace
     {
         struct RGBACustomEntry
         {
@@ -6487,18 +6487,80 @@ namespace fheroes2::AGG
             const char * prefix;
             int frameCount;
         };
-        static const RGBACustomEntry registry[] = {
-            { Monster::THOR, "thor", 56 },
-            { Monster::SUCCUBUS, "succubus", 32 },
-            { Monster::DACHSHUND, "dachshund", 33 },
-        };
+
+        const RGBACustomEntry & getRGBACustomRegistryEntries( size_t & count )
+        {
+            static const RGBACustomEntry registry[] = {
+                { Monster::THOR, "thor", 56 },
+                { Monster::SUCCUBUS, "succubus", 32 },
+                { Monster::DACHSHUND, "dachshund", 33 },
+            };
+            count = sizeof( registry ) / sizeof( registry[0] );
+            return registry[0];
+        }
+
+        const char * findRGBACustomPrefix( const int monsterId )
+        {
+            size_t count = 0;
+            const RGBACustomEntry * registry = &getRGBACustomRegistryEntries( count );
+            for ( size_t i = 0; i < count; ++i ) {
+                if ( registry[i].monsterId == monsterId ) {
+                    return registry[i].prefix;
+                }
+            }
+            return nullptr;
+        }
+
+        // Read the {prefix}_offsets.jsonl sidecar and return the portrait_zoom
+        // metadata value (or 1.0 if absent). Format mirrors the sprite editor:
+        // a JSON object on its own line, e.g. {"portrait_zoom": 1.4}. Frame
+        // entries (lines containing "frame") are ignored here.
+        double loadPortraitZoom( const std::string & spritesDir, const std::string & prefix )
+        {
+            char fileNameBuffer[128];
+            snprintf( fileNameBuffer, sizeof( fileNameBuffer ), "%s_offsets.jsonl", prefix.c_str() );
+
+            std::string offsetsPath;
+            if ( !Settings::findFile( spritesDir, fileNameBuffer, offsetsPath ) ) {
+                return 1.0;
+            }
+
+            std::ifstream file( offsetsPath );
+            if ( !file.is_open() ) {
+                return 1.0;
+            }
+
+            std::string line;
+            while ( std::getline( file, line ) ) {
+                const size_t keyPos = line.find( "\"portrait_zoom\"" );
+                if ( keyPos == std::string::npos ) {
+                    continue;
+                }
+                const size_t colonPos = line.find( ':', keyPos );
+                if ( colonPos == std::string::npos ) {
+                    continue;
+                }
+                const double value = std::atof( line.c_str() + colonPos + 1 );
+                if ( value > 0.0 ) {
+                    return value;
+                }
+            }
+            return 1.0;
+        }
+    }
+
+    const std::vector<Image> * GetRGBACustomFrames( const int monsterId )
+    {
+        size_t entryCount = 0;
+        const RGBACustomEntry * registry = &getRGBACustomRegistryEntries( entryCount );
 
         static std::map<int, std::vector<Image>> cache;
         static bool initialized = false;
         if ( !initialized ) {
             initialized = true;
             const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
-            for ( const RGBACustomEntry & entry : registry ) {
+            for ( size_t entryIdx = 0; entryIdx < entryCount; ++entryIdx ) {
+                const RGBACustomEntry & entry = registry[entryIdx];
                 std::vector<Image> frames;
                 frames.reserve( entry.frameCount );
                 for ( int i = 0; i < entry.frameCount; ++i ) {
@@ -6584,6 +6646,28 @@ namespace fheroes2::AGG
         return ( it == portraits.end() ) ? nullptr : &it->second;
     }
 
+    double GetRGBACustomPortraitZoom( const int monsterId )
+    {
+        static std::map<int, double> zoomCache;
+        static std::set<int> attempted;
+
+        if ( attempted.count( monsterId ) == 0 ) {
+            attempted.insert( monsterId );
+
+            const char * prefix = findRGBACustomPrefix( monsterId );
+            if ( prefix != nullptr ) {
+                const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
+                const double value = loadPortraitZoom( spritesDir, prefix );
+                if ( value != 1.0 ) {
+                    zoomCache.emplace( monsterId, value );
+                }
+            }
+        }
+
+        const auto it = zoomCache.find( monsterId );
+        return ( it == zoomCache.end() ) ? 1.0 : it->second;
+    }
+
     void renderHiResMonsterPortrait( const Image & portrait, const int32_t gameX, const int32_t gameY, const int32_t gameWidth, const bool flip,
                                      const uint8_t alpha )
     {
@@ -6614,6 +6698,34 @@ namespace fheroes2::AGG
         else {
             BlitRGBAScaledAlpha( portrait, display, gameX, gameY, dstW, dstH, alpha, flip );
         }
+    }
+
+    void drawCustomPortraitInBox( const Image & portrait, const int32_t boxX, const int32_t boxY, const int32_t boxW, const int32_t boxH )
+    {
+        if ( portrait.empty() || boxW <= 0 || boxH <= 0 ) {
+            return;
+        }
+        const int32_t srcW = portrait.width();
+        const int32_t srcH = portrait.height();
+        if ( srcW <= 0 || srcH <= 0 ) {
+            return;
+        }
+
+        // Uniform-scale fit into the box. Width-binding when the portrait is wider than the box;
+        // height-binding otherwise. Bottom-anchored vertically, horizontally centred.
+        int32_t overlayW = boxW;
+        int32_t overlayH = static_cast<int32_t>( ( static_cast<int64_t>( srcH ) * boxW ) / srcW );
+        if ( overlayH > boxH ) {
+            overlayH = boxH;
+            overlayW = static_cast<int32_t>( ( static_cast<int64_t>( srcW ) * boxH ) / srcH );
+        }
+        if ( overlayW <= 0 || overlayH <= 0 ) {
+            return;
+        }
+
+        const int32_t overlayX = boxX + ( boxW - overlayW ) / 2;
+        const int32_t overlayY = boxY + ( boxH - overlayH );
+        renderHiResMonsterPortrait( portrait, overlayX, overlayY, overlayW );
     }
 
     const Image & GetTIL( int tilId, uint32_t index, uint32_t shapeId )

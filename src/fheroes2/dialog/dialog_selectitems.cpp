@@ -114,17 +114,7 @@ namespace
                 const int32_t iconBoxSize = 32;
                 const int32_t iconBoxX = dstx + 1 + ( 43 - iconBoxSize ) / 2;
                 const int32_t iconBoxY = dsty + ( 43 - iconBoxSize ) / 2;
-                const int32_t srcW = portrait->width();
-                const int32_t srcH = portrait->height();
-                int32_t overlayW = iconBoxSize;
-                int32_t overlayH = ( static_cast<int64_t>( srcH ) * iconBoxSize ) / srcW;
-                if ( overlayH > iconBoxSize ) {
-                    overlayH = iconBoxSize;
-                    overlayW = ( static_cast<int64_t>( srcW ) * iconBoxSize ) / srcH;
-                }
-                const int32_t overlayX = iconBoxX + ( iconBoxSize - overlayW ) / 2;
-                const int32_t overlayY = iconBoxY + ( iconBoxSize - overlayH );
-                fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+                fheroes2::AGG::drawCustomPortraitInBox( *portrait, iconBoxX, iconBoxY, iconBoxSize, iconBoxSize );
             }
         }
 

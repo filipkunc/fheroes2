@@ -123,19 +123,7 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
             const int32_t blitX = posX + offset;
             const int32_t blitY = cy + offsetY + monster.y();
             if ( useCustomPortrait ) {
-                const int32_t srcW = portrait->width();
-                const int32_t srcH = portrait->height();
-                const int32_t boxW = monster.width();
-                const int32_t boxH = monster.height();
-                int32_t overlayW = boxW;
-                int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
-                if ( overlayH > boxH ) {
-                    overlayH = boxH;
-                    overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
-                }
-                const int32_t overlayX = blitX + ( boxW - overlayW ) / 2;
-                const int32_t overlayY = blitY + ( boxH - overlayH );
-                fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+                fheroes2::AGG::drawCustomPortraitInBox( *portrait, blitX, blitY, monster.width(), monster.height() );
             }
             else {
                 fheroes2::Blit( monster, output, blitX, blitY );
@@ -150,19 +138,7 @@ void fheroes2::drawMiniMonsters( const Troops & troops, int32_t cx, const int32_
             const int32_t blitX = posX - monster.width() / 2 + monster.x() + 2;
             const int32_t blitY = cy + offsetY;
             if ( useCustomPortrait ) {
-                const int32_t srcW = portrait->width();
-                const int32_t srcH = portrait->height();
-                const int32_t boxW = monster.width();
-                const int32_t boxH = monster.height();
-                int32_t overlayW = boxW;
-                int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
-                if ( overlayH > boxH ) {
-                    overlayH = boxH;
-                    overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
-                }
-                const int32_t overlayX = blitX + ( boxW - overlayW ) / 2;
-                const int32_t overlayY = blitY + ( boxH - overlayH );
-                fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+                fheroes2::AGG::drawCustomPortraitInBox( *portrait, blitX, blitY, monster.width(), monster.height() );
             }
             else {
                 fheroes2::Blit( monster, output, blitX, blitY );

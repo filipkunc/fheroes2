@@ -280,22 +280,11 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
 
         if ( useCustomPortrait ) {
             // Skip the MONS32 blit entirely and direct-paint the hi-res portrait into the active
-            // forwarding target. Stale paints from a previous Redraw (different troop in this
-            // slot) are wiped by the rect-clear pre-pass in ArmyBar::Redraw.
-            const int32_t srcW = portrait->width();
-            const int32_t srcH = portrait->height();
-            // Leave a couple of pixels at the bottom for the count text and a small margin top.
-            const int32_t boxW = pos.width;
-            const int32_t boxH = pos.height - 2;
-            int32_t overlayW = boxW;
-            int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
-            if ( overlayH > boxH ) {
-                overlayH = boxH;
-                overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
-            }
-            const int32_t overlayX = pos.x + ( boxW - overlayW ) / 2;
-            const int32_t overlayY = pos.y + ( boxH - overlayH );
-            fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+            // forwarding target. portrait_zoom is intentionally ignored here — it only widens the
+            // large MonsterDialogElement portrait, the army-bar mini-sprite stays slot-sized.
+            // Stale paints from a previous Redraw are wiped by the rect-clear in ArmyBar::Redraw.
+            const int32_t boxH = pos.height - 2; // leave room for the count text at the bottom
+            fheroes2::AGG::drawCustomPortraitInBox( *portrait, pos.x, pos.y, pos.width, boxH );
         }
         else {
             const fheroes2::Sprite & mons32 = fheroes2::AGG::GetICN( ICN::MONS32, troop.GetSpriteIndex() );
@@ -336,17 +325,7 @@ void ArmyBar::RedrawItem( ArmyTroop & troop, const fheroes2::Rect & pos, bool se
             const int32_t padBottom = 10; // room for count text at bottom
             const int32_t boxW = std::max( 1, pos.width - 2 * padX );
             const int32_t boxH = std::max( 1, pos.height - padTop - padBottom );
-            const int32_t srcW = portrait->width();
-            const int32_t srcH = portrait->height();
-            int32_t overlayW = boxW;
-            int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
-            if ( overlayH > boxH ) {
-                overlayH = boxH;
-                overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
-            }
-            const int32_t overlayX = pos.x + padX + ( boxW - overlayW ) / 2;
-            const int32_t overlayY = pos.y + padTop + ( boxH - overlayH );
-            fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+            fheroes2::AGG::drawCustomPortraitInBox( *portrait, pos.x + padX, pos.y + padTop, boxW, boxH );
         }
 
         text.draw( pos.x + pos.width - text.width() - 3, pos.y + pos.height - text.height() + 1, dstsf );

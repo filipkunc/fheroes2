@@ -1309,21 +1309,9 @@ void Battle::TurnOrder::addCustomMonsterOverlays() const
             continue;
         }
         const fheroes2::Rect & pos = entry.second;
-        const int32_t srcW = portrait->width();
-        const int32_t srcH = portrait->height();
-        const int32_t boxW = pos.width - 2;
-        const int32_t boxH = pos.height - 2;
-        int32_t overlayW = boxW;
-        int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
-        if ( overlayH > boxH ) {
-            overlayH = boxH;
-            overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
-        }
-        const int32_t overlayX = pos.x + 1 + ( boxW - overlayW ) / 2;
-        const int32_t overlayY = pos.y + 1 + ( boxH - overlayH );
         // Direct-blit into Display::screenRGBA() at absolute coords. The WriteHook already
         // mirrored the palette MONH below this slot, so the hi-res RGBA paint lands on top.
-        fheroes2::AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+        fheroes2::AGG::drawCustomPortraitInBox( *portrait, pos.x + 1, pos.y + 1, pos.width - 2, pos.height - 2 );
     }
 }
 

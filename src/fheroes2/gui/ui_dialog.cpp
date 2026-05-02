@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -927,27 +928,35 @@ namespace fheroes2
         Copy( sprite, 0, 0, output, offset.x, offset.y, sprite.width(), sprite.height() );
 
         if ( useCustomPortrait ) {
-            // Fit the cropped portrait inside the indexed MONH region (offset + (6,6) + MONH's
-            // own offset). Scale uniformly to whichever dimension (width or height) is the
-            // binding constraint, then centre it within the portrait box.
+            // Heroes 2 MONH portraits are tiny insets inside the dialog's race-frame — fine for
+            // the original 32-bit pixel art, but a hi-res custom portrait stuffed into 40×71
+            // (Succubus's MONH region) reads as a postage stamp inside the brown wood dialog.
+            // portrait_zoom > 1.0 expands the fit box outward from MONH toward the race-frame
+            // edges. The figure's feet stay anchored to the original MONH bottom, then it grows
+            // upward + outward; clamps to the race-frame interior so the portrait never bleeds
+            // over the decorative border. The race-frame (STRIP[4..10]) is blitted at (6,6)
+            // inside STRIP[12] with 6 px margin on every side, so the safe interior is
+            // (sprite.dim - 12) on each axis.
             const Sprite & monh = AGG::GetICN( _monster.ICNMonh(), 0 );
-            const int32_t boxW = monh.width();
-            const int32_t boxH = monh.height();
-            const int32_t srcW = portrait->width();
-            const int32_t srcH = portrait->height();
-            int32_t overlayW = boxW;
-            int32_t overlayH = ( static_cast<int64_t>( srcH ) * boxW ) / srcW;
-            if ( overlayH > boxH ) {
-                overlayH = boxH;
-                overlayW = ( static_cast<int64_t>( srcW ) * boxH ) / srcH;
-            }
-            const int32_t overlayX = offset.x + 6 + monh.x() + ( boxW - overlayW ) / 2;
-            const int32_t overlayY = offset.y + 6 + monh.y() + ( boxH - overlayH );
-            // Hosts of MonsterDialogElement (SelectCount, Recruit, selectMonster, etc.) push
-            // their own forwarding frame in Phase 2, so the helper direct-paints into that
-            // dialog's RGBA. Repeat draws at the same coords dedupe via the (src, dst, gameX,
-            // gameY) identity; the host's RAII guard clears all paints on dialog close.
-            AGG::renderHiResMonsterPortrait( *portrait, overlayX, overlayY, overlayW );
+            const int32_t outerW = sprite.width() - 12;
+            const int32_t outerH = sprite.height() - 12;
+            const double zoom = std::max( 1.0, AGG::GetRGBACustomPortraitZoom( _monster.GetID() ) );
+
+            const int32_t targetW = std::min( outerW, static_cast<int32_t>( std::lround( monh.width() * zoom ) ) );
+            const int32_t targetH = std::min( outerH, static_cast<int32_t>( std::lround( monh.height() * zoom ) ) );
+            const int32_t boxW = std::max<int32_t>( monh.width(), targetW );
+            const int32_t boxH = std::max<int32_t>( monh.height(), targetH );
+
+            // monh.x() / monh.y() are STRIP[12]-relative; rebase into race-frame coords by
+            // subtracting the 6 px race-frame inset.
+            const int32_t monhCentreXRel = monh.x() - 6 + monh.width() / 2;
+            const int32_t monhBottomYRel = monh.y() - 6 + monh.height();
+            int32_t boxX = monhCentreXRel - boxW / 2;
+            int32_t boxY = monhBottomYRel - boxH;
+            boxX = std::clamp( boxX, 0, outerW - boxW );
+            boxY = std::clamp( boxY, 0, outerH - boxH );
+
+            AGG::drawCustomPortraitInBox( *portrait, offset.x + 6 + boxX, offset.y + 6 + boxY, boxW, boxH );
         }
     }
 

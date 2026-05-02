@@ -18,7 +18,7 @@ from .models.bin_parser import (
 from .models.sprite_data import (
     SpriteCollection, load_png_sprites, load_bmp_sprites,
     apply_offsets_from_base, set_base_dimensions, load_custom_offsets, save_custom_offsets,
-    FrameOverride,
+    save_portrait_zoom, FrameOverride,
 )
 from .models.animation import AnimationPlayer
 from .widgets.animation_canvas import AnimationCanvas
@@ -152,6 +152,7 @@ class MainWindow(QMainWindow):
         self._frame_list.frames_selected.connect(self._on_frames_selected)
         self._properties = PropertiesPanel()
         self._properties.offset_changed.connect(self._on_offset_changed)
+        self._properties.portrait_zoom_changed.connect(self._on_portrait_zoom_changed)
         self._canvas.offset_changed.connect(self._on_offset_changed)
         self._sheet_view = SpritesheetView()
         self._gemini_panel = GeminiPanel()
@@ -235,6 +236,10 @@ class MainWindow(QMainWindow):
         self._zoom_spin.setRange(1, 10)
         self._zoom_spin.setValue(3)
         self._zoom_spin.valueChanged.connect(self._canvas.set_zoom)
+        self._zoom_spin.valueChanged.connect(self._properties.set_preview_scale)
+        # Initialise the preview scale to the toolbar's current value so the
+        # portrait preview opens at the same logical-pixels-per-game-pixel ratio.
+        self._properties.set_preview_scale(self._zoom_spin.value())
         toolbar.addWidget(self._zoom_spin)
 
         toolbar.addSeparator()
@@ -494,6 +499,7 @@ class MainWindow(QMainWindow):
         self._update_canvas()
         self._update_frame_list()
         self._update_anim_combo()
+        self._properties.set_portrait_source(self._custom_sprites)
 
     def _try_load_bin(self, bin_filename: str) -> MonsterAnimInfo | None:
         """Try to load a BIN file from various locations."""
@@ -728,6 +734,18 @@ class MainWindow(QMainWindow):
             self._status.showMessage(
                 f"Saved offset for {self._current_config.prefix} frame {frame_index}: ({offset_x}, {offset_y})"
             )
+
+    def _on_portrait_zoom_changed(self, zoom: float):
+        """Persist a new portrait_zoom for the currently loaded custom monster."""
+        if self._custom_sprites is None or self._current_config is None:
+            return
+        if not self._current_config.has_custom_sprites:
+            return
+        self._custom_sprites.portrait_zoom = float(zoom)
+        save_portrait_zoom(SPRITES_DIR, self._current_config.prefix, float(zoom))
+        self._status.showMessage(
+            f"Saved portrait zoom for {self._current_config.prefix}: {zoom:.2f}"
+        )
 
     def _toggle_play(self, checked: bool):
         if checked:
