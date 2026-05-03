@@ -2986,6 +2986,34 @@ namespace
             // Dachshund Den: generated from Wolf Den (TWNBDW_2) with whitened palette transform.
             CopyICNWithPalette( id, ICN::TWNBDW_2, PAL::PaletteType::DACHSHUND_DEN );
             break;
+        case ICN::MAID: {
+            const size_t maidSpriteCount = 38;
+
+            // 1. Try loading custom PNG sprites from files/data/sprites/maid_NNN.png
+            if ( loadCustomSpritesFromPNG( "maid", ICN::PEASANT, maidSpriteCount, _icnVsSprite[id] ) ) {
+                break;
+            }
+
+            // 2. Fall back to the unaltered Peasant indexed sprites.
+            _icnVsSprite[id].clear();
+            CopyICNWithPalette( id, ICN::PEASANT, PAL::PaletteType::STANDARD );
+            break;
+        }
+        case ICN::MONH_MAID: {
+            // Maid portrait: start from the unaltered Peasant portrait (MONH0000), then overwrite
+            // with the hi-res PNG frame 1 when custom sprites are available.
+            CopyICNWithPalette( id, ICN::MONH0000, PAL::PaletteType::STANDARD );
+            const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::MAID );
+            if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() && !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite & portrait = _icnVsSprite[id][0];
+                writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], portrait.width(), portrait.height(), portrait );
+            }
+            break;
+        }
+        case ICN::TWNKUP0A:
+            // Maid's Hut: generated from Knight Thatched Hut (TWNKDW_0) — reuse base palette for now.
+            CopyICNWithPalette( id, ICN::TWNKDW_0, PAL::PaletteType::STANDARD );
+            break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
             break;
@@ -3606,6 +3634,23 @@ namespace
                 const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::DACHSHUND );
                 if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
                     fheroes2::Sprite & icon = _icnVsSprite[id][dachshundSpriteIndex];
+                    writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
+                }
+            }
+
+            // Add Maid sprite (based on Peasant; hi-res PNG overwrites the icon when available).
+            // Peasant is at monster ID 1 -> sprite index 0. Maid is at monster ID 73 -> sprite index 72.
+            if ( !_icnVsSprite[id].empty() ) {
+                const size_t peasantSpriteIndex = 0;
+                const size_t maidSpriteIndex = 72;
+                if ( _icnVsSprite[id].size() <= maidSpriteIndex ) {
+                    _icnVsSprite[id].resize( maidSpriteIndex + 1 );
+                }
+                _icnVsSprite[id][maidSpriteIndex] = _icnVsSprite[id][peasantSpriteIndex];
+
+                const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::MAID );
+                if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
+                    fheroes2::Sprite & icon = _icnVsSprite[id][maidSpriteIndex];
                     writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
                 }
             }
@@ -5538,6 +5583,19 @@ namespace
                 }
             }
 
+            // Add Maid mini sprites (based on Peasant; hi-res PNG overlay handles the Maid look at render time).
+            // Peasant is monster ID 1, so MINIMON base index = 0 * 9. Maid is ID 73 -> 72 * 9.
+            constexpr uint32_t peasantMiniBaseIndex = 0;
+            constexpr uint32_t maidMiniBaseIndex = 72 * 9;
+            if ( _icnVsSprite[ICN::MINIMON].size() > peasantMiniBaseIndex + 8 ) {
+                if ( _icnVsSprite[ICN::MINIMON].size() <= maidMiniBaseIndex + 8 ) {
+                    _icnVsSprite[ICN::MINIMON].resize( maidMiniBaseIndex + 9 );
+                }
+                for ( uint32_t i = 0; i < 9; ++i ) {
+                    _icnVsSprite[ICN::MINIMON][maidMiniBaseIndex + i] = _icnVsSprite[ICN::MINIMON][peasantMiniBaseIndex + i];
+                }
+            }
+
             // TODO: optimize image sizes.
             _icnVsSprite[ICN::MINI_MONSTER_IMAGE] = _icnVsSprite[ICN::MINIMON];
             _icnVsSprite[ICN::MINI_MONSTER_SHADOW] = _icnVsSprite[ICN::MINIMON];
@@ -6494,6 +6552,7 @@ namespace fheroes2::AGG
                 { Monster::THOR, "thor", 56 },
                 { Monster::SUCCUBUS, "succubus", 32 },
                 { Monster::DACHSHUND, "dachshund", 33 },
+                { Monster::MAID, "maid", 38 },
             };
             count = sizeof( registry ) / sizeof( registry[0] );
             return registry[0];

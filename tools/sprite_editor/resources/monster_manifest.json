@@ -524,5 +524,15 @@
     "frame_count": 33,
     "has_custom_sprites": true,
     "prompt": "Transform into a cute female Dachshund based on the reference image. Please make sure to have SHORTER legs and longer body typical for Dachshund. In the input the legs are too high."
+  },
+  "maid": {
+    "prefix": "maid",
+    "base_icn": "PEASANT",
+    "bin_file": "PEAS_FRM.BIN",
+    "display_name": "Maid",
+    "base_monster": "Peasant",
+    "faction": "Custom",
+    "has_custom_sprites": true,
+    "prompt": "Transform into female maid with typical village clothes and broom instead of sickle. Make a light movement with the broom in each animation frame in the sprite sheet so each is distinct enough in the movement but not abrubt. Make sure the frames are NOT IDENTICAL!"
   }
 }

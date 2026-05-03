@@ -129,6 +129,7 @@ public:
         AVENGER,
         SUCCUBUS,
         DACHSHUND,
+        MAID,
 
         // Editor-related monsters.
         RANDOM_MONSTER,

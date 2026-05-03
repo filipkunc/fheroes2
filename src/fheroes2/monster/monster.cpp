@@ -273,6 +273,8 @@ Monster Monster::GetDowngrade() const
         return Monster( CYCLOPS );
     case DACHSHUND:
         return Monster( WOLF );
+    case MAID:
+        return Monster( PEASANT );
     case MINOTAUR_KING:
         return Monster( MINOTAUR );
     case RED_DRAGON:
@@ -314,6 +316,8 @@ Monster Monster::GetUpgrade() const
         return Monster( SUCCUBUS );
     case WOLF:
         return Monster( DACHSHUND );
+    case PEASANT:
+        return Monster( MAID );
     case ORC:
         return Monster( ORC_CHIEF );
     case OGRE:
@@ -645,6 +649,15 @@ Monster Monster::FromDwelling( int race, uint64_t dwelling )
         }
         break;
 
+    case DWELLING_UPGRADE14:
+        switch ( race ) {
+        case Race::KNGT:
+            return Monster( MAID );
+        default:
+            break;
+        }
+        break;
+
     default:
         break;
     }
@@ -869,6 +882,9 @@ uint64_t Monster::GetDwelling() const
     case DACHSHUND:
         return DWELLING_UPGRADE13;
 
+    case MAID:
+        return DWELLING_UPGRADE14;
+
     default:
         break;
     }
@@ -946,6 +962,10 @@ int32_t Monster::ICNMonh() const
     // Dachshund uses a generated portrait overwritten by hi-res PNG frame 1
     if ( id == DACHSHUND ) {
         return ICN::MONH_DACHSHUND;
+    }
+    // Maid uses a generated portrait overwritten by hi-res PNG frame 1
+    if ( id == MAID ) {
+        return ICN::MONH_MAID;
     }
     return id >= PEASANT && id <= WATER_ELEMENT ? ICN::MONH0000 + id - PEASANT : ICN::UNKNOWN;
 }

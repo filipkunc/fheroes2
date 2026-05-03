@@ -1183,6 +1183,15 @@ namespace ICN
         // Dachshund Den building sprite (generated from Wolf Den TWNBDW_2 with whitened palette)
         TWNBUP3A,
 
+        // Maid battle sprite (custom PNGs loaded from files/data/sprites/maid_*.png)
+        MAID,
+
+        // Maid portrait (generated from Peasant portrait, overwritten by hi-res PNG frame 1 when available)
+        MONH_MAID,
+
+        // Maid's Hut building sprite (generated from Knight Thatched Hut TWNKDW_0 with palette transform)
+        TWNKUP0A,
+
         // IMPORTANT! Put any new entry just above this one.
         LASTICN
     };

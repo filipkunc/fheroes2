@@ -103,7 +103,7 @@ namespace
         Cost cost{};
     };
 
-    const std::array<BuildingStats, 92> buildingStats = { { { BUILD_THIEVESGUILD, Race::ALL, { 750, 5, 0, 0, 0, 0, 0 } },
+    const std::array<BuildingStats, 93> buildingStats = { { { BUILD_THIEVESGUILD, Race::ALL, { 750, 5, 0, 0, 0, 0, 0 } },
                                                             { BUILD_TAVERN, Race::ALL, { 500, 5, 0, 0, 0, 0, 0 } },
                                                             { BUILD_SHIPYARD, Race::ALL, { 2000, 20, 0, 0, 0, 0, 0 } },
                                                             { BUILD_WELL, Race::ALL, { 500, 0, 0, 0, 0, 0, 0 } },
@@ -203,7 +203,8 @@ namespace
                                                             { DWELLING_UPGRADE9, Race::NECR, { 5000, 0, 10, 0, 0, 0, 0 } },
                                                             { DWELLING_UPGRADE10, Race::WZRD, { 8000, 0, 0, 0, 0, 0, 5 } },
                                                             { DWELLING_UPGRADE11, Race::KNGT, { 5000, 0, 0, 0, 0, 0, 0 } },
-                                                            { DWELLING_UPGRADE12, Race::BARB, { 5000, 0, 0, 0, 0, 3, 0 } } } };
+                                                            { DWELLING_UPGRADE12, Race::BARB, { 5000, 0, 0, 0, 0, 3, 0 } },
+                                                            { DWELLING_UPGRADE14, Race::KNGT, { 400, 0, 0, 0, 0, 0, 0 } } } };
 }
 
 Funds BuildingInfo::GetCost( const uint64_t buildingType, const int race )
@@ -277,6 +278,7 @@ bool BuildingInfo::isDwelling( const uint64_t building )
     case DWELLING_UPGRADE11:
     case DWELLING_UPGRADE12:
     case DWELLING_UPGRADE13:
+    case DWELLING_UPGRADE14:
         return true;
     default:
         break;
