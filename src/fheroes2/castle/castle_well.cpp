@@ -34,6 +34,7 @@
 #include "army_troop.h"
 #include "battle_cell.h"
 #include "castle.h" // IWYU pragma: associated
+#include "castle_building_info.h"
 #include "cursor.h"
 #include "dialog.h"
 #include "game_delays.h"
@@ -392,8 +393,6 @@ void Castle::_wellRedrawBackground( fheroes2::Image & background ) const
     const fheroes2::FontType statsFontType = fheroes2::FontType::smallWhite();
 
     for ( const uint32_t dwellingType : castleDwellings ) {
-        // By default the 'icnIndex' and 'offset' values are set for DWELLING_MONSTER1.
-        uint32_t icnIndex = 19;
         fheroes2::Point offset{ 0, 1 };
 
         switch ( dwellingType ) {
@@ -401,31 +400,35 @@ void Castle::_wellRedrawBackground( fheroes2::Image & background ) const
             break;
         case DWELLING_MONSTER2:
             offset.y = 151;
-            icnIndex = DWELLING_UPGRADE2 & _constructedBuildings ? 25 : 20;
             break;
         case DWELLING_MONSTER3:
             offset.y = 301;
-            icnIndex = DWELLING_UPGRADE3 & _constructedBuildings ? 26 : 21;
             break;
         case DWELLING_MONSTER4:
             offset.x = 314;
-            icnIndex = DWELLING_UPGRADE4 & _constructedBuildings ? 27 : 22;
             break;
         case DWELLING_MONSTER5:
             offset.x = 314;
             offset.y = 151;
-            icnIndex = DWELLING_UPGRADE5 & _constructedBuildings ? 28 : 23;
             break;
         case DWELLING_MONSTER6:
             offset.x = 314;
             offset.y = 301;
-            icnIndex = DWELLING_UPGRADE7 & _constructedBuildings ? 30 : ( DWELLING_UPGRADE6 & _constructedBuildings ? 29 : 24 );
             break;
         default:
             // Have you added a new dwelling?
             assert( 0 );
             break;
         }
+
+        // Pick the icon for whichever upgrade tier is actually built. GetActualDwelling
+        // walks the upgrade chain (UPGRADE14 for Maid, UPGRADE13 for Dachshund, all the
+        // tier-6 chain UPGRADE7..12 etc.) and falls back to the base dwelling type if
+        // no upgrade is built. getIndexBuildingSprite then maps that to the correct
+        // CSTL*[index] sprite. This replaces the previous hard-coded UPGRADE2..7 lookup
+        // which silently fell back to the base icon for every custom dwelling.
+        const uint64_t actualDwellingType = GetActualDwelling( dwellingType );
+        const uint32_t icnIndex = static_cast<uint32_t>( fheroes2::getIndexBuildingSprite( static_cast<BuildingType>( actualDwellingType ) ) );
 
         const uint64_t actualDwellindType = GetActualDwelling( dwellingType );
         const Monster monster( _race, actualDwellindType );

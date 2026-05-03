@@ -18,6 +18,11 @@ class MonsterConfig:
     has_custom_sprites: bool = False
     palette_remap: str = ""
     prompt: str = ""  # Gemini transform prompt, persisted per custom monster
+    base_building_icn: str = ""  # full-building TWN sprite (e.g. TWNKDW_0) — used by the live castle scene
+    base_building_icon_icn: str = ""  # construction-tile CSTL sprite (e.g. CSTLKNGT) — used by the build dialog and Well
+    base_building_icon_index: int = 0  # frame index into base_building_icon_icn (e.g. 19 for Thatched Hut)
+    building_prompt: str = ""  # Gemini prompt for the full building art (TWN*UP*A)
+    building_icon_prompt: str = ""  # Gemini prompt for the small icon art (CSTL*[index])
 
 
 def _default_manifest_path() -> Path:
@@ -49,6 +54,11 @@ def load_manifest(manifest_path: Path | None = None) -> dict[str, MonsterConfig]
             has_custom_sprites=entry.get("has_custom_sprites", False),
             palette_remap=entry.get("palette_remap", ""),
             prompt=entry.get("prompt", ""),
+            base_building_icn=entry.get("base_building_icn", ""),
+            base_building_icon_icn=entry.get("base_building_icon_icn", ""),
+            base_building_icon_index=entry.get("base_building_icon_index", 0),
+            building_prompt=entry.get("building_prompt", ""),
+            building_icon_prompt=entry.get("building_icon_prompt", ""),
         )
     return configs
 

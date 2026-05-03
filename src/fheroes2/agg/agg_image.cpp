@@ -2762,6 +2762,122 @@ namespace
         return true;
     }
 
+    // Try to load a dedicated icon-format PNG ({prefix}_building_icon.png) directly into the
+    // construction-icon slot. This is the preferred path: the icon is hand-authored (or
+    // AI-generated) at the small CSTL* tile size with its own scenery context (sky, grass)
+    // baked in, so we just blit it as-is. Returns true if loaded, false to fall back to
+    // the downscale-from-TWN composite path.
+    bool tryLoadBuildingIconPNG( const int iconIcnId, const int iconIndex, const std::string & iconPNGName )
+    {
+        if ( iconIndex < 0 || iconIndex >= static_cast<int>( _icnVsSprite[iconIcnId].size() ) ) {
+            return false;
+        }
+        fheroes2::Sprite & icon = _icnVsSprite[iconIcnId][iconIndex];
+        if ( icon.width() <= 0 || icon.height() <= 0 ) {
+            return false;
+        }
+        // loadSingleCustomPNG resizes the loaded PNG to the existing icon's dimensions
+        // and copies the position; ideal here since CSTL* icons are fixed-size tiles.
+        fheroes2::Sprite tmp = icon;
+        if ( !loadSingleCustomPNG( iconPNGName, icon, tmp ) ) {
+            return false;
+        }
+        icon = std::move( tmp );
+        return true;
+    }
+
+    // Replace a small construction-icon slot (CSTL*[iconIndex]) with a downscaled hi-res
+    // building sprite (TWN*UP*A frame 0, which already includes any AI-generated PNG overlay
+    // applied earlier in processICN). The icon is cleared to fully transparent first so the
+    // base building cloned by the caller doesn't peek through transparent areas of the AI art.
+    // Scales by the actual alpha bbox of the source so the building fills the icon instead of
+    // being shrunk by the transparent canvas margin. Bottom-aligns the foundation. Skipped
+    // when no AI PNG exists on disk — otherwise the source TWN*UP*A is the palette-transformed
+    // base and the result would just duplicate the cloned icon.
+    void compositeBuildingIconFromTWN( const int iconIcnId, const int iconIndex, const int sourceTWNIcnId, const std::string & customPNGName )
+    {
+        const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
+        std::string pngPath;
+        if ( !Settings::findFile( spritesDir, customPNGName, pngPath ) ) {
+            return;
+        }
+
+        loadICN( sourceTWNIcnId );
+        if ( _icnVsSprite[sourceTWNIcnId].empty() ) {
+            return;
+        }
+        if ( iconIndex < 0 || iconIndex >= static_cast<int>( _icnVsSprite[iconIcnId].size() ) ) {
+            return;
+        }
+
+        const fheroes2::Sprite & big = _icnVsSprite[sourceTWNIcnId][0];
+        fheroes2::Sprite & icon = _icnVsSprite[iconIcnId][iconIndex];
+        if ( big.width() <= 0 || big.height() <= 0 || icon.width() <= 0 || icon.height() <= 0 ) {
+            return;
+        }
+
+        // Find the alpha bounding box of the source so we scale just the building, not the
+        // surrounding transparent margin. transform value 1 == fully transparent.
+        const int32_t bigW = big.width();
+        const int32_t bigH = big.height();
+        int32_t bbL = bigW;
+        int32_t bbT = bigH;
+        int32_t bbR = -1;
+        int32_t bbB = -1;
+        if ( big.singleLayer() ) {
+            bbL = 0;
+            bbT = 0;
+            bbR = bigW - 1;
+            bbB = bigH - 1;
+        }
+        else {
+            const uint8_t * tr = big.transform();
+            for ( int32_t y = 0; y < bigH; ++y ) {
+                for ( int32_t x = 0; x < bigW; ++x ) {
+                    if ( tr[y * bigW + x] != 1 ) {
+                        if ( x < bbL )
+                            bbL = x;
+                        if ( y < bbT )
+                            bbT = y;
+                        if ( x > bbR )
+                            bbR = x;
+                        if ( y > bbB )
+                            bbB = y;
+                    }
+                }
+            }
+        }
+        if ( bbR < bbL || bbB < bbT ) {
+            return;
+        }
+
+        const int32_t bbW = bbR - bbL + 1;
+        const int32_t bbH = bbB - bbT + 1;
+
+        const int32_t iconW = icon.width();
+        const int32_t iconH = icon.height();
+
+        // Stretch the AI building's bbox to fill the entire icon. We accept a small aspect
+        // distortion (icons are 135×70, AI buildings tend to be more square) because the
+        // alternative — aspect-preserving fit — leaves horizontal gaps where the cloned
+        // base building would remain visible. At icon scale the distortion is barely
+        // noticeable; what matters is that the original Thatched Hut / Wolf Den / Cyclops
+        // Pyramid is completely hidden.
+        fheroes2::Sprite scaled( iconW, iconH );
+        scaled.reset();
+        fheroes2::Resize( big, bbL, bbT, bbW, bbH, scaled, 0, 0, iconW, iconH );
+
+        // Replace the cloned icon with a fresh multi-layer transparent canvas. We can't
+        // just FillTransform on the existing icon because some CSTL* sprites are
+        // single-layer (no transform) — Blit then leaves the original Thatched Hut /
+        // Den / Pyramid visible wherever the AI silhouette has transparency. A fresh
+        // multi-layer sprite guarantees a clean alpha mask underneath the AI art.
+        fheroes2::Sprite freshIcon( iconW, iconH );
+        freshIcon.reset();
+        fheroes2::Blit( scaled, freshIcon, 0, 0 );
+        icon = std::move( freshIcon );
+    }
+
     //  This function modifies (fixes) the original ICNs and generate new fheroes2-related ICNs.
     // WARNING: This function must be called only once from `loadICN()` function!
     void processICN( const int id )
@@ -2956,6 +3072,13 @@ namespace
         case ICN::TWNBUP6A:
             // Succubus Palace: generated from Cyclops Pyramid (TWNBDW_5) with red palette transform.
             CopyICNWithPalette( id, ICN::TWNBDW_5, PAL::PaletteType::BLOOD_CRYPT );
+            // If a hi-res building PNG exists, overwrite frame 0 with it.
+            if ( !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite tmp = _icnVsSprite[id][0];
+                if ( loadSingleCustomPNG( "succubus_building.png", _icnVsSprite[id][0], tmp ) ) {
+                    _icnVsSprite[id][0] = std::move( tmp );
+                }
+            }
             break;
         case ICN::DACHSHUND: {
             const size_t dachshundSpriteCount = 33; // Same as Wolf sprite count
@@ -2985,6 +3108,12 @@ namespace
         case ICN::TWNBUP3A:
             // Dachshund Den: generated from Wolf Den (TWNBDW_2) with whitened palette transform.
             CopyICNWithPalette( id, ICN::TWNBDW_2, PAL::PaletteType::DACHSHUND_DEN );
+            if ( !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite tmp = _icnVsSprite[id][0];
+                if ( loadSingleCustomPNG( "dachshund_building.png", _icnVsSprite[id][0], tmp ) ) {
+                    _icnVsSprite[id][0] = std::move( tmp );
+                }
+            }
             break;
         case ICN::MAID: {
             const size_t maidSpriteCount = 38;
@@ -3013,6 +3142,12 @@ namespace
         case ICN::TWNKUP0A:
             // Maid's Hut: generated from Knight Thatched Hut (TWNKDW_0) — reuse base palette for now.
             CopyICNWithPalette( id, ICN::TWNKDW_0, PAL::PaletteType::STANDARD );
+            if ( !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite tmp = _icnVsSprite[id][0];
+                if ( loadSingleCustomPNG( "maid_building.png", _icnVsSprite[id][0], tmp ) ) {
+                    _icnVsSprite[id][0] = std::move( tmp );
+                }
+            }
             break;
         case ICN::ROUTERED:
             CopyICNWithPalette( id, ICN::ROUTE, PAL::PaletteType::RED );
@@ -4293,6 +4428,43 @@ namespace
                 // Copy Upg. Cathedral sprite and apply Avenger's Chapel palette.
                 _icnVsSprite[id][34] = _icnVsSprite[id][29];
                 ApplyPalette( _icnVsSprite[id][34], PAL::GetPalette( PAL::PaletteType::AVENGER_CHAPEL ) );
+            }
+            // Maid's Hut small icon. Preferred path: a dedicated maid_building_icon.png with
+            // sky/grass context baked in by the editor, loaded directly into CSTLKNGT[37].
+            // Fallback: clone Thatched Hut at index 19 and composite a downscaled TWNKUP0A
+            // frame 0 over it (lossy because the icon scenery comes from the cloned base).
+            if ( _icnVsSprite[id].size() > 19 ) {
+                while ( _icnVsSprite[id].size() <= 37 ) {
+                    _icnVsSprite[id].push_back( fheroes2::Sprite() );
+                }
+                _icnVsSprite[id][37] = _icnVsSprite[id][19];
+                if ( !tryLoadBuildingIconPNG( id, 37, "maid_building_icon.png" ) ) {
+                    compositeBuildingIconFromTWN( id, 37, ICN::TWNKUP0A, "maid_building.png" );
+                }
+            }
+            break;
+        case ICN::CSTLBARB:
+            // Succubus Palace small icon — same dedicated-icon-first / composite-fallback flow.
+            if ( _icnVsSprite[id].size() > 24 ) {
+                while ( _icnVsSprite[id].size() <= 35 ) {
+                    _icnVsSprite[id].push_back( fheroes2::Sprite() );
+                }
+                _icnVsSprite[id][35] = _icnVsSprite[id][24];
+                ApplyPalette( _icnVsSprite[id][35], PAL::GetPalette( PAL::PaletteType::BLOOD_CRYPT ) );
+                if ( !tryLoadBuildingIconPNG( id, 35, "succubus_building_icon.png" ) ) {
+                    compositeBuildingIconFromTWN( id, 35, ICN::TWNBUP6A, "succubus_building.png" );
+                }
+            }
+            // Dachshund Den small icon — same flow.
+            if ( _icnVsSprite[id].size() > 21 ) {
+                while ( _icnVsSprite[id].size() <= 36 ) {
+                    _icnVsSprite[id].push_back( fheroes2::Sprite() );
+                }
+                _icnVsSprite[id][36] = _icnVsSprite[id][21];
+                ApplyPalette( _icnVsSprite[id][36], PAL::GetPalette( PAL::PaletteType::DACHSHUND_DEN ) );
+                if ( !tryLoadBuildingIconPNG( id, 36, "dachshund_building_icon.png" ) ) {
+                    compositeBuildingIconFromTWN( id, 36, ICN::TWNBUP3A, "dachshund_building.png" );
+                }
             }
             break;
         case ICN::CSTLCAPK:

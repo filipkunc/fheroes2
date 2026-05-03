@@ -27,6 +27,7 @@ from .widgets.properties_panel import PropertiesPanel
 from .widgets.spritesheet_view import SpritesheetView
 from .widgets.monster_list import MonsterListWidget
 from .gemini.gemini_panel import GeminiPanel
+from .gemini.building_panel import BuildingPanel
 
 
 # Default paths
@@ -159,6 +160,7 @@ class MainWindow(QMainWindow):
         self._gemini_panel.frames_accepted.connect(self._on_gemini_frames_accepted)
         self._gemini_panel.sheet_built.connect(self._on_sheet_built)
         self._gemini_panel.output_received.connect(self._on_sheet_output)
+        self._building_panel = BuildingPanel()
 
         # Edit Frames tab: frame list | canvas | properties
         edit_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -181,6 +183,7 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._tabs.addTab(edit_splitter, "Edit Frames")
         self._tabs.addTab(gen_splitter, "Generate with Gemini")
+        self._tabs.addTab(self._building_panel, "Generate Building")
         self.setCentralWidget(self._tabs)
 
     def _setup_toolbar(self):
@@ -296,6 +299,11 @@ class MainWindow(QMainWindow):
         gen_tab_action.setShortcut(QKeySequence("Ctrl+2"))
         gen_tab_action.triggered.connect(lambda: self._tabs.setCurrentIndex(1))
         view_menu.addAction(gen_tab_action)
+
+        building_tab_action = QAction("Generate &Building Tab", self)
+        building_tab_action.setShortcut(QKeySequence("Ctrl+3"))
+        building_tab_action.triggered.connect(lambda: self._tabs.setCurrentIndex(2))
+        view_menu.addAction(building_tab_action)
 
     def _load_monster_thumbnails(self):
         """Extract MONS32 thumbnails from AGG and apply to the monster list."""
@@ -427,6 +435,7 @@ class MainWindow(QMainWindow):
 
         self._current_config = config
         self._gemini_panel._prompt_edit.setPlainText(config.prompt)
+        self._building_panel.set_monster(config)
         self._player.stop()
         self._play_btn.setChecked(False)
 

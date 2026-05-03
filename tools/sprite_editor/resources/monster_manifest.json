@@ -7,7 +7,8 @@
     "base_monster": "Green Dragon",
     "faction": "Custom",
     "frame_count": 54,
-    "has_custom_sprites": true
+    "has_custom_sprites": true,
+    "building_prompt": "Transform the building to match the new monster. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "thor": {
     "prefix": "thor",
@@ -512,7 +513,12 @@
     "faction": "Custom",
     "frame_count": 32,
     "has_custom_sprites": true,
-    "prompt": "Transform into the reference image, but keep the pose from the input"
+    "base_building_icn": "TWNBDW_5",
+    "base_building_icon_icn": "CSTLBARB",
+    "base_building_icon_index": 24,
+    "prompt": "Transform into the reference image, but keep the pose from the input",
+    "building_prompt": "Transform the building into volcano. Keep the same overall silhouette and also keep the path to it as is.",
+    "building_icon_prompt": "Repaint the building tile to match the reference. Match the framing, perspective, and context of the original tile. The building must sit on the same ground line at the bottom."
   },
   "dachshund": {
     "prefix": "dachshund",
@@ -523,7 +529,12 @@
     "faction": "Custom",
     "frame_count": 33,
     "has_custom_sprites": true,
-    "prompt": "Transform into a cute female Dachshund based on the reference image. Please make sure to have SHORTER legs and longer body typical for Dachshund. In the input the legs are too high."
+    "base_building_icn": "TWNBDW_2",
+    "base_building_icon_icn": "CSTLBARB",
+    "base_building_icon_index": 21,
+    "prompt": "Transform into a cute female Dachshund based on the reference image. Please make sure to have SHORTER legs and longer body typical for Dachshund. In the input the legs are too high.",
+    "building_prompt": "Transform the building into cute cartoony dog house. Keep the same overall silhouette and also keep the path to it as is.",
+    "building_icon_prompt": "Repaint the building tile to match the reference. Match the framing, perspective, and context of the original tile. The building must sit on the same ground line at the bottom."
   },
   "maid": {
     "prefix": "maid",
@@ -533,6 +544,11 @@
     "base_monster": "Peasant",
     "faction": "Custom",
     "has_custom_sprites": true,
-    "prompt": "Transform into female maid with typical village clothes and broom instead of sickle. Make a light movement with the broom in each animation frame in the sprite sheet so each is distinct enough in the movement but not abrubt. Make sure the frames are NOT IDENTICAL!"
+    "base_building_icn": "TWNKDW_0",
+    "base_building_icon_icn": "CSTLKNGT",
+    "base_building_icon_index": 19,
+    "prompt": "Transform into female maid with typical village clothes and broom instead of sickle. Make a light movement with the broom in each animation frame in the sprite sheet so each is distinct enough in the movement but not abrubt. Make sure the frames are NOT IDENTICAL!",
+    "building_prompt": "Transform the building based on the reference image. Keep the same overall silhouette and also keep the grass ground as is.",
+    "building_icon_prompt": "Repaint the building only based on the reference and keep the ground as is. Match the framing, perspective, and context of the original tile. The building must sit on the same ground line at the bottom."
   }
 }

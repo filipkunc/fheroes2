@@ -147,6 +147,32 @@ namespace
     }
 }
 
+// Capture a region of the SWAPWIN dialog background sprite into `cache`. After the
+// pure-RGBA Display refactor, copying back from the indexed display surface in the
+// army/artifact/skill regions returns black (the indexed buffer in this region isn't
+// populated under the new render path), so the per-bar Meeting* RedrawBackground
+// caches were permanently capturing black on first call. Reading directly from
+// SWAPWIN[0] uses the actual source of truth for the meeting dialog background.
+inline void cacheMeetingDialogBackground( fheroes2::Image & cache, const fheroes2::Rect & roi )
+{
+    const fheroes2::Sprite & swap = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
+    const fheroes2::Display & display = fheroes2::Display::instance();
+    const int32_t curPtX = ( display.width() - swap.width() ) / 2;
+    const int32_t curPtY = ( display.height() - swap.height() ) / 2;
+    const int32_t srcX = roi.x - curPtX;
+    const int32_t srcY = roi.y - curPtY;
+
+    cache.resize( roi.width, roi.height );
+    if ( srcX >= 0 && srcY >= 0 && srcX + roi.width <= swap.width() && srcY + roi.height <= swap.height() ) {
+        fheroes2::Copy( swap, srcX, srcY, cache, 0, 0, roi.width, roi.height );
+    }
+    else {
+        // Out of SWAPWIN bounds — leave the cache as the default-constructed (transparent/zero)
+        // image rather than a permanent black tile.
+        cache.reset();
+    }
+}
+
 class MeetingArmyBar final : public ArmyBar
 {
 public:
@@ -161,8 +187,7 @@ public:
     void RedrawBackground( const fheroes2::Rect & roi, fheroes2::Image & image ) override
     {
         if ( _cachedBackground.empty() ) {
-            _cachedBackground.resize( roi.width, roi.height );
-            fheroes2::Copy( image, roi.x, roi.y, _cachedBackground, 0, 0, roi.width, roi.height );
+            cacheMeetingDialogBackground( _cachedBackground, roi );
         }
 
         fheroes2::Blit( _cachedBackground, 0, 0, image, roi.x, roi.y, roi.width, roi.height );
@@ -239,8 +264,7 @@ public:
     void RedrawBackground( const fheroes2::Rect & roi, fheroes2::Image & image ) override
     {
         if ( _cachedBackground.empty() ) {
-            _cachedBackground.resize( roi.width, roi.height );
-            fheroes2::Copy( image, roi.x, roi.y, _cachedBackground, 0, 0, roi.width, roi.height );
+            cacheMeetingDialogBackground( _cachedBackground, roi );
         }
 
         fheroes2::Blit( _cachedBackground, 0, 0, image, roi.x, roi.y, roi.width, roi.height );
@@ -291,8 +315,7 @@ public:
     void RedrawBackground( const fheroes2::Rect & roi, fheroes2::Image & image ) override
     {
         if ( _cachedBackground.empty() ) {
-            _cachedBackground.resize( roi.width, roi.height );
-            fheroes2::Copy( image, roi.x, roi.y, _cachedBackground, 0, 0, roi.width, roi.height );
+            cacheMeetingDialogBackground( _cachedBackground, roi );
         }
 
         fheroes2::Blit( _cachedBackground, 0, 0, image, roi.x, roi.y, roi.width, roi.height );
@@ -438,10 +461,20 @@ void Heroes::MeetingDialog( Heroes & otherHero )
     const fheroes2::Sprite & moveButtonBackground = fheroes2::AGG::GetICN( ICN::STONEBAK, 0 );
     fheroes2::Blit( moveButtonBackground, 292, 270, display, cur_pt.x + 292, cur_pt.y + 270, 48, 44 );
 
+    // Build a transient image with the same SWAPWIN background already drawn at cur_pt so
+    // makeButtonWithShadow's Crop(background, ...) reads the meeting dialog scenery (not the
+    // black returned by Crop(display) under the pure-RGBA Display refactor). The 48x44
+    // STONEBAK patch around the central swap-arrow buttons also needs to be present in this
+    // transient buffer so the central buttons get their stone background.
+    fheroes2::Image buttonBackgroundSrc( display.width(), display.height() );
+    buttonBackgroundSrc.reset();
+    fheroes2::Blit( backSprite, src_rt.x, src_rt.y, buttonBackgroundSrc, cur_pt.x, cur_pt.y, src_rt.width, src_rt.height );
+    fheroes2::Blit( moveButtonBackground, 292, 270, buttonBackgroundSrc, cur_pt.x + 292, cur_pt.y + 270, 48, 44 );
+
     // The original resources do not have such animated buttons so we have to create those.
-    fheroes2::ButtonSprite moveArmyToHero2 = createMoveButton( ICN::SWAP_ARROW_LEFT_TO_RIGHT, cur_pt.x + 126, cur_pt.y + 319, display );
-    fheroes2::ButtonSprite moveArmyToHero1 = createMoveButton( ICN::SWAP_ARROW_RIGHT_TO_LEFT, cur_pt.x + 472, cur_pt.y + 319, display );
-    fheroes2::ButtonSprite swapArmies = createMoveButton( ICN::SWAP_ARROWS_CIRCULAR, cur_pt.x + 297, cur_pt.y + 268, display );
+    fheroes2::ButtonSprite moveArmyToHero2 = createMoveButton( ICN::SWAP_ARROW_LEFT_TO_RIGHT, cur_pt.x + 126, cur_pt.y + 319, buttonBackgroundSrc );
+    fheroes2::ButtonSprite moveArmyToHero1 = createMoveButton( ICN::SWAP_ARROW_RIGHT_TO_LEFT, cur_pt.x + 472, cur_pt.y + 319, buttonBackgroundSrc );
+    fheroes2::ButtonSprite swapArmies = createMoveButton( ICN::SWAP_ARROWS_CIRCULAR, cur_pt.x + 297, cur_pt.y + 268, buttonBackgroundSrc );
 
     fheroes2::ImageRestorer armyCountBackgroundRestorerLeft( display, cur_pt.x + 36, cur_pt.y + 311, 223, 8 );
     fheroes2::ImageRestorer armyCountBackgroundRestorerRight( display, cur_pt.x + 381, cur_pt.y + 311, 223, 8 );
@@ -487,9 +520,12 @@ void Heroes::MeetingDialog( Heroes & otherHero )
     selectArtifacts2.Redraw( display );
 
     fheroes2::Blit( moveButtonBackground, 292, 363, display, cur_pt.x + 292, cur_pt.y + 363, 48, 44 );
-    fheroes2::ButtonSprite moveArtifactsToHero2 = createMoveButton( ICN::SWAP_ARROW_LEFT_TO_RIGHT, cur_pt.x + 126, cur_pt.y + 426, display );
-    fheroes2::ButtonSprite moveArtifactsToHero1 = createMoveButton( ICN::SWAP_ARROW_RIGHT_TO_LEFT, cur_pt.x + 472, cur_pt.y + 426, display );
-    fheroes2::ButtonSprite swapArtifacts = createMoveButton( ICN::SWAP_ARROWS_CIRCULAR, cur_pt.x + 297, cur_pt.y + 361, display );
+    // Mirror the lower STONEBAK patch into the transient background so the artifact-row
+    // buttons get the same stone backing.
+    fheroes2::Blit( moveButtonBackground, 292, 363, buttonBackgroundSrc, cur_pt.x + 292, cur_pt.y + 363, 48, 44 );
+    fheroes2::ButtonSprite moveArtifactsToHero2 = createMoveButton( ICN::SWAP_ARROW_LEFT_TO_RIGHT, cur_pt.x + 126, cur_pt.y + 426, buttonBackgroundSrc );
+    fheroes2::ButtonSprite moveArtifactsToHero1 = createMoveButton( ICN::SWAP_ARROW_RIGHT_TO_LEFT, cur_pt.x + 472, cur_pt.y + 426, buttonBackgroundSrc );
+    fheroes2::ButtonSprite swapArtifacts = createMoveButton( ICN::SWAP_ARROWS_CIRCULAR, cur_pt.x + 297, cur_pt.y + 361, buttonBackgroundSrc );
 
     // button exit
     dst_pt.x = cur_pt.x + 280;
