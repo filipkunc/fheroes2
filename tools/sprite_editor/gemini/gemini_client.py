@@ -221,13 +221,22 @@ def slice_sheet(output_sheet: Image.Image, layout: list[tuple[int, int, int, int
 class GeminiClient:
     """Wraps google-genai for sprite sheet generation."""
 
-    def __init__(self, api_key: str | None = None, model: str = "gemini-2.0-flash-preview-image-generation"):
+    def __init__(self, api_key: str | None = None,
+                 model: str = "gemini-2.0-flash-preview-image-generation",
+                 timeout_seconds: int = 120):
         if api_key is None:
             api_key = load_api_key()
         if not api_key:
             raise ValueError("No Gemini API key found. Set ~/.config/gemini/api_key")
-        self._client = genai.Client(api_key=api_key)
+        # Wall-clock cap on each HTTP request so a hung model (e.g. an
+        # ungated preview that never streams) surfaces as a timeout rather
+        # than freezing the worker thread forever.
+        self._client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=timeout_seconds * 1000),
+        )
         self.model = model
+        self.timeout_seconds = timeout_seconds
 
     def send_sheet(self, sheet: Image.Image, prompt: str,
                    system_instruction: str | None = None,
@@ -304,9 +313,16 @@ class GeminiClient:
                 raise RuntimeError(f"Gemini returned no image. Response text: {'; '.join(text_parts) if text_parts else 'none'}")
 
             except Exception as e:
-                if "429" in str(e) and attempt < max_retries - 1:
+                msg = str(e)
+                if "429" in msg and attempt < max_retries - 1:
                     wait = 10 * (attempt + 1) * 2
                     time.sleep(wait)
+                elif "timeout" in msg.lower() or "timed out" in msg.lower():
+                    raise RuntimeError(
+                        f"Gemini request timed out after {self.timeout_seconds}s on model "
+                        f"'{self.model}'. The model may be ungated/not deployed for your "
+                        f"project — try a different model from the dropdown."
+                    ) from e
                 else:
                     raise
 

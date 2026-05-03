@@ -135,6 +135,9 @@ tools/sprite_editor/resources/*.BIN
 tools/sprite_editor/resources/*.PAL
 files/data/sprites/sheets/*.png
 
+# Real-ESRGAN local install (used by scripts/sharpen_frames.py)
+tools/realesrgan/
+
 # Claude Code local settings
 /.claude/
 

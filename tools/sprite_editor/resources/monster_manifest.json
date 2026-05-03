@@ -512,7 +512,7 @@
     "faction": "Custom",
     "frame_count": 32,
     "has_custom_sprites": true,
-    "prompt": "Transform into reference image keep the CGI look, but try to keep the frame pose from the input to fit the frame"
+    "prompt": "Transform into the reference image, but keep the pose from the input"
   },
   "dachshund": {
     "prefix": "dachshund",
