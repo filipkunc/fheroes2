@@ -2725,7 +2725,19 @@ namespace
     // Try to load a single custom PNG sprite from files/data/sprites/ directory.
     // The base sprite provides dimensions and position offsets.
     // Returns true if the sprite was loaded successfully.
-    bool loadSingleCustomPNG( const std::string & fileName, const fheroes2::Sprite & baseSprite, fheroes2::Sprite & outSprite )
+    //
+    // `preserveBaseTransform` controls what happens to the destination's transform layer
+    // when the loaded PNG matches the base sprite's dimensions exactly:
+    //   true  (default) — copy the base's transform onto the result. Used for monster
+    //                     portraits where shadows live in the transform layer (values
+    //                     2/3/...) and the AI PNG's silhouette closely matches the base.
+    //   false           — keep the loaded PNG's own transform (alpha keyed from the PNG).
+    //                     Used for building swaps where the AI's silhouette differs from
+    //                     the base — copying the base transform there masks the AI to the
+    //                     base's outline and leaves black RGB peeking out wherever the
+    //                     AI is transparent inside the base's opaque region.
+    bool loadSingleCustomPNG( const std::string & fileName, const fheroes2::Sprite & baseSprite, fheroes2::Sprite & outSprite,
+                              const bool preserveBaseTransform = true )
     {
         const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
 
@@ -2754,7 +2766,7 @@ namespace
 
         outSprite.setPosition( baseSprite.x(), baseSprite.y() );
 
-        if ( !needsResize && !baseSprite.singleLayer() ) {
+        if ( preserveBaseTransform && !needsResize && !baseSprite.singleLayer() ) {
             memcpy( outSprite.transform(), baseSprite.transform(), static_cast<size_t>( baseSprite.width() ) * baseSprite.height() );
         }
 
@@ -2923,6 +2935,13 @@ namespace
         case ICN::TWNWUP5A:
             // Azure Tower: generated from Green Tower (TWNWDW_5) with green-to-blue palette transform.
             CopyICNWithPalette( id, ICN::TWNWDW_5, PAL::PaletteType::AZURE_TOWER );
+            // If a hi-res building PNG exists, overwrite frame 0 with it.
+            if ( !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite tmp = _icnVsSprite[id][0];
+                if ( loadSingleCustomPNG( "azure_dragon_building.png", _icnVsSprite[id][0], tmp, false ) ) {
+                    _icnVsSprite[id][0] = std::move( tmp );
+                }
+            }
             break;
         case ICN::DRAGBLOD: {
             // Blood Dragon sprites generated from Bone Dragon with red palette transformation.
@@ -2957,6 +2976,12 @@ namespace
         case ICN::TWNNUP5A:
             // Upg. Laboratory: generated from Laboratory dwelling with red palette transform.
             CopyICNWithPalette( id, ICN::TWNNDW_5, PAL::PaletteType::BLOOD_CRYPT );
+            if ( !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite tmp = _icnVsSprite[id][0];
+                if ( loadSingleCustomPNG( "blood_dragon_building.png", _icnVsSprite[id][0], tmp, false ) ) {
+                    _icnVsSprite[id][0] = std::move( tmp );
+                }
+            }
             break;
         case ICN::TITNTHOR: {
             const size_t thorSpriteCount = 56; // Must cover all animation frames including ranged (up to frame 53)
@@ -3010,6 +3035,12 @@ namespace
         case ICN::TWNZUP5A:
             // Hall of Valhalla: generated from Upg. Cloud Castle (TWNZUP_5) with blue palette transform.
             CopyICNWithPalette( id, ICN::TWNZUP_5, PAL::PaletteType::THOR_TOWER );
+            if ( !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite tmp = _icnVsSprite[id][0];
+                if ( loadSingleCustomPNG( "thor_building.png", _icnVsSprite[id][0], tmp, false ) ) {
+                    _icnVsSprite[id][0] = std::move( tmp );
+                }
+            }
             break;
         case ICN::AVENGER: {
             // Avenger battle sprites generated from Crusader (PALADIN2) with golden palette transformation.
@@ -3043,6 +3074,12 @@ namespace
         case ICN::TWNKUP5A:
             // Avenger's Chapel: generated from Upg. Cathedral (TWNKUP_5) with golden palette transform.
             CopyICNWithPalette( id, ICN::TWNKUP_5, PAL::PaletteType::AVENGER_CHAPEL );
+            if ( !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite tmp = _icnVsSprite[id][0];
+                if ( loadSingleCustomPNG( "avenger_building.png", _icnVsSprite[id][0], tmp, false ) ) {
+                    _icnVsSprite[id][0] = std::move( tmp );
+                }
+            }
             break;
         case ICN::SUCCUBUS: {
             const size_t succubusSpriteCount = 32; // Same as Gargoyle sprite count
@@ -3075,7 +3112,7 @@ namespace
             // If a hi-res building PNG exists, overwrite frame 0 with it.
             if ( !_icnVsSprite[id].empty() ) {
                 fheroes2::Sprite tmp = _icnVsSprite[id][0];
-                if ( loadSingleCustomPNG( "succubus_building.png", _icnVsSprite[id][0], tmp ) ) {
+                if ( loadSingleCustomPNG( "succubus_building.png", _icnVsSprite[id][0], tmp, false ) ) {
                     _icnVsSprite[id][0] = std::move( tmp );
                 }
             }
@@ -3110,7 +3147,7 @@ namespace
             CopyICNWithPalette( id, ICN::TWNBDW_2, PAL::PaletteType::DACHSHUND_DEN );
             if ( !_icnVsSprite[id].empty() ) {
                 fheroes2::Sprite tmp = _icnVsSprite[id][0];
-                if ( loadSingleCustomPNG( "dachshund_building.png", _icnVsSprite[id][0], tmp ) ) {
+                if ( loadSingleCustomPNG( "dachshund_building.png", _icnVsSprite[id][0], tmp, false ) ) {
                     _icnVsSprite[id][0] = std::move( tmp );
                 }
             }
@@ -3144,7 +3181,7 @@ namespace
             CopyICNWithPalette( id, ICN::TWNKDW_0, PAL::PaletteType::STANDARD );
             if ( !_icnVsSprite[id].empty() ) {
                 fheroes2::Sprite tmp = _icnVsSprite[id][0];
-                if ( loadSingleCustomPNG( "maid_building.png", _icnVsSprite[id][0], tmp ) ) {
+                if ( loadSingleCustomPNG( "maid_building.png", _icnVsSprite[id][0], tmp, false ) ) {
                     _icnVsSprite[id][0] = std::move( tmp );
                 }
             }
@@ -4416,6 +4453,8 @@ namespace
                 // Copy Upg. Cloud Castle sprite and apply Hall of Valhalla palette.
                 _icnVsSprite[id][33] = _icnVsSprite[id][29];
                 ApplyPalette( _icnVsSprite[id][33], PAL::GetPalette( PAL::PaletteType::THOR_TOWER ) );
+                // Override with hand-authored / AI-generated icon PNG when available.
+                tryLoadBuildingIconPNG( id, 33, "thor_building_icon.png" );
             }
             break;
         case ICN::CSTLKNGT:
@@ -4428,6 +4467,7 @@ namespace
                 // Copy Upg. Cathedral sprite and apply Avenger's Chapel palette.
                 _icnVsSprite[id][34] = _icnVsSprite[id][29];
                 ApplyPalette( _icnVsSprite[id][34], PAL::GetPalette( PAL::PaletteType::AVENGER_CHAPEL ) );
+                tryLoadBuildingIconPNG( id, 34, "avenger_building_icon.png" );
             }
             // Maid's Hut small icon. Preferred path: a dedicated maid_building_icon.png with
             // sky/grass context baked in by the editor, loaded directly into CSTLKNGT[37].
@@ -4498,6 +4538,7 @@ namespace
                 // Append Azure Tower sprite at index 31, using Red Tower as base with red-to-blue transform.
                 _icnVsSprite[id].push_back( _icnVsSprite[id][29] );
                 ApplyPalette( _icnVsSprite[id].back(), PAL::GetPalette( PAL::PaletteType::AZURE_TOWER_SMALL ) );
+                tryLoadBuildingIconPNG( id, 31, "azure_dragon_building_icon.png" );
             }
             break;
         case ICN::CSTLNECR:
@@ -4510,6 +4551,7 @@ namespace
                 // Copy Laboratory sprite and apply Upg. Laboratory palette.
                 _icnVsSprite[id][32] = _icnVsSprite[id][24];
                 ApplyPalette( _icnVsSprite[id][32], PAL::GetPalette( PAL::PaletteType::BLOOD_CRYPT ) );
+                tryLoadBuildingIconPNG( id, 32, "blood_dragon_building_icon.png" );
             }
             break;
         case ICN::CSTLSORC:

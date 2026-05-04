@@ -8,7 +8,11 @@
     "faction": "Custom",
     "frame_count": 54,
     "has_custom_sprites": true,
-    "building_prompt": "Transform the building to match the new monster. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
+    "base_building_icn": "TWNWDW_5",
+    "base_building_icon_icn": "CSTLWRLK",
+    "base_building_icon_index": 29,
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders.",
+    "building_icon_prompt": "Repaint the building tile to match the new monster. Match the framing, perspective, and ground/sky context of the original tile. The building must sit on the same ground line at the bottom."
   },
   "thor": {
     "prefix": "thor",
@@ -18,7 +22,13 @@
     "base_monster": "Titan",
     "faction": "Custom",
     "frame_count": 56,
-    "has_custom_sprites": true
+    "has_custom_sprites": true,
+    "base_building_icn": "TWNZUP_5",
+    "base_building_icon_icn": "CSTLWZRD",
+    "base_building_icon_index": 29,
+    "building_prompt": "Transform the building to look a bit more like Valhalla, it is a dwelling for Thor unit. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders.",
+    "building_icon_prompt": "Repaint the building tile to match the reference. Match the framing, perspective, and ground/sky context of the original tile. The building must sit on the same ground line at the bottom.",
+    "prompt": "Transform into Thor which has a hammer instead of the lightning bolt"
   },
   "blood_dragon": {
     "prefix": "blood_dragon",
@@ -29,7 +39,11 @@
     "faction": "Custom",
     "frame_count": 54,
     "has_custom_sprites": false,
-    "palette_remap": "blood_dragon"
+    "palette_remap": "blood_dragon",
+    "base_building_icn": "TWNNDW_5",
+    "base_building_icon_icn": "CSTLNECR",
+    "base_building_icon_index": 24,
+    "building_prompt": "Transform the building to match the new monster. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "avenger": {
     "prefix": "avenger",
@@ -40,7 +54,11 @@
     "faction": "Custom",
     "frame_count": 50,
     "has_custom_sprites": false,
-    "palette_remap": "avenger"
+    "palette_remap": "avenger",
+    "base_building_icn": "TWNKUP_5",
+    "base_building_icon_icn": "CSTLKNGT",
+    "base_building_icon_index": 29,
+    "building_prompt": "Transform the building into cute cartoony dog house. Keep the same overall silhouette and also keep the path to it as is."
   },
   "peasant": {
     "prefix": "peasant",

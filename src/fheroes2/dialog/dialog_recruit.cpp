@@ -170,7 +170,8 @@ namespace
         const Bin_Info::MonsterAnimInfo & monsterInfo = Bin_Info::GetMonsterInfo( monsterId );
         assert( !monsterInfo.animationFrames[Bin_Info::MonsterAnimInfo::STATIC].empty() );
 
-        const fheroes2::Sprite & smon = fheroes2::AGG::GetICN( monster.GetMonsterSprite(), monsterInfo.animationFrames[Bin_Info::MonsterAnimInfo::STATIC][0] );
+        const int32_t staticFrameIndex = monsterInfo.animationFrames[Bin_Info::MonsterAnimInfo::STATIC][0];
+        const fheroes2::Sprite & smon = fheroes2::AGG::GetICN( monster.GetMonsterSprite(), staticFrameIndex );
         dst_pt.x = pos.x + 64 + smon.x() - ( monster.isWide() ? 22 : 0 );
         const int32_t monsterExtraOffsetY = std::max<int32_t>( 0, smon.height() - 96 );
         dst_pt.y = pos.y + 119 - smon.height() + monsterExtraOffsetY;
@@ -179,7 +180,21 @@ namespace
             ++dst_pt.x;
         }
 
-        fheroes2::Blit( smon, display, dst_pt.x, dst_pt.y );
+        // For hi-res RGBA monsters (Thor, Maid, Succubus, Dachshund, ...) skip the indexed
+        // base sprite entirely and direct-paint the RGBA portrait — same pattern as
+        // dialog_armyinfo.cpp. Drawing the indexed sprite underneath would show the
+        // palette-quantised base (Gargoyle for Succubus, Wolf for Dachshund, ...) through
+        // any transparent gaps in the hi-res silhouette.
+        const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( monsterId );
+        const bool useHiRes = rgbaFrames != nullptr && staticFrameIndex >= 0
+                              && staticFrameIndex < static_cast<int32_t>( rgbaFrames->size() ) && !( *rgbaFrames )[staticFrameIndex].empty();
+
+        if ( useHiRes ) {
+            fheroes2::AGG::renderHiResMonsterPortrait( ( *rgbaFrames )[staticFrameIndex], dst_pt.x, dst_pt.y, smon.width() );
+        }
+        else {
+            fheroes2::Blit( smon, display, dst_pt.x, dst_pt.y );
+        }
 
         // Resources needed to buy monster.
         if ( needExtraResources ) {
@@ -378,8 +393,17 @@ Troop Dialog::RecruitMonster( const Monster & monster0, const uint32_t available
     buttonDn.draw();
 
     // Make a copy of background dialog to restore its parts before updating some dialog elements.
+    // The indexed copy here is used by partial-text restores in RedrawCurrentInfo / button
+    // releases — small areas where the format mismatch gets papered over by immediate redraws.
     background.resize( windowSize.width, windowSize.height );
     fheroes2::Copy( display, dialogOffset.x, dialogOffset.y, background, 0, 0, windowSize.width, windowSize.height );
+
+    // Full-dialog restore on monster switch needs to round-trip the actual visible pixels —
+    // plain Copy(RGBA-Display → indexed) quantises through palette resolution and loses the
+    // parchment under the pure-RGBA Display refactor, leaving the dialog area black after
+    // restore. ImageRestorer uses capturePhysicalCopy/restorePhysicalCopy which preserves the
+    // physical-pixel state, so restore() reproduces what the user actually saw.
+    fheroes2::ImageRestorer dialogBackgroundRestorer( display, dialogOffset.x, dialogOffset.y, windowSize.width, windowSize.height );
 
     RedrawMonsterInfo( windowActiveArea, monster, available, true );
 
@@ -530,8 +554,10 @@ Troop Dialog::RecruitMonster( const Monster & monster0, const uint32_t available
         }
 
         if ( updateMonsterInfo ) {
-            // Restore the recruit dialog background.
-            fheroes2::Copy( background, 0, 0, display, dialogOffset.x, dialogOffset.y, windowSize.width, windowSize.height );
+            // Restore the recruit dialog background. ImageRestorer uses the physical-buffer
+            // pathway so the parchment + cost frame + buttons come back intact (a plain
+            // Copy from the indexed `background` here writes black under pure-RGBA Display).
+            dialogBackgroundRestorer.restore();
 
             max = CalculateMax( monster, kingdom, available );
 
@@ -635,7 +661,17 @@ Troop Dialog::RecruitMonster( const Monster & monster0, const uint32_t available
         }
 
         if ( redraw ) {
-            RedrawCurrentInfo( dialogOffset, result, paymentMonster, paymentCosts, funds, maxmin, background );
+            // Full dialog restore + redraw on each count/upgrade change. The previous
+            // partial-restore approach inside RedrawCurrentInfo Copy'd from the indexed
+            // `background` cache, which doesn't round-trip the RGBA Display's physical-
+            // pixel state under the pure-RGBA refactor — those Copies wrote transparent
+            // pixels and let the castle scene leak through under the cost row. Going
+            // through the ImageRestorer-backed full restore costs a 299×272 RGBA blit
+            // per redraw, which is negligible for a modal dialog and keeps everything
+            // visually clean.
+            dialogBackgroundRestorer.restore();
+            RedrawMonsterInfo( windowActiveArea, monster, available, true );
+            RedrawCurrentInfo( dialogOffset, result, paymentMonster, paymentCosts, funds, maxmin );
 
             if ( 0 == result ) {
                 buttonOk.disable();

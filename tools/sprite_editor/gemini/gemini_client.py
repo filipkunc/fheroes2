@@ -223,7 +223,7 @@ class GeminiClient:
 
     def __init__(self, api_key: str | None = None,
                  model: str = "gemini-2.0-flash-preview-image-generation",
-                 timeout_seconds: int = 120):
+                 timeout_seconds: int = 60):
         if api_key is None:
             api_key = load_api_key()
         if not api_key:
@@ -241,7 +241,8 @@ class GeminiClient:
     def send_sheet(self, sheet: Image.Image, prompt: str,
                    system_instruction: str | None = None,
                    reference: Image.Image | None = None,
-                   max_retries: int = 3) -> Image.Image | None:
+                   max_retries: int = 3,
+                   should_cancel=None) -> Image.Image | None:
         """Send a sprite sheet to Gemini and return the transformed sheet.
 
         Returns the output image or None on failure.
@@ -314,14 +315,33 @@ class GeminiClient:
 
             except Exception as e:
                 msg = str(e)
-                if "429" in msg and attempt < max_retries - 1:
-                    wait = 10 * (attempt + 1) * 2
-                    time.sleep(wait)
+                # 429 = rate limit, 503 = server overloaded, 502/504 = bad gateway / gateway
+                # timeout. All are transient — retry with bounded backoff (5s, 10s, 20s).
+                is_transient = any(code in msg for code in ("429", "502", "503", "504")) or "UNAVAILABLE" in msg.upper()
+                if is_transient and attempt < max_retries - 1:
+                    wait = 5 * (2 ** attempt)
+                    # Sleep in 0.5s chunks so the worker can cancel quickly when the user
+                    # hits the Cancel button — the previous monolithic time.sleep made the
+                    # whole worker thread unresponsive for up to a minute.
+                    elapsed = 0.0
+                    while elapsed < wait:
+                        if should_cancel is not None and should_cancel():
+                            return None
+                        time.sleep(0.5)
+                        elapsed += 0.5
                 elif "timeout" in msg.lower() or "timed out" in msg.lower():
                     raise RuntimeError(
                         f"Gemini request timed out after {self.timeout_seconds}s on model "
                         f"'{self.model}'. The model may be ungated/not deployed for your "
                         f"project — try a different model from the dropdown."
+                    ) from e
+                elif "503" in msg or "UNAVAILABLE" in msg.upper():
+                    # Out of retries on 503 specifically — give the user actionable advice.
+                    raise RuntimeError(
+                        f"Gemini returned 503 (Service Unavailable) on model '{self.model}' "
+                        f"after {max_retries} retries. The preview image models are frequently "
+                        f"overloaded — try 'gemini-2.5-flash-image' from the model dropdown, "
+                        f"or wait a minute and retry."
                     ) from e
                 else:
                     raise

@@ -591,7 +591,20 @@ void Castle::_wellRedrawMonsterAnimation( const fheroes2::Rect & roi, std::array
         fheroes2::Size inSize( smonster.width(), smonster.height() );
 
         if ( fheroes2::FitToRoi( smonster, inPos, display, outPos, inSize, roi ) ) {
-            fheroes2::Blit( smonster, inPos, display, outPos, inSize, flipMonsterSprite );
+            // For hi-res RGBA monsters (Thor, Maid, Succubus, Dachshund, ...) overlay the
+            // original PNG via renderHiResMonsterPortrait — same pattern as dialog_armyinfo.cpp
+            // and dialog_recruit.cpp. The indexed smonster is still used for layout (outPos
+            // math) so the hi-res render lands at the same anchor and size.
+            const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( monster.GetID() );
+            const int32_t animFrame = monsterAnimInfo[monsterId].frameId();
+            const bool useHiRes = rgbaFrames != nullptr && animFrame >= 0 && animFrame < static_cast<int32_t>( rgbaFrames->size() ) && !( *rgbaFrames )[animFrame].empty();
+
+            if ( useHiRes ) {
+                fheroes2::AGG::renderHiResMonsterPortrait( ( *rgbaFrames )[animFrame], outPos.x, outPos.y, inSize.width, flipMonsterSprite );
+            }
+            else {
+                fheroes2::Blit( smonster, inPos, display, outPos, inSize, flipMonsterSprite );
+            }
         }
 
         monsterAnimInfo[monsterId].increment();

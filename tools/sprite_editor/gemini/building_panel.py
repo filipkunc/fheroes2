@@ -50,14 +50,28 @@ class BuildingWorker(QThread):
         self._prompt = prompt
         self._system = system
         self._reference = reference
+        self._cancelled = False
+
+    def cancel(self):
+        # The Gemini SDK call itself is uninterruptible (it's a synchronous HTTP request),
+        # but our retry-backoff sleeps poll this flag every 0.5s and will return early.
+        self._cancelled = True
 
     def run(self):
         try:
+            # Single attempt only — no auto-retry. If the model 503s the user can hit
+            # Cancel and try again with a different model, instead of being locked into
+            # 2 minutes of backoff sleeps.
             result = self._client.send_sheet(
                 self._image, self._prompt,
                 system_instruction=self._system,
                 reference=self._reference,
+                max_retries=1,
+                should_cancel=lambda: self._cancelled,
             )
+            if self._cancelled:
+                self.error.emit("Cancelled by user")
+                return
             self.finished.emit(result)
         except Exception as e:
             self.error.emit(str(e))
@@ -194,6 +208,14 @@ class BuildingPanel(QWidget):
         self._send_btn.setEnabled(False)
         action_layout.addWidget(self._send_btn)
 
+        self._cancel_btn = QPushButton("Cancel")
+        self._cancel_btn.setToolTip("Abort the current generation. The HTTP request itself "
+                                     "completes in the background, but retry-backoff sleeps "
+                                     "abort within 0.5s and the result is discarded.")
+        self._cancel_btn.clicked.connect(self._cancel_generation)
+        self._cancel_btn.setEnabled(False)
+        action_layout.addWidget(self._cancel_btn)
+
         self._accept_btn = QPushButton("Accept (save PNG)")
         self._accept_btn.clicked.connect(self._accept)
         self._accept_btn.setEnabled(False)
@@ -222,10 +244,14 @@ class BuildingPanel(QWidget):
 
         settings_layout.addWidget(QLabel("Model:"))
         self._model_combo = QComboBox()
+        # Identifiers per https://ai.google.dev/gemini-api/docs/models (2026):
+        #   gemini-3-pro-image-preview      = "Nano Banana Pro" (highest quality, frequently 503s)
+        #   gemini-3.1-flash-image-preview  = "Nano Banana 2" (Feb 2026 release, good middle ground)
+        #   gemini-2.5-flash-image          = "Nano Banana" (most stable / lowest 5xx rate)
         self._model_combo.addItems([
             "gemini-3-pro-image-preview",
+            "gemini-3.1-flash-image-preview",
             "gemini-2.5-flash-image",
-            "nano-banana-pro-preview",
         ])
         self._model_combo.setCurrentIndex(0)
         settings_layout.addWidget(self._model_combo)
@@ -633,6 +659,7 @@ class BuildingPanel(QWidget):
             return
 
         self._send_btn.setEnabled(False)
+        self._cancel_btn.setEnabled(True)
         self._status_label.setText("Sending to Gemini...")
 
         self._worker = BuildingWorker(client, upscaled, prompt, system, self._reference_image)
@@ -640,8 +667,15 @@ class BuildingPanel(QWidget):
         self._worker.error.connect(self._on_error)
         self._worker.start()
 
+    def _cancel_generation(self):
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.cancel()
+            self._cancel_btn.setEnabled(False)
+            self._status_label.setText("Cancelling…")
+
     def _on_result(self, result: Image.Image | None):
         self._send_btn.setEnabled(True)
+        self._cancel_btn.setEnabled(False)
 
         if result is None:
             self._status_label.setText("Gemini returned no image")
@@ -676,8 +710,10 @@ class BuildingPanel(QWidget):
 
     def _on_error(self, error_msg: str):
         self._send_btn.setEnabled(True)
+        self._cancel_btn.setEnabled(False)
         self._status_label.setText(f"Error: {error_msg}")
-        QMessageBox.critical(self, "Gemini Error", error_msg)
+        if error_msg != "Cancelled by user":
+            QMessageBox.critical(self, "Gemini Error", error_msg)
 
     def _key_bg_to_alpha(self, img: Image.Image) -> Image.Image:
         import numpy as np

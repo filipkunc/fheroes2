@@ -163,8 +163,8 @@ class GeminiPanel(QWidget):
         self._model_combo = QComboBox()
         self._model_combo.addItems([
             "gemini-3-pro-image-preview",
+            "gemini-3.1-flash-image-preview",
             "gemini-2.5-flash-image",
-            "nano-banana-pro-preview",
         ])
         self._model_combo.setCurrentIndex(0)
         settings_layout.addWidget(self._model_combo)
