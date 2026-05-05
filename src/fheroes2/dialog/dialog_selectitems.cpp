@@ -463,6 +463,7 @@ namespace
             return fheroes2::generateMapObjectImage( object );
         }
 
+    protected:
         const std::vector<Maps::ObjectInfo> & _objectInfo;
 
         const int32_t _imageOffsetX{ 0 };
@@ -479,6 +480,26 @@ namespace
             : ObjectTypeSelection( objectInfo, size, std::move( title ), 45 / 2, 50, 43 )
         {
             // Do nothing.
+        }
+
+        using ObjectTypeSelection::ActionListPressRight;
+
+        void RedrawItem( const int32_t & objectId, int32_t posX, int32_t posY, bool isSelected ) override
+        {
+            ObjectTypeSelection::RedrawItem( objectId, posX, posY, isSelected );
+
+            // Match the SelectEnumMonster (Set Count / Battle Only) row treatment: for monsters
+            // with a hi-res RGBA portrait, direct-paint the cropped portrait into the icon area
+            // after the palette row has been mirrored to _screenRGBA.
+            assert( objectId >= 0 && objectId < static_cast<int>( _objectInfo.size() ) );
+            const int monsterId = static_cast<int>( _objectInfo[objectId].metadata[0] );
+            const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( monsterId );
+            if ( portrait != nullptr && !portrait->empty() ) {
+                const int32_t iconBoxSize = 32;
+                const int32_t iconBoxX = posX + 1 + ( 43 - iconBoxSize ) / 2;
+                const int32_t iconBoxY = posY + ( 43 - iconBoxSize ) / 2;
+                fheroes2::AGG::drawCustomPortraitInBox( *portrait, iconBoxX, iconBoxY, iconBoxSize, iconBoxSize );
+            }
         }
 
     private:
@@ -500,6 +521,16 @@ namespace
 
         fheroes2::Sprite getObjectImage( const Maps::ObjectInfo & object ) const override
         {
+            // For hi-res RGBA monsters, return the bare 43×43 background — the palette monster
+            // sprite is covered by the cropped RGBA portrait drawn in RedrawItem.
+            const int monsterId = static_cast<int>( object.metadata[0] );
+            if ( fheroes2::AGG::GetRGBACustomPortrait( monsterId ) != nullptr ) {
+                const fheroes2::Sprite & backgroundOriginal = fheroes2::AGG::GetICN( ICN::SWAPWIN, 0 );
+                fheroes2::Sprite image = fheroes2::Crop( backgroundOriginal, 36, 267, 43, 43 );
+                image.setPosition( 0, 0 );
+                return image;
+            }
+
             const fheroes2::Sprite & image = fheroes2::generateMapObjectImage( object );
             return renderMonsterOnBackground( image );
         }

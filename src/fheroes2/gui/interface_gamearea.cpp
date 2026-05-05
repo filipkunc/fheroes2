@@ -79,6 +79,11 @@ namespace
         std::map<fheroes2::Point, std::deque<fheroes2::ObjectRenderingInfo>> heroBackgroundImages;
 
         std::map<fheroes2::Point, std::deque<fheroes2::ObjectRenderingInfo>> shadowImages;
+
+        // Custom hi-res RGBA monsters: replace the palette MINI_MONSTER_IMAGE blit with a direct
+        // RGBA paint into Display::screenRGBA(). Stores tile-pos + monster ID; the actual paint
+        // happens after bottomImages render so the figure lands on top of terrain/shadows.
+        std::vector<std::pair<fheroes2::Point, int>> hiResMonsters;
     };
 
     void populateStaticTileUnfitObjectInfo( TileUnfitRenderObjectInfo & tileUnfit, std::vector<fheroes2::ObjectRenderingInfo> & imageInfo,
@@ -489,6 +494,11 @@ void Interface::GameArea::Redraw( fheroes2::Image & dst, int flag, bool isPuzzle
 
     const bool isEditor = _interface.isEditor();
 
+    // Hi-res RGBA monster portraits write directly to Display::screenRGBA(). When the caller
+    // renders into a buffer other than the actual display (e.g. View World's downscaled snapshot)
+    // we must keep the indexed mini-sprite path so the portrait still appears in that buffer.
+    const bool dstIsDisplay = ( &dst == &fheroes2::Display::instance() );
+
     std::vector<fheroes2::Point> ghostAnimationPos;
 
     for ( int32_t posY = roiToRenderMinY; posY < roiToRenderMaxY; ++posY ) {
@@ -546,6 +556,18 @@ void Interface::GameArea::Redraw( fheroes2::Image & dst, int flag, bool isPuzzle
 
                 auto spriteInfo = getMonsterSpritesPerTile( tile, isEditor );
                 auto spriteShadowInfo = getMonsterShadowSpritesPerTile( tile, isEditor );
+
+                // Custom hi-res RGBA monsters: when rendering to the display, replace the palette
+                // mini-sprite with a direct RGBA portrait paint. The shadow keeps its palette path
+                // so the figure still casts the same drop-shadow on the terrain.
+                if ( dstIsDisplay && alphaValue == 255 ) {
+                    const Monster monster = Maps::getMonsterFromTile( tile );
+                    const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( monster.GetID() );
+                    if ( portrait != nullptr && !portrait->empty() ) {
+                        spriteInfo.clear();
+                        tileUnfit.hiResMonsters.emplace_back( fheroes2::Point( posX, posY ), monster.GetID() );
+                    }
+                }
 
                 populateStaticTileUnfitObjectInfo( tileUnfit, spriteInfo, spriteShadowInfo, { posX, posY }, alphaValue, fogDirection );
 
@@ -654,6 +676,34 @@ void Interface::GameArea::Redraw( fheroes2::Image & dst, int flag, bool isPuzzle
 
     // Draw middle part of tile-unfit sprites.
     renderImagesOnTiles( dst, tileUnfit.bottomImages, *this );
+
+    // Hi-res RGBA monster portraits replace the palette MINI_MONSTER_IMAGE blit. They paint
+    // directly into Display::screenRGBA() so the figure lands on top of terrain + shadows. Sized
+    // to roughly one tile (32 px) tall so adventure-map scale matches the surrounding palette art.
+    if ( !tileUnfit.hiResMonsters.empty() ) {
+        for ( const auto & [tilePos, monsterId] : tileUnfit.hiResMonsters ) {
+            const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( monsterId );
+            if ( portrait == nullptr || portrait->empty() ) {
+                continue;
+            }
+            const fheroes2::Point tileScreen = GetRelativeTilePosition( tilePos );
+            // Anchor the portrait so its bottom-centre matches the original mini-sprite anchor
+            // (tile centre + monsterImageOffset {16, 30}). Box height of one tile is too small for
+            // the upper-body framing — lift it slightly so the figure is recognisable without
+            // overlapping the next tile up.
+            const int32_t boxW = fheroes2::tileWidthPx + 8;
+            const int32_t boxH = fheroes2::tileWidthPx + 8;
+            const int32_t boxX = tileScreen.x + 16 - boxW / 2;
+            const int32_t boxY = tileScreen.y + 30 - boxH;
+            // Clip against the visible game area so portraits at the edges don't bleed into the
+            // panel/border areas.
+            const fheroes2::Rect visibleRect = _windowROI ^ fheroes2::Rect( boxX, boxY, boxW, boxH );
+            if ( visibleRect.width <= 0 || visibleRect.height <= 0 ) {
+                continue;
+            }
+            fheroes2::AGG::drawCustomPortraitInBox( *portrait, boxX, boxY, boxW, boxH );
+        }
+    }
 
     // High priority images are drawn after any other object on this tile.
     renderImagesOnTiles( dst, tileUnfit.highPriorityBottomImages, *this );

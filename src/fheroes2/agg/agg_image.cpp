@@ -59,6 +59,7 @@
 #include "tools.h"
 #include "translations.h"
 #include "ui_button.h"
+#include "ui_constants.h"
 #include "ui_font.h"
 #include "ui_language.h"
 #include "ui_text.h"
@@ -2927,11 +2928,19 @@ namespace
             }
             break;
         }
-        case ICN::MONH_AZURE_DRAGON:
-            // Azure Dragon portrait generated from Green Dragon portrait (MONH0035) with blue palette.
-            // Green Dragon ID is 36, PEASANT is 1, so portrait index = 36 - 1 = 35.
+        case ICN::MONH_AZURE_DRAGON: {
+            // Azure Dragon portrait: start from palette-remapped Green Dragon portrait (fallback +
+            // correct dimensions/offset), then overwrite pixels with a downscaled hi-res frame 1
+            // PNG when the custom battle PNGs are available. Matches the approach used by Succubus,
+            // Dachshund, and Maid. Green Dragon ID 36, so portrait index 35.
             CopyICNWithPalette( id, ICN::MONH0035, PAL::PaletteType::AZURE_DRAGON );
+            const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::AZURE_DRAGON );
+            if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() && !_icnVsSprite[id].empty() ) {
+                fheroes2::Sprite & portrait = _icnVsSprite[id][0];
+                writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], portrait.width(), portrait.height(), portrait );
+            }
             break;
+        }
         case ICN::TWNWUP5A:
             // Azure Tower: generated from Green Tower (TWNWDW_5) with green-to-blue palette transform.
             CopyICNWithPalette( id, ICN::TWNWDW_5, PAL::PaletteType::AZURE_TOWER );
@@ -3716,6 +3725,23 @@ namespace
                 modified.transform()[19 * 9 + 9] = modified.transform()[19 * 5 + 11];
             }
 
+            // Preserve the original random-monster ball sprites BEFORE the custom-monster blocks
+            // overwrite indices 66-70. The Monster::ID enum was extended (AZURE_DRAGON…MAID inserted
+            // between WATER_ELEMENT and RANDOM_MONSTER), so RANDOM_MONSTER and its level variants now
+            // resolve to MONS32 indices 73-77 — without this copy those slots are empty and the
+            // editor's Select Monster list shows blank rows for "Random Monster" entries.
+            // Original layout: MONS32[66]=MON, [67]=MON 1, [68]=MON 2, [69]=MON 3, [70]=MON 4.
+            if ( _icnVsSprite[id].size() > 70 ) {
+                const size_t randomMonsterTargetIndex = 73;
+                const size_t lastRandomTarget = randomMonsterTargetIndex + 4;
+                if ( _icnVsSprite[id].size() <= lastRandomTarget ) {
+                    _icnVsSprite[id].resize( lastRandomTarget + 1 );
+                }
+                for ( size_t i = 0; i < 5; ++i ) {
+                    _icnVsSprite[id][randomMonsterTargetIndex + i] = _icnVsSprite[id][66 + i];
+                }
+            }
+
             // Add Azure Dragon sprite (based on Green Dragon with blue palette).
             // Green Dragon is at monster ID 36, so sprite index 35. Azure Dragon is at monster ID 67, so sprite index 66.
             if ( _icnVsSprite[id].size() > 35 ) {
@@ -3726,6 +3752,13 @@ namespace
                 }
                 _icnVsSprite[id][azureDragonSpriteIndex] = _icnVsSprite[id][greenDragonSpriteIndex];
                 ApplyPalette( _icnVsSprite[id][azureDragonSpriteIndex], PAL::GetPalette( PAL::PaletteType::AZURE_DRAGON ) );
+
+                // If hi-res PNGs exist, bake the icon from frame 1 — matches Succubus / Dachshund / Maid.
+                const std::vector<fheroes2::Image> * rgbaFrames = fheroes2::AGG::GetRGBACustomFrames( Monster::AZURE_DRAGON );
+                if ( rgbaFrames != nullptr && rgbaFrames->size() > 1 && !( *rgbaFrames )[1].empty() ) {
+                    fheroes2::Sprite & icon = _icnVsSprite[id][azureDragonSpriteIndex];
+                    writeIndexedSpriteFromRGBA( ( *rgbaFrames )[1], icon.width(), icon.height(), icon );
+                }
             }
 
             // Add Blood Dragon sprite (based on Bone Dragon with red palette).
@@ -6763,6 +6796,7 @@ namespace fheroes2::AGG
         const RGBACustomEntry & getRGBACustomRegistryEntries( size_t & count )
         {
             static const RGBACustomEntry registry[] = {
+                { Monster::AZURE_DRAGON, "azure_dragon", 54 },
                 { Monster::THOR, "thor", 56 },
                 { Monster::SUCCUBUS, "succubus", 32 },
                 { Monster::DACHSHUND, "dachshund", 33 },
@@ -6999,6 +7033,114 @@ namespace fheroes2::AGG
         const int32_t overlayX = boxX + ( boxW - overlayW ) / 2;
         const int32_t overlayY = boxY + ( boxH - overlayH );
         renderHiResMonsterPortrait( portrait, overlayX, overlayY, overlayW );
+    }
+
+    const Sprite * GetRGBACustomCursorSprite( const int monsterId )
+    {
+        // Editor drop-monster cursor: produce a true RGBA32 sprite from the bbox-cropped portrait
+        // so SDL can ship it as a colour cursor at full RGBA fidelity (no palette quantisation,
+        // alpha edges preserved). RenderCursor::update accepts RGBA_32BIT singleLayer images; the
+        // resulting cursor matches the on-map figure's appearance much more closely than a
+        // palette-baked one, at the cost of a non-system-cursor (which the OS supports anyway).
+        //
+        // The SDL cursor renders 1:1 to physical pixels, so the surface size IS the physical-pixel
+        // size on screen. We bake at the on-map physical-pixel scale (game tile-plus-margin times
+        // Display::getPhysicalScale()) so the cursor visually matches the on-map figure size.
+        //
+        // setPosition(-w/2, -h/2) gives a centred SDL hotspot — same convention
+        // generateMapObjectImage uses for single-tile monster sprites, so the drop-target square
+        // lines up with the figure centre.
+        static std::map<int, Sprite> cache;
+        static std::set<int> attempted;
+
+        if ( attempted.count( monsterId ) == 0 ) {
+            attempted.insert( monsterId );
+
+            const Image * portrait = GetRGBACustomPortrait( monsterId );
+            if ( portrait != nullptr && !portrait->empty() ) {
+                // On-map figure box is tile + 8 game-pixels. SDL cursor pixels == physical pixels,
+                // so multiply by physicalScale to match on-screen visual size of the on-map figure.
+                const float physicalScale = std::max( 1.0f, Display::instance().getPhysicalScale() );
+                const int32_t gameBox = fheroes2::tileWidthPx + 8;
+                const int32_t boxW = std::max<int32_t>( 1, static_cast<int32_t>( std::lround( gameBox * physicalScale ) ) );
+                const int32_t boxH = boxW;
+                const int32_t srcW = portrait->width();
+                const int32_t srcH = portrait->height();
+
+                int32_t overlayW = boxW;
+                int32_t overlayH = static_cast<int32_t>( ( static_cast<int64_t>( srcH ) * boxW ) / srcW );
+                if ( overlayH > boxH ) {
+                    overlayH = boxH;
+                    overlayW = static_cast<int32_t>( ( static_cast<int64_t>( srcW ) * boxH ) / srcH );
+                }
+                if ( overlayW > 0 && overlayH > 0 ) {
+                    Sprite cursorSprite( Image( boxW, boxH, ImageFormat::RGBA_32BIT ) );
+                    // Zero out RGBA so the unused area (above/around the figure) is fully
+                    // transparent — Image's default constructor doesn't clear RGBA pixels.
+                    std::memset( cursorSprite.image(), 0, static_cast<size_t>( boxW ) * boxH * 4 );
+
+                    // Alpha-weighted box-filter downscale of the portrait into the bottom-anchored,
+                    // horizontally-centred sub-rect of the cursor. Mirrors writeIndexedSpriteFromRGBA's
+                    // anti-banding pass but stays in RGBA without GetColorId quantisation.
+                    const int32_t offsetX = ( boxW - overlayW ) / 2;
+                    const int32_t offsetY = boxH - overlayH;
+                    const uint8_t * srcData = portrait->image();
+                    uint8_t * dstData = cursorSprite.image();
+
+                    for ( int32_t dy = 0; dy < overlayH; ++dy ) {
+                        const int32_t sy0 = ( dy * srcH ) / overlayH;
+                        const int32_t sy1 = std::max( sy0 + 1, ( ( dy + 1 ) * srcH ) / overlayH );
+                        for ( int32_t dx = 0; dx < overlayW; ++dx ) {
+                            const int32_t sx0 = ( dx * srcW ) / overlayW;
+                            const int32_t sx1 = std::max( sx0 + 1, ( ( dx + 1 ) * srcW ) / overlayW );
+
+                            uint32_t rSum = 0;
+                            uint32_t gSum = 0;
+                            uint32_t bSum = 0;
+                            uint32_t aSum = 0;
+                            uint32_t rgbCount = 0;
+                            uint32_t totalCount = 0;
+                            for ( int32_t sy = sy0; sy < sy1; ++sy ) {
+                                const uint8_t * row = srcData + ( static_cast<ptrdiff_t>( sy ) * srcW + sx0 ) * 4;
+                                for ( int32_t sx = sx0; sx < sx1; ++sx, row += 4 ) {
+                                    const uint8_t alpha = row[3];
+                                    aSum += alpha;
+                                    ++totalCount;
+                                    if ( alpha > 0 ) {
+                                        rSum += row[0];
+                                        gSum += row[1];
+                                        bSum += row[2];
+                                        ++rgbCount;
+                                    }
+                                }
+                            }
+
+                            const ptrdiff_t outIdx = ( static_cast<ptrdiff_t>( dy + offsetY ) * boxW + ( dx + offsetX ) ) * 4;
+                            const uint32_t avgAlpha = totalCount ? aSum / totalCount : 0;
+                            if ( avgAlpha == 0 || rgbCount == 0 ) {
+                                dstData[outIdx + 0] = 0;
+                                dstData[outIdx + 1] = 0;
+                                dstData[outIdx + 2] = 0;
+                                dstData[outIdx + 3] = 0;
+                            }
+                            else {
+                                dstData[outIdx + 0] = static_cast<uint8_t>( rSum / rgbCount );
+                                dstData[outIdx + 1] = static_cast<uint8_t>( gSum / rgbCount );
+                                dstData[outIdx + 2] = static_cast<uint8_t>( bSum / rgbCount );
+                                dstData[outIdx + 3] = static_cast<uint8_t>( avgAlpha );
+                            }
+                        }
+                    }
+
+                    cursorSprite.setPosition( -boxW / 2, -boxH / 2 );
+
+                    cache.emplace( monsterId, std::move( cursorSprite ) );
+                }
+            }
+        }
+
+        const auto it = cache.find( monsterId );
+        return ( it == cache.end() ) ? nullptr : &it->second;
     }
 
     const Image & GetTIL( int tilId, uint32_t index, uint32_t shapeId )

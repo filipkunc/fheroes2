@@ -67,5 +67,11 @@ namespace fheroes2
         // MONH dimensions toward the STRIP frame), not here — this helper just does the uniform
         // fit so all the small-portrait sites and the large-portrait site share one anchor rule.
         void drawCustomPortraitInBox( const Image & portrait, int32_t boxX, int32_t boxY, int32_t boxW, int32_t boxH );
+
+        // Palette-quantised cursor sprite for the editor's drop-monster cursor. Built from frame 1
+        // of the hi-res RGBA art (uniform fit into a single tile-sized box, alpha-weighted box
+        // filter then GetColorId). Cached per monster ID. Returns nullptr when no hi-res art is
+        // available. The returned Sprite is owned by the cache; callers must not modify it.
+        const Sprite * GetRGBACustomCursorSprite( const int monsterId );
     }
 }

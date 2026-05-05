@@ -79,7 +79,30 @@ namespace
             return;
         }
 
+        // For monsters with hi-res RGBA art, use the palette-baked cursor sprite at on-map scale
+        // (~one tile + 8 px) instead of the smaller MONS32-derived map-object icon. The cursor
+        // itself can't go through Display::screenRGBA(), so we accept palette quantisation here.
+        if ( group == Maps::ObjectGroup::MONSTERS ) {
+            const auto & objectInfo = Maps::getObjectsByGroup( group );
+            if ( type >= 0 && type < static_cast<int32_t>( objectInfo.size() ) ) {
+                const int monsterId = static_cast<int>( objectInfo[type].metadata[0] );
+                const fheroes2::Sprite * cursorSprite = fheroes2::AGG::GetRGBACustomCursorSprite( monsterId );
+                if ( cursorSprite != nullptr && !cursorSprite->empty() ) {
+                    Cursor::Get().setCustomImage( *cursorSprite, { cursorSprite->x(), cursorSprite->y() } );
+                    return;
+                }
+            }
+        }
+
         const fheroes2::Sprite & image = getObjectImage( group, type );
+
+        // Some objects (e.g. random monsters) have no map sprite — generateMapObjectImage hands
+        // back an empty Sprite for them. Cursor::update asserts on empty images, so fall back to
+        // the standard pointer in that case rather than crashing.
+        if ( image.empty() ) {
+            Cursor::Get().SetThemes( Cursor::POINTER );
+            return;
+        }
 
         Cursor::Get().setCustomImage( image, { image.x(), image.y() } );
     }
@@ -545,6 +568,20 @@ namespace Interface
                 const fheroes2::Sprite & image = getObjectImage( Maps::ObjectGroup::MONSTERS, _selectedMonsterType );
                 fheroes2::Blit( image, display, _rectInstrumentPanel.x + ( _rectInstrumentPanel.width - image.width() ) / 2,
                                 _rectInstrumentPanel.y + 67 - image.height() );
+
+                // For monsters with a hi-res RGBA portrait (Thor, Succubus, …) overlay the
+                // cropped portrait on top of the palette image — same approach as the meeting
+                // dialog miniatures. The palette draw above is mirrored to _screenRGBA by the
+                // WriteHook first, then this overlay direct-paints the hi-res figure.
+                const int monsterId = _selectedMonsterType + 1;
+                const fheroes2::Image * portrait = fheroes2::AGG::GetRGBACustomPortrait( monsterId );
+                if ( portrait != nullptr && !portrait->empty() ) {
+                    const int32_t boxW = std::min<int32_t>( _rectInstrumentPanel.width - 10, 60 );
+                    const int32_t boxH = 47;
+                    const int32_t boxX = _rectInstrumentPanel.x + ( _rectInstrumentPanel.width - boxW ) / 2;
+                    const int32_t boxY = _rectInstrumentPanel.y + 67 - boxH;
+                    fheroes2::AGG::drawCustomPortraitInBox( *portrait, boxX, boxY, boxW, boxH );
+                }
 
                 fheroes2::Text text( Monster( _selectedMonsterType + 1 ).GetName(), fheroes2::FontType::smallWhite() );
                 text.draw( _rectInstrumentPanel.x + 5, _rectInstrumentPanel.y + 70, _rectInstrumentPanel.width - 10, display );

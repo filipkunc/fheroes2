@@ -454,7 +454,12 @@ namespace
 
         void update( const fheroes2::Image & image, int32_t offsetX, int32_t offsetY ) override
         {
-            if ( image.empty() || image.singleLayer() ) {
+            // Indexed sprites must carry both image + transform layers (singleLayer == false).
+            // RGBA_32BIT images are intrinsically singleLayer (no transform layer) and carry their
+            // alpha channel in the pixel data — accept those too so callers can ship hi-res cursor
+            // art (e.g. the editor's drop-monster preview) without round-tripping through palette.
+            const bool isRGBA = ( image.format() == fheroes2::ImageFormat::RGBA_32BIT );
+            if ( image.empty() || ( image.singleLayer() && !isRGBA ) ) {
                 // What are you trying to do? Set an invisible cursor? Use hide() method!
                 assert( 0 );
                 return;
@@ -477,23 +482,32 @@ namespace
             uint32_t * out = static_cast<uint32_t *>( surface->pixels );
             const uint32_t * outEnd = out + width * height;
             const uint8_t * in = image.image();
-            const uint8_t * transform = image.transform();
 
             const SDL_PixelFormatDetails * formatDetails = SDL_GetPixelFormatDetails( surface->format );
 
-            for ( ; out != outEnd; ++out, ++in, ++transform ) {
-                if ( *transform == 0 ) {
-                    const uint8_t * value = currentPalette + *in * 3;
-                    *out = SDL_MapRGBA( formatDetails, nullptr, *value, *( value + 1 ), *( value + 2 ), 255 );
+            if ( isRGBA ) {
+                // Image data is packed [R,G,B,A] per pixel. Run through SDL_MapRGBA so the
+                // resulting word matches the surface's byte order regardless of host endianness.
+                for ( ; out != outEnd; ++out, in += 4 ) {
+                    *out = SDL_MapRGBA( formatDetails, nullptr, in[0], in[1], in[2], in[3] );
                 }
-                else if ( *transform > 1 ) {
-                    // The OS draws the hardware cursor as RGBA. Approximate the original
-                    // game's cursor shadow by mapping the shadow transform values to a
-                    // semi-transparent black.
-                    *out = SDL_MapRGBA( formatDetails, nullptr, 0, 0, 0, 64 );
-                }
-                else {
-                    *out = SDL_MapRGBA( formatDetails, nullptr, 0, 0, 0, 0 );
+            }
+            else {
+                const uint8_t * transform = image.transform();
+                for ( ; out != outEnd; ++out, ++in, ++transform ) {
+                    if ( *transform == 0 ) {
+                        const uint8_t * value = currentPalette + *in * 3;
+                        *out = SDL_MapRGBA( formatDetails, nullptr, *value, *( value + 1 ), *( value + 2 ), 255 );
+                    }
+                    else if ( *transform > 1 ) {
+                        // The OS draws the hardware cursor as RGBA. Approximate the original
+                        // game's cursor shadow by mapping the shadow transform values to a
+                        // semi-transparent black.
+                        *out = SDL_MapRGBA( formatDetails, nullptr, 0, 0, 0, 64 );
+                    }
+                    else {
+                        *out = SDL_MapRGBA( formatDetails, nullptr, 0, 0, 0, 0 );
+                    }
                 }
             }
 
