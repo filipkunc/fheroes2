@@ -546,10 +546,9 @@ void Battle::Only::redrawOpponents( const fheroes2::Point & top ) const
 
     for ( const size_t idx : { 0, 1 } ) {
         if ( armyInfo[idx].hero ) {
-            const fheroes2::Sprite & port = armyInfo[idx].hero->GetPortrait( PORT_BIG );
-            if ( !port.empty() ) {
-                fheroes2::Copy( port, 0, 0, display, armyInfo[idx].portraitRoi );
-            }
+            // Use PortraitRedraw so the hi-res RGBA overlay is applied alongside
+            // the palette portrait (a direct Copy bypasses the overlay path).
+            armyInfo[idx].hero->PortraitRedraw( armyInfo[idx].portraitRoi.x, armyInfo[idx].portraitRoi.y, PORT_BIG, display );
         }
         else {
             fheroes2::Fill( display, armyInfo[idx].portraitRoi.x, armyInfo[idx].portraitRoi.y, armyInfo[idx].portraitRoi.width, armyInfo[idx].portraitRoi.height, 0 );

@@ -1,6 +1,8 @@
 """Extract base ICN sprites and BIN files from AGG archives."""
 
+import atexit
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -11,6 +13,23 @@ from .palette_remap import load_palette
 
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+
+# Session-wide cache: extracting the full AGG (~30MB, hundreds of files) takes
+# a few seconds. Without caching, every extract_icn() call re-runs the extractor,
+# which makes browsing many ICNs (e.g. switching heroes) painfully slow.
+# We extract once per (build_dir, agg_path, agg_mtime) into a temp dir kept alive
+# for the lifetime of the process, then look up individual ICNs from that dir.
+_extracted_cache: dict[tuple[str, str, int], Path] = {}
+_palette_cache: dict[Path, object] = {}
+
+
+def _cleanup_extracted_cache():
+    for path in _extracted_cache.values():
+        shutil.rmtree(path, ignore_errors=True)
+    _extracted_cache.clear()
+
+
+atexit.register(_cleanup_extracted_cache)
 
 
 def _default_build_dir() -> Path:
@@ -137,6 +156,100 @@ def _extract_agg(build_dir: Path, agg_path: Path) -> Path | None:
     return tmp
 
 
+def _find_expansion_agg(base_agg: Path) -> Path | None:
+    """Return HEROES2X.AGG if it sits next to the base AGG. Price of Loyalty
+    portraits and animations (Solmyr through Jarkonas, PORT0060+) live there,
+    not in HEROES2.AGG. The engine opens both at runtime — we mirror that.
+    Lookup is case-insensitive to tolerate Windows / GOG installs."""
+    parent = base_agg.parent
+    if not parent.is_dir():
+        return None
+    target = "heroes2x.agg"
+    for entry in parent.iterdir():
+        if entry.name.lower() == target and entry.is_file():
+            return entry
+    return None
+
+
+def _get_or_extract_agg(build_dir: Path, agg_path: Path) -> Path | None:
+    """Return a cached extraction of the AGG (plus HEROES2X.AGG if present),
+    extracting once on first call.
+
+    The cache key includes both AGGs' mtimes so editing either invalidates the
+    cache automatically. The temp dir lives until process exit (atexit cleanup).
+    """
+    if not agg_path.exists():
+        return None
+    try:
+        base_mtime = agg_path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+    expansion_agg = _find_expansion_agg(agg_path)
+    expansion_mtime = 0
+    if expansion_agg is not None:
+        try:
+            expansion_mtime = expansion_agg.stat().st_mtime_ns
+        except OSError:
+            expansion_agg = None
+
+    key = (str(build_dir), str(agg_path), base_mtime, str(expansion_agg or ""), expansion_mtime)
+    cached = _extracted_cache.get(key)
+    if cached is not None and cached.exists():
+        return cached
+
+    extractor = resolve_extractor(build_dir)
+    if not extractor.exists():
+        return None
+
+    tmp = Path(tempfile.mkdtemp(prefix="sprite_editor_agg_"))
+    try:
+        # The extractor writes into <dst>/<agg_stem>/, so HEROES2.AGG → tmp/HEROES2/
+        # and HEROES2X.AGG → tmp/HEROES2X/. Pass both in one invocation; we merge
+        # them after to mirror the engine's expansion-first lookup.
+        cmd = [str(extractor), str(tmp), str(agg_path)]
+        if expansion_agg is not None:
+            cmd.append(str(expansion_agg))
+        subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        print(f"Extractor failed: {e}")
+        shutil.rmtree(tmp, ignore_errors=True)
+        return None
+
+    # Merge HEROES2X/ over HEROES2/ so MINIPORT.ICN (and any other replaced asset)
+    # resolves to the expansion's 71-frame version, matching what the engine sees.
+    if expansion_agg is not None:
+        base_subdir = tmp / agg_path.stem
+        ext_subdir = tmp / expansion_agg.stem
+        if base_subdir.is_dir() and ext_subdir.is_dir():
+            for src in ext_subdir.iterdir():
+                dst = base_subdir / src.name
+                try:
+                    if dst.exists():
+                        dst.unlink()
+                    shutil.move(str(src), str(dst))
+                except OSError as e:
+                    print(f"Could not merge {src.name} from expansion: {e}")
+            shutil.rmtree(ext_subdir, ignore_errors=True)
+
+    # Drop stale cache entries for the same (build_dir, base_agg) that we just
+    # superseded — keeps the cache from growing if the user edits AGGs.
+    for stale_key in [k for k in _extracted_cache if k[0] == key[0] and k[1] == key[1] and k != key]:
+        shutil.rmtree(_extracted_cache.pop(stale_key), ignore_errors=True)
+
+    _extracted_cache[key] = tmp
+    return tmp
+
+
+def _get_palette(pal_file: Path):
+    cached = _palette_cache.get(pal_file)
+    if cached is not None:
+        return cached
+    palette = load_palette(pal_file)
+    _palette_cache[pal_file] = palette
+    return palette
+
+
 def extract_icn(
     icn_name: str,
     build_dir: Path = DEFAULT_BUILD_DIR,
@@ -146,49 +259,34 @@ def extract_icn(
 
     Uses the Python ICN parser to decode the binary ICN format directly,
     producing RGBA sprites with correct alpha from the transform layer.
-    No more gray background — transparent pixels have alpha=0.
+    The full AGG extraction is cached for the session — first call is slow
+    (a few seconds), subsequent calls are essentially free.
 
     Returns a SpriteCollection or None on failure.
     """
-    with tempfile.TemporaryDirectory(prefix="sprite_editor_") as tmpdir:
-        tmp = Path(tmpdir)
+    root = _get_or_extract_agg(build_dir, agg_path)
+    if root is None:
+        return None
 
-        extractor = resolve_extractor(build_dir)
-        if not extractor.exists() or not agg_path.exists():
-            print(f"Build tools not found: extractor={extractor.exists()}, agg={agg_path.exists()}")
-            return None
+    icn_file = _find_file(root, f"{icn_name}.ICN")
+    pal_file = _find_file(root, "KB.PAL")
 
-        try:
-            subprocess.run(
-                [str(extractor), str(tmp), str(agg_path)],
-                capture_output=True, text=True, timeout=60,
-            )
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-            print(f"Extractor failed: {e}")
-            return None
+    if not icn_file:
+        print(f"ICN file not found after extraction: {icn_name}.ICN")
+        return None
+    if not pal_file:
+        print("KB.PAL not found after extraction")
+        return None
 
-        icn_file = _find_file(tmp, f"{icn_name}.ICN")
-        pal_file = _find_file(tmp, "KB.PAL")
+    palette = _get_palette(pal_file)
+    frames = parse_icn(icn_file.read_bytes(), palette)
+    if not frames:
+        print(f"Failed to parse ICN: {icn_name}")
+        return None
 
-        if not icn_file:
-            print(f"ICN file not found after extraction: {icn_name}.ICN")
-            return None
-        if not pal_file:
-            print("KB.PAL not found after extraction")
-            return None
-
-        # Parse ICN directly with proper transparency
-        icn_data = icn_file.read_bytes()
-        palette = load_palette(pal_file)
-        frames = parse_icn(icn_data, palette)
-
-        if not frames:
-            print(f"Failed to parse ICN: {icn_name}")
-            return None
-
-        collection = SpriteCollection(prefix="base")
-        collection.frames = frames
-        return collection
+    collection = SpriteCollection(prefix="base")
+    collection.frames = frames
+    return collection
 
 
 def extract_bin(
@@ -196,28 +294,16 @@ def extract_bin(
     build_dir: Path = DEFAULT_BUILD_DIR,
     agg_path: Path = DEFAULT_AGG_PATH,
 ) -> bytes | None:
-    """Extract a BIN file from AGG using extractor.
-
-    Returns raw bytes or None on failure.
+    """Extract a BIN file from AGG. Uses the same session-cached extraction as
+    extract_icn(), so calling both for the same AGG only pays the extract cost
+    once.
     """
-    extractor = resolve_extractor(build_dir)
-
-    if not extractor.exists() or not agg_path.exists():
+    root = _get_or_extract_agg(build_dir, agg_path)
+    if root is None:
         return None
 
-    with tempfile.TemporaryDirectory(prefix="sprite_editor_bin_") as tmpdir:
-        tmp = Path(tmpdir)
+    bin_file = _find_file(root, bin_name)
+    if not bin_file:
+        return None
 
-        try:
-            subprocess.run(
-                [str(extractor), str(tmp), str(agg_path)],
-                capture_output=True, text=True, timeout=60,
-            )
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            return None
-
-        bin_file = _find_file(tmp, bin_name)
-        if not bin_file:
-            return None
-
-        return bin_file.read_bytes()
+    return bin_file.read_bytes()

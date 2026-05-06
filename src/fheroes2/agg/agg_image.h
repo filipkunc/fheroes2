@@ -73,5 +73,30 @@ namespace fheroes2
         // filter then GetColorId). Cached per monster ID. Returns nullptr when no hi-res art is
         // available. The returned Sprite is owned by the cache; callers must not modify it.
         const Sprite * GetRGBACustomCursorSprite( const int monsterId );
+
+        // Hi-res RGBA hero portrait — full-frame variant authored from PORT0xxx.
+        // Used for PORT_BIG / PORT_MEDIUM, and as a fallback for PORT_SMALL when
+        // no dedicated mini portrait is available.
+        const Image * GetRGBACustomHeroPortrait( const int heroId );
+
+        // Hi-res RGBA hero portrait — small variant authored from MINIPORT.icn.
+        // Sized for PORT_SMALL with the correct mini-portrait aspect ratio. When
+        // available the engine prefers it over the cropped big-portrait fallback.
+        const Image * GetRGBACustomHeroPortraitSmall( const int heroId );
+
+        // Fit a hi-res hero portrait inside (boxX, boxY, boxW, boxH) in game-pixel
+        // coordinates: horizontally centred, TOP-anchored (matches PORT0xxx framing —
+        // face on top, shoulders below). Width-bind by default; height-bind when the
+        // source is taller than the slot so the overlay never overflows into
+        // surrounding UI. No-op when `portrait` is empty or the box is degenerate.
+        // Writes directly to Display::screenRGBA() — palette art must be drawn first.
+        void renderHiResHeroPortraitInBox( const Image & portrait, int32_t boxX, int32_t boxY, int32_t boxW, int32_t boxH );
+
+        // Same fit-into-box semantics as renderHiResHeroPortraitInBox, but the source
+        // is auto-cropped to the slot's aspect ratio first so the overlay fills the
+        // box completely (no palette pillar/letterbox bleed-through). The crop is
+        // top-anchored — preserves the face, drops shoulders/torso. Used as the
+        // PORT_SMALL fallback when no dedicated mini portrait was authored.
+        void renderHiResHeroPortraitInBoxFilled( const Image & portrait, int32_t boxX, int32_t boxY, int32_t boxW, int32_t boxH );
     }
 }

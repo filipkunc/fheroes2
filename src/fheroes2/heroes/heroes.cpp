@@ -45,11 +45,13 @@
 #include "game_io.h"
 #include "game_static.h"
 #include "ground.h"
+#include "heroes_specialty_runtime.h"
 #include "icn.h"
 #include "image.h"
 #include "kingdom.h"
 #include "logging.h"
 #include "luck.h"
+#include "screen.h"
 #include "m82.h"
 #include "map_format_helper.h"
 #include "map_format_info.h"
@@ -275,6 +277,14 @@ Heroes::Heroes( const int heroId, const int race )
         for ( const int32_t spellId : Spell::getAllSpellIdsSuitableForSpellBook() ) {
             AppendSpellToBook( Spell( spellId ), true );
         }
+    }
+
+    // Hero specialty: if this hero specialises in a spell, append it to the
+    // spell book (force-activating the book if the race wouldn't normally have
+    // one). Designers expect the specialty spell to be guaranteed-known.
+    if ( const int specialtySpell = getSpecialtySpellBookInclusion( this ); specialtySpell != Spell::NONE ) {
+        SpellBookActivate();
+        AppendSpellToBook( Spell( specialtySpell ), true );
     }
 
     if ( !_spellPoints ) {
@@ -2077,14 +2087,47 @@ void Heroes::PortraitRedraw( const int32_t px, const int32_t py, const PortraitT
     const fheroes2::Sprite & port = GetPortrait( _portrait, type );
     fheroes2::Point mp;
 
+    // Hi-res hero portrait overlay: only meaningful when drawing to the active
+    // display (the render helpers write directly to Display::screenRGBA()).
+    // Off-screen targets keep the palette art only — same constraint the monster
+    // pipeline lives with.
+    const bool drawingToDisplay = ( &dstsf == &fheroes2::Display::instance() );
+    const fheroes2::Image * heroRGBA = drawingToDisplay ? fheroes2::AGG::GetRGBACustomHeroPortrait( _portrait ) : nullptr;
+    // Dedicated mini portrait — preferred for PORT_SMALL when authored, since it
+    // matches the MINIPORT slot's aspect ratio exactly. Falls back to the big
+    // portrait auto-cropped by renderHiResHeroPortraitInBoxFilled when missing.
+    const fheroes2::Image * heroRGBASmall = drawingToDisplay ? fheroes2::AGG::GetRGBACustomHeroPortraitSmall( _portrait ) : nullptr;
+
+    const auto overlayHeroPortrait = [heroRGBA]( const int32_t boxX, const int32_t boxY,
+                                                  const int32_t boxW, const int32_t boxH ) {
+        if ( heroRGBA != nullptr ) {
+            fheroes2::AGG::renderHiResHeroPortraitInBox( *heroRGBA, boxX, boxY, boxW, boxH );
+        }
+    };
+
+    // PORT_SMALL has its own overlay path: prefer the dedicated mini portrait
+    // (no aspect mismatch, fills slot edge-to-edge). Else auto-crop the big
+    // portrait to slot aspect so no palette art bleeds through the gaps.
+    const auto overlayHeroPortraitSmall = [heroRGBASmall, heroRGBA]( const int32_t boxX, const int32_t boxY,
+                                                                       const int32_t boxW, const int32_t boxH ) {
+        if ( heroRGBASmall != nullptr ) {
+            fheroes2::AGG::renderHiResHeroPortraitInBoxFilled( *heroRGBASmall, boxX, boxY, boxW, boxH );
+        }
+        else if ( heroRGBA != nullptr ) {
+            fheroes2::AGG::renderHiResHeroPortraitInBoxFilled( *heroRGBA, boxX, boxY, boxW, boxH );
+        }
+    };
+
     if ( !port.empty() ) {
         if ( PORT_BIG == type ) {
             fheroes2::Copy( port, 0, 0, dstsf, px, py, port.width(), port.height() );
+            overlayHeroPortrait( px, py, port.width(), port.height() );
             mp.y = 2;
             mp.x = port.width() - 12;
         }
         else if ( PORT_MEDIUM == type ) {
             fheroes2::Copy( port, 0, 0, dstsf, px, py, port.width(), port.height() );
+            overlayHeroPortrait( px, py, port.width(), port.height() );
             mp.x = port.width() - 10;
         }
         else if ( PORT_SMALL == type ) {
@@ -2102,6 +2145,7 @@ void Heroes::PortraitRedraw( const int32_t px, const int32_t py, const PortraitT
 
             // Draw hero's portrait.
             fheroes2::Copy( port, 0, 0, dstsf, px + barw + 1, py, port.width(), port.height() );
+            overlayHeroPortraitSmall( px + barw + 1, py, port.width(), port.height() );
 
             // Draw mana.
             fheroes2::Copy( mana, 0, 0, dstsf, px + barw + port.width() + 2, py + mana.y(), mana.width(), mana.height() );
@@ -2611,6 +2655,16 @@ IStreamBase & operator>>( IStreamBase & stream, Heroes & hero )
     stream >> hero._patrolDistance >> hero._visitedObjects >> hero._lastGroundRegion;
 
     hero._army.SetCommander( &hero );
+
+    // Hero specialty: re-apply the spell-book inclusion after deserialisation so
+    // saves that pre-date the specialty system, or saves where the player took
+    // a Knight/Barbarian hero who only got their book via the specialty, still
+    // end up with the guaranteed-known spell. Idempotent: AppendSpellToBook
+    // skips duplicates if the spell was already saved.
+    if ( const int specialtySpell = getSpecialtySpellBookInclusion( &hero ); specialtySpell != Spell::NONE ) {
+        hero.SpellBookActivate();
+        hero.AppendSpellToBook( Spell( specialtySpell ), true );
+    }
 
     return stream;
 }

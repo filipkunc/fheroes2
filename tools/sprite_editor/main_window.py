@@ -5,10 +5,10 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QDockWidget, QToolBar, QComboBox, QPushButton,
     QSpinBox, QLabel, QSlider, QFileDialog, QMessageBox, QStatusBar,
-    QCheckBox, QWidget, QHBoxLayout, QTabWidget, QSplitter
+    QCheckBox, QWidget, QHBoxLayout, QVBoxLayout, QTabWidget, QSplitter
 )
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QPixmap
 
 from .models.monster_config import MonsterConfig, load_manifest, update_manifest_entry, remove_manifest_entry
 from .models.bin_parser import (
@@ -21,13 +21,18 @@ from .models.sprite_data import (
     save_portrait_zoom, FrameOverride,
 )
 from .models.animation import AnimationPlayer
+from .models.hero_config import HeroConfig, HeroSpecialty, load_hero_manifest, update_hero_specialty
 from .widgets.animation_canvas import AnimationCanvas
 from .widgets.frame_list import FrameListWidget
 from .widgets.properties_panel import PropertiesPanel
 from .widgets.spritesheet_view import SpritesheetView
 from .widgets.monster_list import MonsterListWidget
+from .widgets.hero_list import HeroListWidget
+from .widgets.specialty_panel import SpecialtyPanel
+from .codegen.specialty_export import export_specialties, default_dst_dir
 from .gemini.gemini_panel import GeminiPanel
 from .gemini.building_panel import BuildingPanel
+from .gemini.hero_portrait_panel import HeroPortraitPanel
 
 
 # Default paths
@@ -78,6 +83,12 @@ class MainWindow(QMainWindow):
         self._anim_info: MonsterAnimInfo | None = None
         self._current_anim_name: str = "All Frames"
 
+        # Hero state
+        self._heroes = load_hero_manifest()
+        self._current_hero: HeroConfig | None = None
+        self._heroes_tab_index: int = -1
+        self._hero_portrait_tab_index: int = -1
+
         # Animation player
         self._player = AnimationPlayer(self)
         self._player.frame_changed.connect(self._on_frame_changed)
@@ -101,10 +112,15 @@ class MainWindow(QMainWindow):
         bg = self._settings.value("gemini/bg_color")
         if isinstance(bg, (list, tuple)) and len(bg) == 3:
             try:
-                self._gemini_panel.set_bg_color(tuple(int(c) for c in bg))
+                bg_rgb = tuple(int(c) for c in bg)
+                self._gemini_panel.set_bg_color(bg_rgb)
+                self._hero_portrait_panel.set_bg_color(bg_rgb)
             except (TypeError, ValueError):
                 pass
 
+        # Reference images are NOT shared between the monster panel and the hero
+        # portrait panel — a reference picked for monster work would otherwise
+        # bleed into hero generation and produce monster-shaped portraits.
         ref_path = self._settings.value("gemini/reference_path", "", type=str)
         if ref_path and Path(ref_path).exists():
             self._gemini_panel.load_reference_image(ref_path)
@@ -136,15 +152,15 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _setup_ui(self):
-        # Left dock (shared across tabs): monster list
+        # Left dock (shared across monster tabs): monster list
         self._monster_list = MonsterListWidget()
         self._monster_list.set_monsters(self._monsters)
         self._monster_list.monster_selected.connect(self._load_monster)
         self._monster_list.custom_created.connect(self._on_custom_created)
         self._monster_list.custom_deleted.connect(self._on_custom_deleted)
-        monster_dock = QDockWidget("Monsters")
-        monster_dock.setWidget(self._monster_list)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, monster_dock)
+        self._monster_dock = QDockWidget("Monsters")
+        self._monster_dock.setWidget(self._monster_list)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._monster_dock)
 
         # Create tab-owned widgets
         self._canvas = AnimationCanvas()
@@ -180,10 +196,56 @@ class MainWindow(QMainWindow):
         gen_splitter.setStretchFactor(1, 1)
         gen_splitter.setSizes([540, 660])
 
+        # Heroes tab: hero list | (portrait preview + specialty editor + export)
+        self._hero_list = HeroListWidget()
+        self._hero_list.set_heroes(self._heroes)
+        self._hero_list.hero_selected.connect(self._on_hero_selected)
+        self._specialty_panel = SpecialtyPanel()
+        self._specialty_panel.specialty_changed.connect(self._on_specialty_changed)
+
+        self._hero_portrait_label = QLabel()
+        self._hero_portrait_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._hero_portrait_label.setMinimumSize(120, 144)
+        self._hero_portrait_label.setStyleSheet("background-color: #222; border: 1px solid #555;")
+        self._hero_portrait_label.setText("(no hero selected)")
+
+        export_btn = QPushButton("Export Specialties → C++")
+        export_btn.setToolTip(
+            "Generate src/fheroes2/heroes/heroes_specialty.{h,cpp} from the current manifest"
+        )
+        export_btn.clicked.connect(self._export_hero_specialties)
+
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.addWidget(self._hero_portrait_label)
+        right_layout.addWidget(self._specialty_panel, 1)
+        right_layout.addWidget(export_btn)
+
+        heroes_splitter = QSplitter(Qt.Orientation.Horizontal)
+        heroes_splitter.addWidget(self._hero_list)
+        heroes_splitter.addWidget(right_panel)
+        heroes_splitter.setStretchFactor(0, 0)
+        heroes_splitter.setStretchFactor(1, 1)
+        heroes_splitter.setSizes([240, 760])
+
+        # Hero portrait Gemini panel (single-image gen for hi-res hero PNGs).
+        # Bound to the same hero the Heroes tab edits — selecting a hero on
+        # either tab keeps both panels in sync.
+        self._hero_portrait_panel = HeroPortraitPanel()
+        self._hero_portrait_panel.portrait_accepted.connect(self._on_hero_portrait_changed)
+        # Persist + share bg-colour / reference-image with the other Gemini panels
+        # via the same QSettings the Edit-Frames panel already uses.
+        self._hero_portrait_panel.bg_color_changed.connect(self._save_bg_color)
+        self._hero_portrait_panel.reference_changed.connect(self._save_reference_path)
+
         self._tabs = QTabWidget()
         self._tabs.addTab(edit_splitter, "Edit Frames")
         self._tabs.addTab(gen_splitter, "Generate with Gemini")
         self._tabs.addTab(self._building_panel, "Generate Building")
+        self._heroes_tab_index = self._tabs.addTab(heroes_splitter, "Heroes")
+        self._hero_portrait_tab_index = self._tabs.addTab(self._hero_portrait_panel, "Generate Hero Portrait")
+        self._tabs.currentChanged.connect(self._on_main_tab_changed)
         self.setCentralWidget(self._tabs)
 
     def _setup_toolbar(self):
@@ -930,6 +992,129 @@ class MainWindow(QMainWindow):
     def _on_sheet_output(self, image, cells, label):
         """Show Gemini output sheet in the Sprite Sheet panel."""
         self._sheet_view.set_sheet(image, cells, f"Output: {label}")
+
+    # ---------- heroes tab ----------
+
+    def _on_main_tab_changed(self, index: int):
+        """Hide the monster dock when a hero-related tab is active — keeps the
+        workspace focused on the right entity type."""
+        on_hero_tab = ( index == self._heroes_tab_index
+                        or index == self._hero_portrait_tab_index )
+        self._monster_dock.setVisible(not on_hero_tab)
+
+        # Lazily load hero thumbnails on first switch to a hero tab — extracting
+        # MINIPORT.icn is slow enough that we don't want to do it at startup.
+        if on_hero_tab and not getattr(self, "_hero_thumbs_loaded", False):
+            self._load_hero_thumbnails()
+            self._hero_thumbs_loaded = True
+            # Auto-select the first hero so the right pane isn't empty
+            if self._heroes and self._current_hero is None:
+                first = next(iter(sorted(self._heroes.values(), key=lambda c: c.hero_id)))
+                self._hero_list.select_hero(first.name)
+
+    def _load_hero_thumbnails(self):
+        """Extract MINIPORT.icn frames and apply as thumbnails on the hero list."""
+        try:
+            from .tools.icn_extractor import extract_icn
+            miniport = extract_icn("MINIPORT", BUILD_DIR, AGG_PATH)
+        except Exception as e:
+            self._status.showMessage(f"Could not extract MINIPORT: {e}")
+            return
+        if not miniport:
+            self._status.showMessage("MINIPORT.icn not found — hero thumbnails unavailable.")
+            return
+
+        thumbnails: dict[str, QPixmap] = {}
+        for name, cfg in self._heroes.items():
+            frame = miniport.get_frame(cfg.port_index)
+            if frame and not frame.is_placeholder:
+                thumbnails[name] = frame.to_qpixmap()
+        self._hero_list.set_thumbnails(thumbnails)
+
+    def _on_hero_selected(self, name: str):
+        cfg = self._heroes.get(name)
+        if not cfg:
+            return
+        self._current_hero = cfg
+        self._specialty_panel.set_hero(name, cfg.display_name, cfg.specialty)
+        self._update_hero_portrait_preview(cfg)
+        # Keep the portrait gen tab in sync with whatever hero is selected on the
+        # Heroes tab — eliminates the "wait, who's bound here?" friction.
+        self._hero_portrait_panel.set_hero(cfg)
+        self._status.showMessage(f"Selected hero: {cfg.display_name} ({cfg.race})")
+
+    def _on_hero_portrait_changed(self, hero_name: str):
+        """A portrait was accepted or deleted — refresh the codegen so the C++
+        RGBA registry reflects the new has_custom_sprites state, and reload the
+        portrait preview on the Heroes tab so the user sees the new art."""
+        try:
+            export_specialties(self._heroes, default_dst_dir())
+        except Exception as e:
+            self._status.showMessage(f"Codegen failed after portrait change: {e}")
+            return
+        self._status.showMessage(
+            f"Re-exported specialty codegen after portrait change for {hero_name}. Rebuild the engine."
+        )
+        cfg = self._heroes.get(hero_name)
+        if cfg is not None and cfg is self._current_hero:
+            self._update_hero_portrait_preview(cfg)
+
+    def _update_hero_portrait_preview(self, cfg: HeroConfig):
+        """Show the big PORT0xxx portrait for the selected hero."""
+        try:
+            from .tools.icn_extractor import extract_icn
+            icn_name = f"PORT{cfg.port_index:04d}"
+            sprites = extract_icn(icn_name, BUILD_DIR, AGG_PATH)
+        except Exception as e:
+            self._hero_portrait_label.setText(f"(portrait load failed: {e})")
+            self._hero_portrait_label.setPixmap(QPixmap())
+            return
+
+        if not sprites or sprites.frame_count == 0:
+            self._hero_portrait_label.setText(f"(missing PORT{cfg.port_index:04d}.icn)")
+            self._hero_portrait_label.setPixmap(QPixmap())
+            return
+
+        frame = sprites.get_frame(0)
+        if frame is None or frame.is_placeholder:
+            self._hero_portrait_label.setText(f"(empty PORT{cfg.port_index:04d}.icn)")
+            self._hero_portrait_label.setPixmap(QPixmap())
+            return
+
+        pixmap = frame.to_qpixmap()
+        # Upscale 2x with nearest-neighbor for visibility — original art is 101x93.
+        scaled = pixmap.scaled(
+            pixmap.width() * 2, pixmap.height() * 2,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.FastTransformation,
+        )
+        self._hero_portrait_label.setPixmap(scaled)
+
+    def _on_specialty_changed(self, specialty: HeroSpecialty):
+        if self._current_hero is None:
+            return
+        self._current_hero.specialty = specialty
+        try:
+            update_hero_specialty(self._current_hero.name, specialty)
+            self._status.showMessage(
+                f"Saved specialty for {self._current_hero.display_name}: {specialty.kind}"
+            )
+        except OSError as e:
+            self._status.showMessage(f"Could not save specialty: {e}")
+
+    def _export_hero_specialties(self):
+        """Codegen src/fheroes2/heroes/heroes_specialty.{h,cpp,_rgba*.inl} from current manifest."""
+        try:
+            paths = export_specialties(self._heroes, default_dst_dir())
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", f"Codegen failed:\n{e}")
+            return
+        QMessageBox.information(
+            self, "Export Successful",
+            "Wrote:\n  " + "\n  ".join(str(p) for p in paths)
+            + "\n\nRebuild the engine to pick up the new specialties.",
+        )
+        self._status.showMessage(f"Exported specialties: {paths[1].name}")
 
     def keyPressEvent(self, event):
         key = event.key()

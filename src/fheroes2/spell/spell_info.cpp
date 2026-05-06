@@ -31,6 +31,7 @@
 #include "direction.h"
 #include "heroes.h"
 #include "heroes_base.h"
+#include "heroes_specialty_runtime.h"
 #include "kingdom.h"
 #include "maps.h"
 #include "maps_fileinfo.h"
@@ -97,13 +98,18 @@ namespace fheroes2
             break;
         }
 
-        if ( type == ArtifactBonusType::NONE ) {
-            return damage;
+        if ( type != ArtifactBonusType::NONE ) {
+            const std::vector<int32_t> extraDamagePercentage = hero->GetBagArtifacts().getTotalArtifactMultipliedPercent( type );
+            for ( const int32_t value : extraDamagePercentage ) {
+                damage = damage * ( 100 + value ) / 100;
+            }
         }
 
-        const std::vector<int32_t> extraDamagePercentage = hero->GetBagArtifacts().getTotalArtifactMultipliedPercent( type );
-        for ( const int32_t value : extraDamagePercentage ) {
-            damage = damage * ( 100 + value ) / 100;
+        // Hero specialty: percent damage bonus, mirrored from
+        // Battle::Unit::CalculateSpellDamage so the spell book description
+        // matches the damage actually dealt in battle.
+        if ( const int specialtyBonus = getSpecialtySpellDamageBonusPercent( hero, spell.GetID() ); specialtyBonus != 0 ) {
+            damage = damage * ( 100 + specialtyBonus ) / 100;
         }
 
         return damage;

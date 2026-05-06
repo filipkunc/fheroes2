@@ -44,6 +44,7 @@
 #include "color.h"
 #include "game_static.h"
 #include "heroes_base.h"
+#include "heroes_specialty_runtime.h"
 #include "image.h"
 #include "logging.h"
 #include "m82.h"
@@ -458,16 +459,26 @@ uint32_t Battle::Unit::GetSpeed( const bool skipStandingCheck, const bool skipMo
         }
     }
 
-    const uint32_t speed = Monster::GetSpeed();
+    int speed = static_cast<int>( Monster::GetSpeed() );
+
+    // Hero specialty: per-unit speed bonus, applied to base speed before haste/slow
+    // so the bonus is preserved through subsequent multipliers.
+    if ( const HeroBase * commander = GetCommander() ) {
+        speed += getSpecialtySpeedBonus( commander, GetID() );
+    }
+    if ( speed < 0 ) {
+        speed = 0;
+    }
+    const uint32_t adjusted = static_cast<uint32_t>( speed );
 
     if ( Modes( SP_HASTE ) ) {
-        return Speed::getHasteSpeedFromSpell( speed );
+        return Speed::getHasteSpeedFromSpell( adjusted );
     }
     if ( Modes( SP_SLOW ) ) {
-        return Speed::getSlowSpeedFromSpell( speed );
+        return Speed::getSlowSpeedFromSpell( adjusted );
     }
 
-    return speed;
+    return adjusted;
 }
 
 uint32_t Battle::Unit::EstimateRetaliatoryDamage( const uint32_t damageTaken ) const
@@ -1450,6 +1461,15 @@ uint32_t Battle::Unit::CalculateSpellDamage( const Spell & spell, uint32_t spell
         }
         default:
             break;
+        }
+    }
+
+    // Hero specialty: percent damage bonus on top of all artifact / weakness modifiers,
+    // applied last so the listed bonus is always meaningful regardless of context.
+    if ( applyingHero ) {
+        const int specialtyBonus = getSpecialtySpellDamageBonusPercent( applyingHero, spell.GetID() );
+        if ( specialtyBonus != 0 ) {
+            dmg = dmg * ( 100 + specialtyBonus ) / 100;
         }
     }
 

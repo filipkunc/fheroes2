@@ -31,6 +31,7 @@
 #include "artifact.h"
 #include "artifact_info.h"
 #include "heroes_base.h"
+#include "heroes_specialty_runtime.h"
 #include "monster.h"
 #include "race.h"
 #include "rand.h"
@@ -171,8 +172,10 @@ uint32_t Spell::minMovePoints() const
 
 uint32_t Spell::spellPoints( const HeroBase * hero ) const
 {
+    int32_t spellCost = spells[id].spellPoints;
+
     if ( hero == nullptr ) {
-        return spells[id].spellPoints;
+        return static_cast<uint32_t>( spellCost );
     }
 
     fheroes2::ArtifactBonusType type = fheroes2::ArtifactBonusType::NONE;
@@ -198,17 +201,18 @@ uint32_t Spell::spellPoints( const HeroBase * hero ) const
         break;
     }
 
-    if ( type == fheroes2::ArtifactBonusType::NONE ) {
-        return spells[id].spellPoints;
+    if ( type != fheroes2::ArtifactBonusType::NONE ) {
+        const std::vector<int32_t> spellReductionPercentage = hero->GetBagArtifacts().getTotalArtifactMultipliedPercent( type );
+        for ( const int32_t value : spellReductionPercentage ) {
+            assert( value >= 0 && value <= 100 );
+            spellCost = spellCost * ( 100 - value ) / 100;
+        }
     }
 
-    int32_t spellCost = spells[id].spellPoints;
-
-    const std::vector<int32_t> spellReductionPercentage = hero->GetBagArtifacts().getTotalArtifactMultipliedPercent( type );
-    for ( const int32_t value : spellReductionPercentage ) {
-        assert( value >= 0 && value <= 100 );
-        spellCost = spellCost * ( 100 - value ) / 100;
-    }
+    // Hero specialty: flat SP reduction for the specialised spell, applied
+    // after percentage-based artifact reductions so it always shaves a fixed
+    // amount off the final cost.
+    spellCost -= getSpecialtySpellSpCostReduction( hero, id );
 
     if ( spellCost < 1 ) {
         return 1;

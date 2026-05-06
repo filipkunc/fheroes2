@@ -28,6 +28,7 @@
 #include "army.h"
 #include "color.h"
 #include "heroes_base.h"
+#include "heroes_specialty_runtime.h"
 #include "resource.h"
 #include "serialize.h"
 #include "speed.h"
@@ -157,12 +158,45 @@ uint32_t Troop::GetAffectedDuration( uint32_t /* unused */ ) const
 
 uint32_t ArmyTroop::GetAttack() const
 {
-    return Troop::GetAttack() + ( _army && _army->GetCommander() ? _army->GetCommander()->GetAttack() : 0 );
+    int value = static_cast<int>( Troop::GetAttack() );
+    if ( const HeroBase * commander = _army ? _army->GetCommander() : nullptr ) {
+        value += static_cast<int>( commander->GetAttack() );
+        // Hero specialty: per-unit attack bonus stacks on top of the commander's base attack.
+        value += getSpecialtyAtkBonus( commander, GetID() );
+    }
+    if ( value < 0 ) {
+        value = 0;
+    }
+    return static_cast<uint32_t>( value );
 }
 
 uint32_t ArmyTroop::GetDefense() const
 {
-    return Troop::GetDefense() + ( _army && _army->GetCommander() ? _army->GetCommander()->GetDefense() : 0 );
+    int value = static_cast<int>( Troop::GetDefense() );
+    if ( const HeroBase * commander = _army ? _army->GetCommander() : nullptr ) {
+        value += static_cast<int>( commander->GetDefense() );
+        value += getSpecialtyDefBonus( commander, GetID() );
+    }
+    if ( value < 0 ) {
+        value = 0;
+    }
+    return static_cast<uint32_t>( value );
+}
+
+uint32_t ArmyTroop::GetSpeed() const
+{
+    // Hero specialty speed bonus is reflected in the army info dialog (and any
+    // other non-battle context that calls Troop::GetSpeed via dynamic dispatch).
+    // Battle::Unit::GetSpeed has its own override that bypasses this path and
+    // applies the bonus directly on Monster::GetSpeed, so there's no double-count.
+    int value = static_cast<int>( Troop::GetSpeed() );
+    if ( const HeroBase * commander = _army ? _army->GetCommander() : nullptr ) {
+        value += getSpecialtySpeedBonus( commander, GetID() );
+    }
+    if ( value < 0 ) {
+        value = 0;
+    }
+    return static_cast<uint32_t>( value );
 }
 
 PlayerColor ArmyTroop::GetColor() const

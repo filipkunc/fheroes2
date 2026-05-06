@@ -266,6 +266,21 @@ namespace
             const fheroes2::Sprite & port = Heroes::GetPortrait( index, PORT_SMALL );
 
             renderItem( port, Heroes::getDefaultName( index ), { dstx, dsty }, 45 / 2, 50, _offsetY / 2, current );
+
+            // Hi-res hero portrait overlay: must come AFTER renderItem so the WriteHook
+            // has mirrored the palette art into _screenRGBA before the RGBA write.
+            // Mirrors renderItem's blit position (centred at middleImageOffsetX = 22,
+            // itemOffsetY = _offsetY/2 = 17) so the overlay sits in the same box.
+            // Prefers the dedicated mini portrait to avoid aspect bleed-through, with
+            // an auto-cropped big-portrait fallback for heroes without a small variant.
+            const int32_t boxX = dstx + 45 / 2 - port.width() / 2;
+            const int32_t boxY = dsty + _offsetY / 2 - port.height() / 2;
+            if ( const fheroes2::Image * smallRGBA = fheroes2::AGG::GetRGBACustomHeroPortraitSmall( index ); smallRGBA != nullptr ) {
+                fheroes2::AGG::renderHiResHeroPortraitInBoxFilled( *smallRGBA, boxX, boxY, port.width(), port.height() );
+            }
+            else if ( const fheroes2::Image * heroRGBA = fheroes2::AGG::GetRGBACustomHeroPortrait( index ); heroRGBA != nullptr ) {
+                fheroes2::AGG::renderHiResHeroPortraitInBoxFilled( *heroRGBA, boxX, boxY, port.width(), port.height() );
+            }
         }
 
         void ActionListPressRight( int32_t & index ) override

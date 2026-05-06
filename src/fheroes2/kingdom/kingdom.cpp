@@ -40,6 +40,7 @@
 #include "game_interface.h"
 #include "game_io.h"
 #include "game_static.h"
+#include "heroes_specialty_runtime.h"
 #include "interface_icons.h"
 #include "logging.h"
 #include "maps.h"
@@ -659,6 +660,9 @@ Funds Kingdom::GetIncome( int type /* = INCOME_ALL */ ) const
         for ( const Heroes * hero : heroes ) {
             assert( hero != nullptr );
             totalIncome.gold += hero->GetSecondarySkillValue( Skill::Secondary::ESTATES );
+            // Hero specialty: per-day resource bonus (no-op when the hero has
+            // no RESOURCE specialty).
+            totalIncome += getSpecialtyResourceBonus( hero );
         }
     }
 

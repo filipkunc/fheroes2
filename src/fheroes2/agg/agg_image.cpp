@@ -43,6 +43,7 @@
 #include "exception.h"
 #include "game_language.h"
 #include "h2d.h"
+#include "heroes.h"
 #include "icn.h"
 #include "image.h"
 #include "image_tool.h"
@@ -6806,6 +6807,46 @@ namespace fheroes2::AGG
             return registry[0];
         }
 
+        // Hi-res RGBA hero portrait registry. Each entry maps a hero ID to the
+        // single-PNG prefix under files/data/sprites/. Keep this in sync with the
+        // hero_manifest.json `has_custom_sprites` flag in the Python sprite editor —
+        // typically the editor's "Export Specialties → C++" step would populate this
+        // too, but we hand-edit until the codegen learns about portraits.
+        struct RGBAHeroEntry
+        {
+            int heroId;
+            const char * prefix;
+        };
+
+        const RGBAHeroEntry & getRGBAHeroRegistryEntries( size_t & count )
+        {
+            // The body of this array is generated from hero_manifest.json by
+            // tools/sprite_editor/codegen/specialty_export.py — the same "Export
+            // Specialties → C++" button. Heroes whose manifest entry has
+            // has_custom_sprites=true get an entry pointing at their PNG prefix.
+            // The trailing sentinel keeps the array non-empty for MSVC even
+            // when no heroes have hi-res art yet.
+            static const RGBAHeroEntry registry[] = {
+#include "heroes_specialty_rgba.inl"
+                { 0, nullptr }, // sentinel
+            };
+            count = ( sizeof( registry ) / sizeof( registry[0] ) ) - 1;
+            return registry[0];
+        }
+
+        // Parallel registry for the small (mini) hero portrait — separate from the
+        // big-portrait registry so a hero can have one, the other, or both, and
+        // PortraitRedraw falls back gracefully. Populated from has_custom_sprites_small.
+        const RGBAHeroEntry & getRGBAHeroSmallRegistryEntries( size_t & count )
+        {
+            static const RGBAHeroEntry registry[] = {
+#include "heroes_specialty_rgba_small.inl"
+                { 0, nullptr }, // sentinel
+            };
+            count = ( sizeof( registry ) / sizeof( registry[0] ) ) - 1;
+            return registry[0];
+        }
+
         const char * findRGBACustomPrefix( const int monsterId )
         {
             size_t count = 0;
@@ -7141,6 +7182,167 @@ namespace fheroes2::AGG
 
         const auto it = cache.find( monsterId );
         return ( it == cache.end() ) ? nullptr : &it->second;
+    }
+
+    void renderHiResHeroPortraitInBoxFilled( const Image & portrait, const int32_t boxX, const int32_t boxY, const int32_t boxW, const int32_t boxH )
+    {
+        if ( portrait.empty() || boxW <= 0 || boxH <= 0 ) {
+            return;
+        }
+        const int32_t srcW = portrait.width();
+        const int32_t srcH = portrait.height();
+        if ( srcW <= 0 || srcH <= 0 ) {
+            return;
+        }
+
+        // Cover-fit: pick the crop region whose aspect matches the slot, anchored
+        // to the top of the source so the face is preserved (the bottom of the
+        // PORT0xxx art is shoulders/clothing — safe to drop on PORT_SMALL).
+        // src is "taller" than slot when (srcW * boxH) < (srcH * boxW): we crop
+        // vertically and the crop width = srcW. Otherwise crop horizontally,
+        // crop height = srcH.
+        int32_t cropX = 0;
+        int32_t cropY = 0;
+        int32_t cropW = srcW;
+        int32_t cropH = srcH;
+        if ( static_cast<int64_t>( srcW ) * boxH < static_cast<int64_t>( srcH ) * boxW ) {
+            // src is taller relative to box — drop bottom rows.
+            cropH = static_cast<int32_t>( ( static_cast<int64_t>( srcW ) * boxH ) / boxW );
+            if ( cropH < 1 ) cropH = 1;
+        }
+        else if ( static_cast<int64_t>( srcW ) * boxH > static_cast<int64_t>( srcH ) * boxW ) {
+            // src is wider — drop equal pixels from each side, centred crop.
+            cropW = static_cast<int32_t>( ( static_cast<int64_t>( srcH ) * boxW ) / boxH );
+            if ( cropW < 1 ) cropW = 1;
+            cropX = ( srcW - cropW ) / 2;
+        }
+
+        // Build the cropped sub-image and render it to the slot. The cropped image
+        // has the slot's aspect, so renderHiResMonsterPortrait fills the box exactly.
+        Image cropped( cropW, cropH, ImageFormat::RGBA_32BIT );
+        const uint8_t * srcData = portrait.image();
+        uint8_t * dstData = cropped.image();
+        for ( int32_t y = 0; y < cropH; ++y ) {
+            std::memcpy( dstData + static_cast<ptrdiff_t>( y ) * cropW * 4,
+                         srcData + ( ( static_cast<ptrdiff_t>( cropY + y ) * srcW + cropX ) * 4 ),
+                         static_cast<size_t>( cropW ) * 4 );
+        }
+        renderHiResMonsterPortrait( cropped, boxX, boxY, boxW );
+    }
+
+    void renderHiResHeroPortraitInBox( const Image & portrait, const int32_t boxX, const int32_t boxY, const int32_t boxW, const int32_t boxH )
+    {
+        if ( portrait.empty() || boxW <= 0 || boxH <= 0 ) {
+            return;
+        }
+        const int32_t srcW = portrait.width();
+        const int32_t srcH = portrait.height();
+        if ( srcW <= 0 || srcH <= 0 ) {
+            return;
+        }
+        // Width-bind by default; switch to height-bind when the resulting height
+        // would overflow the slot — keeps the overlay strictly inside the palette
+        // portrait's footprint, no bleed into adjacent UI (mobility/mana bars,
+        // adjacent list rows).
+        int32_t overlayW = boxW;
+        int32_t overlayH = static_cast<int32_t>( ( static_cast<int64_t>( srcH ) * boxW ) / srcW );
+        if ( overlayH > boxH ) {
+            overlayH = boxH;
+            overlayW = static_cast<int32_t>( ( static_cast<int64_t>( srcW ) * boxH ) / srcH );
+        }
+        if ( overlayW <= 0 || overlayH <= 0 ) {
+            return;
+        }
+        const int32_t overlayX = boxX + ( boxW - overlayW ) / 2;
+        const int32_t overlayY = boxY;
+        renderHiResMonsterPortrait( portrait, overlayX, overlayY, overlayW );
+    }
+
+    const Image * GetRGBACustomHeroPortrait( const int heroId )
+    {
+        // Lazy single-shot load per hero. Heroes only have one PNG (frame 0) —
+        // no animation, no bbox-crop step (the PNG IS the portrait).
+        static std::map<int, Image> portraits;
+        static std::set<int> attempted;
+
+        if ( attempted.count( heroId ) > 0 ) {
+            const auto it = portraits.find( heroId );
+            return ( it == portraits.end() ) ? nullptr : &it->second;
+        }
+        attempted.insert( heroId );
+
+        size_t entryCount = 0;
+        const RGBAHeroEntry * registry = &getRGBAHeroRegistryEntries( entryCount );
+        const char * prefix = nullptr;
+        for ( size_t i = 0; i < entryCount; ++i ) {
+            if ( registry[i].heroId == heroId ) {
+                prefix = registry[i].prefix;
+                break;
+            }
+        }
+        if ( prefix == nullptr ) {
+            return nullptr;
+        }
+
+        const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
+        char filename[64];
+        snprintf( filename, sizeof( filename ), "%s_000.png", prefix );
+        std::string fullPath;
+        if ( !Settings::findFile( spritesDir, filename, fullPath ) ) {
+            return nullptr;
+        }
+
+        Image portrait;
+        if ( !LoadRGBA( fullPath, portrait ) || portrait.empty() ) {
+            return nullptr;
+        }
+
+        const auto inserted = portraits.emplace( heroId, std::move( portrait ) );
+        return &inserted.first->second;
+    }
+
+    const Image * GetRGBACustomHeroPortraitSmall( const int heroId )
+    {
+        // Mirrors GetRGBACustomHeroPortrait but uses the small-portrait registry
+        // and reads `{prefix}_small_000.png`. Returns nullptr when no small variant
+        // is authored — callers should fall back to the cropped big portrait.
+        static std::map<int, Image> portraits;
+        static std::set<int> attempted;
+
+        if ( attempted.count( heroId ) > 0 ) {
+            const auto it = portraits.find( heroId );
+            return ( it == portraits.end() ) ? nullptr : &it->second;
+        }
+        attempted.insert( heroId );
+
+        size_t entryCount = 0;
+        const RGBAHeroEntry * registry = &getRGBAHeroSmallRegistryEntries( entryCount );
+        const char * prefix = nullptr;
+        for ( size_t i = 0; i < entryCount; ++i ) {
+            if ( registry[i].heroId == heroId ) {
+                prefix = registry[i].prefix;
+                break;
+            }
+        }
+        if ( prefix == nullptr ) {
+            return nullptr;
+        }
+
+        const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
+        char filename[64];
+        snprintf( filename, sizeof( filename ), "%s_small_000.png", prefix );
+        std::string fullPath;
+        if ( !Settings::findFile( spritesDir, filename, fullPath ) ) {
+            return nullptr;
+        }
+
+        Image portrait;
+        if ( !LoadRGBA( fullPath, portrait ) || portrait.empty() ) {
+            return nullptr;
+        }
+
+        const auto inserted = portraits.emplace( heroId, std::move( portrait ) );
+        return &inserted.first->second;
     }
 
     const Image & GetTIL( int tilId, uint32_t index, uint32_t shapeId )

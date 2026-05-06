@@ -1,0 +1,1016 @@
+{
+  "lord_kilburn": {
+    "enum": "LORDKILBURN",
+    "hero_id": 1,
+    "race": "Knight",
+    "display_name": "Lord Kilburn",
+    "port_index": 0,
+    "campaign": "",
+    "prefix": "hero_lord_kilburn",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "unit",
+      "units": [
+        "PEASANT",
+        "MAID"
+      ],
+      "atk_bonus": 4,
+      "def_bonus": 4,
+      "speed_bonus": 1
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "sir_gallanth": {
+    "enum": "SIRGALLANTH",
+    "hero_id": 2,
+    "race": "Knight",
+    "display_name": "Sir Gallanth",
+    "port_index": 1,
+    "campaign": "",
+    "prefix": "hero_sir_gallanth",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "ector": {
+    "enum": "ECTOR",
+    "hero_id": 3,
+    "race": "Knight",
+    "display_name": "Ector",
+    "port_index": 2,
+    "campaign": "",
+    "prefix": "hero_ector",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "resource",
+      "resource": "WOOD",
+      "amount_per_day": 2
+    }
+  },
+  "gvenneth": {
+    "enum": "GVENNETH",
+    "hero_id": 4,
+    "race": "Knight",
+    "display_name": "Gvenneth",
+    "port_index": 3,
+    "campaign": "",
+    "prefix": "hero_gvenneth",
+    "has_custom_sprites": true,
+    "specialty": {
+      "kind": "unit",
+      "units": [
+        "CAVALRY",
+        "CHAMPION",
+        "PALADIN",
+        "CRUSADER",
+        "AVENGER"
+      ],
+      "atk_bonus": 5,
+      "def_bonus": 5,
+      "speed_bonus": 1
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+  },
+  "tyro": {
+    "enum": "TYRO",
+    "hero_id": 5,
+    "race": "Knight",
+    "display_name": "Tyro",
+    "port_index": 4,
+    "campaign": "",
+    "prefix": "hero_tyro",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "ambrose": {
+    "enum": "AMBROSE",
+    "hero_id": 6,
+    "race": "Knight",
+    "display_name": "Ambrose",
+    "port_index": 5,
+    "campaign": "",
+    "prefix": "hero_ambrose",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "ruby": {
+    "enum": "RUBY",
+    "hero_id": 7,
+    "race": "Knight",
+    "display_name": "Ruby",
+    "port_index": 6,
+    "campaign": "",
+    "prefix": "hero_ruby",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "resource",
+      "resource": "CRYSTAL",
+      "amount_per_day": 1
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "maximus": {
+    "enum": "MAXIMUS",
+    "hero_id": 8,
+    "race": "Knight",
+    "display_name": "Maximus",
+    "port_index": 7,
+    "campaign": "",
+    "prefix": "hero_maximus",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "dimitry": {
+    "enum": "DIMITRY",
+    "hero_id": 9,
+    "race": "Knight",
+    "display_name": "Dimitry",
+    "port_index": 8,
+    "campaign": "",
+    "prefix": "hero_dimitry",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "thundax": {
+    "enum": "THUNDAX",
+    "hero_id": 10,
+    "race": "Barbarian",
+    "display_name": "Thundax",
+    "port_index": 9,
+    "campaign": "",
+    "prefix": "hero_thundax",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "unit",
+      "units": [
+        "OGRE",
+        "OGRE_LORD",
+        "TROLL",
+        "WAR_TROLL"
+      ],
+      "atk_bonus": 3,
+      "def_bonus": 4,
+      "speed_bonus": 1
+    }
+  },
+  "fineous": {
+    "enum": "FINEOUS",
+    "hero_id": 11,
+    "race": "Barbarian",
+    "display_name": "Fineous",
+    "port_index": 10,
+    "campaign": "",
+    "prefix": "hero_fineous",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "jojosh": {
+    "enum": "JOJOSH",
+    "hero_id": 12,
+    "race": "Barbarian",
+    "display_name": "Jojosh",
+    "port_index": 11,
+    "campaign": "",
+    "prefix": "hero_jojosh",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "crag_hack": {
+    "enum": "CRAGHACK",
+    "hero_id": 13,
+    "race": "Barbarian",
+    "display_name": "Crag Hack",
+    "port_index": 12,
+    "campaign": "",
+    "prefix": "hero_crag_hack",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "jezebel": {
+    "enum": "JEZEBEL",
+    "hero_id": 14,
+    "race": "Barbarian",
+    "display_name": "Jezebel",
+    "port_index": 13,
+    "campaign": "",
+    "prefix": "hero_jezebel",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "jaclyn": {
+    "enum": "JACLYN",
+    "hero_id": 15,
+    "race": "Barbarian",
+    "display_name": "Jaclyn",
+    "port_index": 14,
+    "campaign": "",
+    "prefix": "hero_jaclyn",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "ergon": {
+    "enum": "ERGON",
+    "hero_id": 16,
+    "race": "Barbarian",
+    "display_name": "Ergon",
+    "port_index": 15,
+    "campaign": "",
+    "prefix": "hero_ergon",
+    "has_custom_sprites": true,
+    "specialty": {
+      "kind": "unit",
+      "units": [
+        "WOLF",
+        "DACHSHUND"
+      ],
+      "atk_bonus": 5,
+      "def_bonus": 2,
+      "speed_bonus": 1
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+  },
+  "tsabu": {
+    "enum": "TSABU",
+    "hero_id": 17,
+    "race": "Barbarian",
+    "display_name": "Tsabu",
+    "port_index": 16,
+    "campaign": "",
+    "prefix": "hero_tsabu",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "atlas": {
+    "enum": "ATLAS",
+    "hero_id": 18,
+    "race": "Barbarian",
+    "display_name": "Atlas",
+    "port_index": 17,
+    "campaign": "",
+    "prefix": "hero_atlas",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "astra": {
+    "enum": "ASTRA",
+    "hero_id": 19,
+    "race": "Sorceress",
+    "display_name": "Astra",
+    "port_index": 18,
+    "campaign": "",
+    "prefix": "hero_astra",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "natasha": {
+    "enum": "NATASHA",
+    "hero_id": 20,
+    "race": "Sorceress",
+    "display_name": "Natasha",
+    "port_index": 19,
+    "campaign": "",
+    "prefix": "hero_natasha",
+    "has_custom_sprites": true,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition.",
+    "portrait_prompt_small": "Repaint this tiny hero icon at high resolution. Keep the EXACT face, hair, headwear, and shoulder framing of the original \u2014 this is a mini portrait icon used in game UI, so the framing must match. Sharpen details. Do NOT zoom out, reframe, change the head position, or alter the background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
+  },
+  "troyan": {
+    "enum": "TROYAN",
+    "hero_id": 21,
+    "race": "Sorceress",
+    "display_name": "Troyan",
+    "port_index": 20,
+    "campaign": "",
+    "prefix": "hero_troyan",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "vatawna": {
+    "enum": "VATAWNA",
+    "hero_id": 22,
+    "race": "Sorceress",
+    "display_name": "Vatawna",
+    "port_index": 21,
+    "campaign": "",
+    "prefix": "hero_vatawna",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "rebecca": {
+    "enum": "REBECCA",
+    "hero_id": 23,
+    "race": "Sorceress",
+    "display_name": "Rebecca",
+    "port_index": 22,
+    "campaign": "",
+    "prefix": "hero_rebecca",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "gem": {
+    "enum": "GEM",
+    "hero_id": 24,
+    "race": "Sorceress",
+    "display_name": "Gem",
+    "port_index": 23,
+    "campaign": "",
+    "prefix": "hero_gem",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "ariel": {
+    "enum": "ARIEL",
+    "hero_id": 25,
+    "race": "Sorceress",
+    "display_name": "Ariel",
+    "port_index": 24,
+    "campaign": "",
+    "prefix": "hero_ariel",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "carlawn": {
+    "enum": "CARLAWN",
+    "hero_id": 26,
+    "race": "Sorceress",
+    "display_name": "Carlawn",
+    "port_index": 25,
+    "campaign": "",
+    "prefix": "hero_carlawn",
+    "has_custom_sprites": true,
+    "specialty": {
+      "kind": "spell",
+      "spell": "LIGHTNINGBOLT",
+      "damage_bonus_percent": 33,
+      "sp_cost_reduction": 1
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition.",
+    "portrait_prompt_small": "Repaint this tiny hero icon at high resolution. Keep the EXACT face, hair, headwear, and shoulder framing of the original \u2014 this is a mini portrait icon used in game UI, so the framing must match. Sharpen details. Do NOT zoom out, reframe, change the head position, or alter the background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
+  },
+  "luna": {
+    "enum": "LUNA",
+    "hero_id": 27,
+    "race": "Sorceress",
+    "display_name": "Luna",
+    "port_index": 26,
+    "campaign": "",
+    "prefix": "hero_luna",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "arie": {
+    "enum": "ARIE",
+    "hero_id": 28,
+    "race": "Warlock",
+    "display_name": "Arie",
+    "port_index": 27,
+    "campaign": "",
+    "prefix": "hero_arie",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "alamar": {
+    "enum": "ALAMAR",
+    "hero_id": 29,
+    "race": "Warlock",
+    "display_name": "Alamar",
+    "port_index": 28,
+    "campaign": "",
+    "prefix": "hero_alamar",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "vesper": {
+    "enum": "VESPER",
+    "hero_id": 30,
+    "race": "Warlock",
+    "display_name": "Vesper",
+    "port_index": 29,
+    "campaign": "",
+    "prefix": "hero_vesper",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "crodo": {
+    "enum": "CRODO",
+    "hero_id": 31,
+    "race": "Warlock",
+    "display_name": "Crodo",
+    "port_index": 30,
+    "campaign": "",
+    "prefix": "hero_crodo",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "barok": {
+    "enum": "BAROK",
+    "hero_id": 32,
+    "race": "Warlock",
+    "display_name": "Barok",
+    "port_index": 31,
+    "campaign": "",
+    "prefix": "hero_barok",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "spell",
+      "spell": "ARROW",
+      "damage_bonus_percent": 50,
+      "sp_cost_reduction": 0
+    }
+  },
+  "kastore": {
+    "enum": "KASTORE",
+    "hero_id": 33,
+    "race": "Warlock",
+    "display_name": "Kastore",
+    "port_index": 32,
+    "campaign": "",
+    "prefix": "hero_kastore",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "unit",
+      "units": [
+        "GREEN_DRAGON",
+        "RED_DRAGON",
+        "BLACK_DRAGON",
+        "AZURE_DRAGON",
+        "BONE_DRAGON",
+        "BLOOD_DRAGON"
+      ],
+      "atk_bonus": 5,
+      "def_bonus": 5,
+      "speed_bonus": 1
+    }
+  },
+  "agar": {
+    "enum": "AGAR",
+    "hero_id": 34,
+    "race": "Warlock",
+    "display_name": "Agar",
+    "port_index": 33,
+    "campaign": "",
+    "prefix": "hero_agar",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "falagar": {
+    "enum": "FALAGAR",
+    "hero_id": 35,
+    "race": "Warlock",
+    "display_name": "Falagar",
+    "port_index": 34,
+    "campaign": "",
+    "prefix": "hero_falagar",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "wrathmont": {
+    "enum": "WRATHMONT",
+    "hero_id": 36,
+    "race": "Warlock",
+    "display_name": "Wrathmont",
+    "port_index": 35,
+    "campaign": "",
+    "prefix": "hero_wrathmont",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "myra": {
+    "enum": "MYRA",
+    "hero_id": 37,
+    "race": "Wizard",
+    "display_name": "Myra",
+    "port_index": 36,
+    "campaign": "",
+    "prefix": "hero_myra",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "flint": {
+    "enum": "FLINT",
+    "hero_id": 38,
+    "race": "Wizard",
+    "display_name": "Flint",
+    "port_index": 37,
+    "campaign": "",
+    "prefix": "hero_flint",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "dawn": {
+    "enum": "DAWN",
+    "hero_id": 39,
+    "race": "Wizard",
+    "display_name": "Dawn",
+    "port_index": 38,
+    "campaign": "",
+    "prefix": "hero_dawn",
+    "has_custom_sprites": true,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve quality and realism."
+  },
+  "halon": {
+    "enum": "HALON",
+    "hero_id": 40,
+    "race": "Wizard",
+    "display_name": "Halon",
+    "port_index": 39,
+    "campaign": "",
+    "prefix": "hero_halon",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "myrini": {
+    "enum": "MYRINI",
+    "hero_id": 41,
+    "race": "Wizard",
+    "display_name": "Myrini",
+    "port_index": 40,
+    "campaign": "",
+    "prefix": "hero_myrini",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "wilfrey": {
+    "enum": "WILFREY",
+    "hero_id": 42,
+    "race": "Wizard",
+    "display_name": "Wilfrey",
+    "port_index": 41,
+    "campaign": "",
+    "prefix": "hero_wilfrey",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "sarakin": {
+    "enum": "SARAKIN",
+    "hero_id": 43,
+    "race": "Wizard",
+    "display_name": "Sarakin",
+    "port_index": 42,
+    "campaign": "",
+    "prefix": "hero_sarakin",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "kalindra": {
+    "enum": "KALINDRA",
+    "hero_id": 44,
+    "race": "Wizard",
+    "display_name": "Kalindra",
+    "port_index": 43,
+    "campaign": "",
+    "prefix": "hero_kalindra",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "mandigal": {
+    "enum": "MANDIGAL",
+    "hero_id": 45,
+    "race": "Wizard",
+    "display_name": "Mandigal",
+    "port_index": 44,
+    "campaign": "",
+    "prefix": "hero_mandigal",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "zom": {
+    "enum": "ZOM",
+    "hero_id": 46,
+    "race": "Necromancer",
+    "display_name": "Zom",
+    "port_index": 45,
+    "campaign": "",
+    "prefix": "hero_zom",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "darlana": {
+    "enum": "DARLANA",
+    "hero_id": 47,
+    "race": "Necromancer",
+    "display_name": "Darlana",
+    "port_index": 46,
+    "campaign": "",
+    "prefix": "hero_darlana",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "zam": {
+    "enum": "ZAM",
+    "hero_id": 48,
+    "race": "Necromancer",
+    "display_name": "Zam",
+    "port_index": 47,
+    "campaign": "",
+    "prefix": "hero_zam",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "ranloo": {
+    "enum": "RANLOO",
+    "hero_id": 49,
+    "race": "Necromancer",
+    "display_name": "Ranloo",
+    "port_index": 48,
+    "campaign": "",
+    "prefix": "hero_ranloo",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "charity": {
+    "enum": "CHARITY",
+    "hero_id": 50,
+    "race": "Necromancer",
+    "display_name": "Charity",
+    "port_index": 49,
+    "campaign": "",
+    "prefix": "hero_charity",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "rialdo": {
+    "enum": "RIALDO",
+    "hero_id": 51,
+    "race": "Necromancer",
+    "display_name": "Rialdo",
+    "port_index": 50,
+    "campaign": "",
+    "prefix": "hero_rialdo",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "roxana": {
+    "enum": "ROXANA",
+    "hero_id": 52,
+    "race": "Necromancer",
+    "display_name": "Roxana",
+    "port_index": 51,
+    "campaign": "",
+    "prefix": "hero_roxana",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "sandro": {
+    "enum": "SANDRO",
+    "hero_id": 53,
+    "race": "Necromancer",
+    "display_name": "Sandro",
+    "port_index": 52,
+    "campaign": "",
+    "prefix": "hero_sandro",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "celia": {
+    "enum": "CELIA",
+    "hero_id": 54,
+    "race": "Necromancer",
+    "display_name": "Celia",
+    "port_index": 53,
+    "campaign": "",
+    "prefix": "hero_celia",
+    "has_custom_sprites": true,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve quality and realism."
+  },
+  "roland": {
+    "enum": "ROLAND",
+    "hero_id": 55,
+    "race": "Knight",
+    "display_name": "Roland",
+    "port_index": 54,
+    "campaign": "SW",
+    "prefix": "hero_roland",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+  },
+  "corlagon": {
+    "enum": "CORLAGON",
+    "hero_id": 56,
+    "race": "Knight",
+    "display_name": "Lord Corlagon",
+    "port_index": 55,
+    "campaign": "SW",
+    "prefix": "hero_corlagon",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "eliza": {
+    "enum": "ELIZA",
+    "hero_id": 57,
+    "race": "Sorceress",
+    "display_name": "Sister Eliza",
+    "port_index": 56,
+    "campaign": "SW",
+    "prefix": "hero_eliza",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "archibald": {
+    "enum": "ARCHIBALD",
+    "hero_id": 58,
+    "race": "Warlock",
+    "display_name": "Archibald",
+    "port_index": 57,
+    "campaign": "SW",
+    "prefix": "hero_archibald",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "halton": {
+    "enum": "HALTON",
+    "hero_id": 59,
+    "race": "Knight",
+    "display_name": "Lord Halton",
+    "port_index": 58,
+    "campaign": "SW",
+    "prefix": "hero_halton",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "brax": {
+    "enum": "BRAX",
+    "hero_id": 60,
+    "race": "Barbarian",
+    "display_name": "Brother Brax",
+    "port_index": 59,
+    "campaign": "SW",
+    "prefix": "hero_brax",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "solmyr": {
+    "enum": "SOLMYR",
+    "hero_id": 61,
+    "race": "Wizard",
+    "display_name": "Solmyr",
+    "port_index": 60,
+    "campaign": "PoL",
+    "prefix": "hero_solmyr",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "dainwin": {
+    "enum": "DAINWIN",
+    "hero_id": 62,
+    "race": "Warlock",
+    "display_name": "Dainwin",
+    "port_index": 61,
+    "campaign": "PoL",
+    "prefix": "hero_dainwin",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "mog": {
+    "enum": "MOG",
+    "hero_id": 63,
+    "race": "Necromancer",
+    "display_name": "Mog",
+    "port_index": 62,
+    "campaign": "PoL",
+    "prefix": "hero_mog",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "uncle_ivan": {
+    "enum": "UNCLEIVAN",
+    "hero_id": 64,
+    "race": "Knight",
+    "display_name": "Uncle Ivan",
+    "port_index": 63,
+    "campaign": "PoL",
+    "prefix": "hero_uncle_ivan",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "joseph": {
+    "enum": "JOSEPH",
+    "hero_id": 65,
+    "race": "Knight",
+    "display_name": "Joseph",
+    "port_index": 64,
+    "campaign": "PoL",
+    "prefix": "hero_joseph",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "gallavant": {
+    "enum": "GALLAVANT",
+    "hero_id": 66,
+    "race": "Knight",
+    "display_name": "Gallavant",
+    "port_index": 65,
+    "campaign": "PoL",
+    "prefix": "hero_gallavant",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "elderian": {
+    "enum": "ELDERIAN",
+    "hero_id": 67,
+    "race": "Knight",
+    "display_name": "Elderian",
+    "port_index": 66,
+    "campaign": "PoL",
+    "prefix": "hero_elderian",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "ceallach": {
+    "enum": "CEALLACH",
+    "hero_id": 68,
+    "race": "Knight",
+    "display_name": "Ceallach",
+    "port_index": 67,
+    "campaign": "PoL",
+    "prefix": "hero_ceallach",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "drakonia": {
+    "enum": "DRAKONIA",
+    "hero_id": 69,
+    "race": "Sorceress",
+    "display_name": "Drakonia",
+    "port_index": 68,
+    "campaign": "PoL",
+    "prefix": "hero_drakonia",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "martine": {
+    "enum": "MARTINE",
+    "hero_id": 70,
+    "race": "Sorceress",
+    "display_name": "Martine",
+    "port_index": 69,
+    "campaign": "PoL",
+    "prefix": "hero_martine",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "jarkonas": {
+    "enum": "JARKONAS",
+    "hero_id": 71,
+    "race": "Knight",
+    "display_name": "Jarkonas",
+    "port_index": 70,
+    "campaign": "PoL",
+    "prefix": "hero_jarkonas",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  },
+  "debug_hero": {
+    "enum": "DEBUG_HERO",
+    "hero_id": 72,
+    "race": "Knight",
+    "display_name": "Debug Hero",
+    "port_index": 59,
+    "campaign": "Debug",
+    "prefix": "hero_debug_hero",
+    "has_custom_sprites": false,
+    "specialty": {
+      "kind": "none"
+    }
+  }
+}

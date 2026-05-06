@@ -43,6 +43,7 @@
 #include "heroes.h" // IWYU pragma: associated
 #include "heroes_base.h"
 #include "heroes_indicator.h"
+#include "heroes_specialty_runtime.h"
 #include "icn.h"
 #include "image.h"
 #include "interface_gamearea.h"
@@ -320,6 +321,10 @@ int Heroes::OpenDialog( const bool readonly, const bool fade, const bool disable
     secskill_bar.SetContent( _secondarySkills.ToVector() );
     secskill_bar.setRenderingOffset( { dialogRoi.x + 3, dialogRoi.y + 233 } );
     secskill_bar.Redraw( display );
+
+    // Hero specialty: surfaced via the portrait click handler + status bar
+    // hint below — see the input loop. No inline rendering here so the
+    // dialog's existing layout stays untouched.
 
     // Status bar.
     dst_pt.x = dialogRoi.x + 22;
@@ -607,6 +612,14 @@ int Heroes::OpenDialog( const bool readonly, const bool fade, const bool disable
                 needRedraw = true;
             }
         }
+        else if ( !isEditor && le.MouseClickLeft( portPos ) ) {
+            // Click the portrait to inspect the hero's specialty.
+            std::string specialtyBody = getSpecialtyDescription( this );
+            if ( specialtyBody.empty() ) {
+                specialtyBody = _( "This hero has no specialty." );
+            }
+            fheroes2::showStandardTextMessage( _name + _( " - Specialty" ), std::move( specialtyBody ), Dialog::OK );
+        }
         else if ( le.isMouseRightButtonPressedInArea( portPos ) ) {
             if ( isEditor ) {
                 _portrait = 0;
@@ -736,6 +749,11 @@ int Heroes::OpenDialog( const bool readonly, const bool fade, const bool disable
             }
             else if ( le.isMouseCursorPosInArea( rectGroupedArmyFormat ) ) {
                 message = _( "Set army combat formation to 'Grouped'" );
+            }
+            else if ( le.isMouseCursorPosInArea( portPos ) ) {
+                // Hint mirrors the click action — left-click opens the specialty
+                // dialog, right-click is the existing QuickInfo (handled above).
+                message = _( "Click to view specialty" );
             }
         }
         else if ( message.empty() ) {
