@@ -1,33 +1,53 @@
 # SDL_GPU composite shaders
 
-Phase 2 of the SDL3 + SDL_GPU migration ships precompiled DXIL bytecode for the
-D3D12 backend on Windows. The HLSL sources live next to their compiled `.dxil`
-output, both checked into git so a clean build does not require dxc.exe to be
-installed.
+The engine ships precompiled shader bytecode for both backends:
 
-CMake reads the `.dxil` files at configure time and embeds them into a
-generated C++ header (`composite_dxil_embedded.h`) inside the build directory.
-The engine `#include`s that generated header and feeds the bytes to
+- **DXIL** (D3D12 / Windows). Source: `*.hlsl`. Compiled with Microsoft's `dxc.exe`.
+- **SPIR-V** (Vulkan / Linux + Android). Source: `*.glsl`. Compiled with Khronos's `glslang`.
+
+CMake reads whichever of the precompiled binaries (`.dxil` and `.spv`) exist
+at configure time and embeds them as C arrays into a generated header
+(`composite_shaders_embedded.h`) inside the build directory. `screen.cpp`
+queries `SDL_GetGPUShaderFormats()` at runtime and feeds the matching blob to
 `SDL_CreateGPUShader`.
 
-## Regenerating the DXIL bytecode
+A clean build does not require `dxc` or `glslang` to be installed — the
+compiled binaries are checked into git. Install the toolchain only if you want
+to modify the shader sources.
 
-If you change the HLSL sources you must regenerate the bytecode. Run from the
-repo root (substitute the actual Windows SDK version on your machine):
+## Regenerating DXIL (Windows / D3D12)
+
+If you change the HLSL sources you must regenerate the DXIL bytecode. Run from
+the repo root (substitute the actual Windows SDK version on your machine):
 
 ```bash
 DXC="/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/dxc.exe"
 "$DXC" -nologo -T vs_6_0 -E main src/engine/shaders/composite.vert.hlsl -Fo src/engine/shaders/composite.vert.dxil
 "$DXC" -nologo -T ps_6_0 -E main src/engine/shaders/composite.frag.hlsl -Fo src/engine/shaders/composite.frag.dxil
+"$DXC" -nologo -T ps_6_0 -E main src/engine/shaders/cursor.frag.hlsl    -Fo src/engine/shaders/cursor.frag.dxil
 ```
 
-Then re-run CMake configure (`cmake --preset default`) so the embedded header
-picks up the new bytecode. CMake `configure_file` runs at configure time, not
-build time — a plain incremental rebuild won't notice the `.dxil` change.
+## Regenerating SPIR-V (Linux + Android / Vulkan)
 
-## Cross-platform formats (Phase 6 work)
+If you change the GLSL sources you must regenerate the SPIR-V bytecode. From
+the repo root:
 
-Vulkan (SPIR-V) and Metal (MSL) bytecode is not produced yet. When Phase 6
-expands cross-platform support, additional `.spv` and `.msl` artifacts will sit
-alongside the `.dxil` files and `screen_gpu.cpp` will pick whichever format
-`SDL_GetGPUShaderFormats` reports as supported.
+```bash
+glslang -V -S vert -o src/engine/shaders/composite.vert.spv src/engine/shaders/composite.vert.glsl
+glslang -V -S frag -o src/engine/shaders/composite.frag.spv src/engine/shaders/composite.frag.glsl
+glslang -V -S frag -o src/engine/shaders/cursor.frag.spv    src/engine/shaders/cursor.frag.glsl
+```
+
+(Or `glslangValidator`, depending on your distro's package layout.)
+
+The HLSL and GLSL sources are kept in sync by hand. They produce visually
+identical output via the SDL_GPU coordinate-system normalisation (see comments
+inside the .vert sources for details about Y-up NDC).
+
+## After regenerating
+
+Re-run CMake configure (`cmake -B build`) so the embedded header picks up the
+new bytecode. CMake `configure_file` runs at configure time, not build time —
+a plain incremental rebuild won't notice the binary change. (CMake's
+`CMAKE_CONFIGURE_DEPENDS` does set up auto-reconfigure on these files; this is
+just for the case where it doesn't trigger.)

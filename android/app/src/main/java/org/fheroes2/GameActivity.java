@@ -40,6 +40,16 @@ import org.libsdl.app.SDLActivity;
 public final class GameActivity extends SDLActivity
 {
     @Override
+    protected String[] getLibraries()
+    {
+        // SDL3 default is { "SDL3", "main" }. We need SDL3_mixer loaded too — listing
+        // it here makes the loader bring it in explicitly before "main", regardless of
+        // DT_NEEDED ordering. The last entry is treated as the application module
+        // (libmain.so) by SDLActivity.getMainSharedObject().
+        return new String[] { "SDL3", "SDL3_mixer", "main" };
+    }
+
+    @Override
     protected void onCreate( final Bundle savedInstanceState )
     {
         final File filesDir = getFilesDir();

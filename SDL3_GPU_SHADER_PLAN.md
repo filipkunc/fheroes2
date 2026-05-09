@@ -281,17 +281,125 @@ Not migrated (deferred to follow-up):
 
 **Not done — minor caveat:** `ui_tool.cpp::colorFade` still passes a raw 6-bit `getGamePalette()` pointer to `screenRestorer.changePalette`. Harmless today (the screenRestorer dtor restores defaults a frame later) and not surfaced in cycling testing. Worth cleaning up if a future cycling-related glitch traces back here — pass `nullptr` or `PALPalette()`.
 
-### Phase 6 — Verification
+### Phase 6 — Cross-platform shaders + Linux/Android validation — IN PROGRESS (2026-05-09)
 
-- All cycling animations work (water tiles on adventure map, castle gold sparkle, lava on volcano scenarios)
-- Hi-res monsters (Thor, Succubus, Azure Dragon) still render at physical fidelity
-- Spell effects (Death Wave, Holy Shout, Armageddon, Lightning, Cold Ring) — including the ones that capture and modify the framebuffer
-- Fade transitions (battle entry/exit, main menu, scenario fade)
-- Dialogs open/close cleanly
-- Letterbox borders solid black
-- Single GPU command buffer per frame, dirty-rect uploads
-- Performance regression check on adventure map
-- Cross-platform: Windows + macOS + Linux + Android (Samsung Galaxy A56 with Xclipse 540 / Vulkan 1.3). PSV out of scope.
+**Done this session:**
+
+- **GLSL shader counterparts.** Added `composite.vert.glsl`, `composite.frag.glsl`,
+  `cursor.frag.glsl` next to the HLSL sources in `src/engine/shaders/`. Same
+  semantics as the HLSL — CPU-side dual-channel composite (mask=255 → palette
+  LUT, mask=0 → RGBA + GPU-side shadow factor multiply for transforms 2-5).
+  Bindings follow the SDL_GPU SPIR-V convention: vertex UBO at `set=1, binding=0`,
+  fragment combined image samplers at `set=2, binding=0..3`. Compile via
+  `glslang -V -S {vert,frag} -o composite.X.spv composite.X.glsl`.
+- **Embedded header now carries both formats.** `composite_dxil_embedded.h.in` →
+  `composite_shaders_embedded.h.in`; CMake `_embed_shader_bytes` helper reads
+  whichever of `.dxil` and `.spv` exists at configure time and embeds it; missing
+  files become a 1-byte `{ 0 }` stub. Generated header lives in the source tree
+  (`src/engine/shaders/composite_shaders_embedded.h`, checked in) so the Android
+  NDK build can read it without running CMake.
+- **Runtime format selection.** `GPURenderEngine::_createPipelines()` now queries
+  `SDL_GetGPUShaderFormats(_device)` and picks DXIL or SPIR-V. The shader-format
+  request mask passed to `SDL_CreateGPUDevice` is `DXIL | SPIRV` so SDL_GPU can
+  match either D3D12 (Windows) or Vulkan (Linux + Android) at runtime.
+- **Linux build green and runs.** Fedora 44 + system SDL3 3.4.8 (`SDL3-devel`) +
+  system `glslang` 16.2 + `SDL3_mixer` built from source (release-3.2.0,
+  `SDLMIXER_VENDORED=ON` with stb_vorbis + drmp3 backends; the configure
+  command sets `SDL3_DIR` explicitly because the NDK toolchain doesn't honour
+  `CMAKE_PREFIX_PATH` for find_package the same way native does). Full app launch
+  hits the main menu, accepts SIGINT cleanly, no errors aside from the harmless
+  `MINIMIZE_ON_FOCUS_LOSS` hint warning.
+- **Android prebuilts + APK build green and runs on the phone.** SDL3 3.4.8 +
+  SDL3_mixer 3.2.0 cross-compiled for `arm64-v8a` only via the NDK CMake
+  toolchain (`$NDK/build/cmake/android.toolchain.cmake`); produced `libSDL3.so`
+  (11.3 MB) and `libSDL3_mixer.so` (1 MB). Drop-in replaced
+  `android/app/jni/SDL2*` with `android/app/jni/SDL3*` (Android.mk shim wraps
+  the prebuilts via `PREBUILT_SHARED_LIBRARY`). `android/sdl2` Gradle module
+  swapped for `android/sdl3` carrying SDL3's `org.libsdl.app.*` Java sources.
+  `GameActivity.getLibraries()` overridden to load `{"SDL3", "SDL3_mixer", "main"}`
+  in order. `app/build.gradle` ABI filter restricted to `arm64-v8a` only (other
+  ABIs deferred — see TODO at the abiFilters site). APK is 61 MB with
+  hi-res sprite assets synced. Launches on the user's Galaxy A56 (Xclipse 540
+  / Vulkan 1.3), first frame renders, touch input dispatches through SDLSurface,
+  no crashes in logcat.
+
+**Required code edits beyond shader/CMake plumbing:**
+
+- `engine/audio.cpp:413` — `MIX_CreateMixerDevice( SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, ... )`
+  trips Android NDK's `-Werror -Wold-style-cast` because the SDL3 macro expands
+  to a C-style cast. Wrapped in `#pragma GCC diagnostic push/ignored "-Wold-style-cast"/pop`
+  guard. Linux/CMake build doesn't set this warning, so it didn't fire there.
+- `engine/image.cpp` two callsites at the `inScale == scale` fast-path branches in
+  `BlitRGBAScaled`/`CopyRGBA` — same treatment for `-Wfloat-equal`. The compared
+  values are derived integer ratios; bit-exact equality is intentional.
+- `engine/localevent.cpp::onTouchFingerEvent` — SDL3 reports finger coords
+  normalised in window pixel space (0..1). The pre-SDL3 path multiplied by
+  `display.width()/height()` (game logical resolution) and called it done, which
+  works only when the game fills the entire window. On Android the swapchain
+  matches the device's full surface (e.g. 2340×1080 in landscape) and the game
+  is letterboxed inside it (e.g. 1440×1080 with 450px black bars). Without
+  letterbox-aware mapping, a tap on the screen's right edge resolved to game
+  x=640 (right edge of game) instead of "outside the game area". Fixed by
+  multiplying the normalised position by `getActiveWindowROI()` dimensions then
+  passing through `convertWindowToRenderCoordinates` — same path the desktop
+  mouse-motion handler uses.
+- `android/app/src/main/AndroidManifest.xml` — `android:screenOrientation` was
+  `sensorLandscape`, changed to `landscape`. Also added
+  `android:resizeableActivity="false"`. On Samsung's One UI (Galaxy A56) the
+  weaker `sensorLandscape` hint and default-resizable activity made the system
+  ignore the orientation lock entirely — the activity launched at the device's
+  current orientation (typically portrait) and SDL3 created the swapchain at
+  1080×2340. Even after these manifest changes the user must launch the app
+  with the phone physically in landscape; if the phone is held in portrait at
+  launch, the activity stays in portrait and renders nothing visible. This is a
+  Samsung-specific quirk; on a stock Android device, the orientation lock would
+  rotate the display automatically on launch. Possible follow-up: add a
+  re-launch-after-rotation flow, or remove `orientation|screenSize` from
+  `configChanges` to force activity recreation on rotation.
+
+**Known Android-specific bug (not yet root-caused):**
+
+Dialog backgrounds leak through to show whatever was rendered behind the
+dialog (most reliably reproduced: open the editor's "Select Monster" dialog
+and the wood-textured interior shows the previous main-menu sprites — CREDITS
+sign, tavern interior — through the dialog body). The dialog's *border* and
+*sprite content* (icons, text, buttons) render correctly; only the
+`Copy(STONEBAK, ...)` interior fill is missing visually. Linux Vulkan does not
+exhibit this. SPIR-V binding indices, texture formats, and CPU-side
+zero-init were verified correct. Tried `cycle=false` on the per-frame
+`SDL_UploadToGPUTexture` calls (forces a memory barrier instead of memory
+aliasing) — did not fix. Best current guess: a Samsung Xclipse 540 Vulkan
+driver quirk in how the indexed/mask R8 textures are sampled when the
+underlying memory was just written from a transfer buffer. Worth trying next:
+disable the engine's GPU path on Android entirely (drop back to the legacy
+SDL_Renderer path) until this is understood, OR add a `SDL_GPU_TEXTUREUSAGE_*`
+flag combination that forces a different memory layout on the indexed/mask
+textures. Reproduce with the in-game editor → "Battle Only" mode → "Select
+Monster" sub-dialog.
+
+**Still TODO in Phase 6:**
+
+- **Android dialog rendering bug** (above) — root-cause + fix.
+- **User to do hands-on visual verification** on Linux + the Galaxy A56:
+  cycling animations (water/gold/lava), hi-res monsters (Thor/Succubus/Azure
+  Dragon) battle sprites + portraits, spell effects (Death Wave / Holy Shout /
+  Armageddon / Lightning Bolt / Cold Ring), fade transitions (main menu, battle
+  entry/exit), dialog open/close, letterbox edges solid black.
+- **Other Android ABIs** (`armeabi-v7a`, `x86`, `x86_64`). Currently only
+  `arm64-v8a` ships. Each needs a parallel SDL3 + SDL3_mixer NDK build and the
+  corresponding `.so` files dropped under `jni/SDL3/lib/<abi>/`. Filter in
+  `android/app/build.gradle` is the gate to flip back to all four.
+- **macOS** — completely untested. Needs MSL shader artefacts (or a
+  shadercross-style runtime conversion), and SDL3 + SDL3_mixer via Homebrew or
+  built from source. Same DXIL+SPIR-V embedding pattern would extend trivially
+  to a third `composite.frag.msl` blob; the runtime format selector handles the
+  third arm.
+- **Audio audible verification** on Linux + Android (the bullet from Phase 1B').
+  The SDL3_mixer rewrite has only been smoke-tested on Windows so far. The Linux
+  build was launched in this session but not verified to play music or sfx; the
+  Android session likewise needs music to actually come out of the speakers.
+- **`SDL_Renderer` removal**. Once the cross-platform path is fully
+  validated, the legacy fallback (`FHEROES2_NO_GPU=1`) can be retired.
 
 ### Where work happens today — CPU vs GPU split
 
@@ -363,8 +471,11 @@ The hi-res monster pipeline (Thor / Succubus / Azure Dragon / Blood Dragon / Ave
 | 3     | Add indexed + mask + palette textures                | **DONE** | 3-4d     |
 | 4     | Per-primitive channel-exclusive write                | **DONE** | 1w       |
 | 5     | Palette upload hook + re-enable cycling              | **DONE** | 1-2d     |
-| 6     | Cross-platform verification (SPIR-V/MSL shaders)     | TODO     | 3-5d     |
-| **Remaining** | **excluding phase 7 follow-ups**             |          | **~1 week** |
+| 6a    | Linux SPIR-V shaders + build + smoke-runs            | **DONE (2026-05-09)** | 1d  |
+| 6b    | Android arm64-v8a SDL3 prebuilts + APK + smoke-run   | **DONE (2026-05-09)** | 1d  |
+| 6c    | Hands-on visual verification (Linux + Android)       | **TODO** | 1-2d   |
+| 6d    | Other Android ABIs + macOS MSL shaders               | **TODO** | 2-3d   |
+| **Remaining** | **excluding phase 7 follow-ups**             |          | **~3-5 days** |
 
 vs ~200 lines / 1-2 days for the indexed-shadow-buffer interim solution.
 

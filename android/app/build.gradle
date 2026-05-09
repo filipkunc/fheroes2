@@ -22,7 +22,11 @@ android {
 
         externalNativeBuild {
             ndkBuild {
-                abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+                // SDL3 prebuilts under jni/SDL3/lib/ currently only contain arm64-v8a.
+                // Other ABIs were removed during the SDL3 migration to keep the build
+                // tree small. Add libs back under jni/SDL3*/lib/<abi>/ and reinstate
+                // them here to ship a full multi-ABI APK.
+                abiFilters 'arm64-v8a'
                 arguments '-j4'
             }
         }
@@ -88,7 +92,7 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
 
     implementation project(':isotools')
-    implementation project(':sdl2')
+    implementation project(':sdl3')
 
     implementation group: 'commons-io', name: 'commons-io', version: '2.20.0'
 

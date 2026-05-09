@@ -127,18 +127,101 @@ Indexed-fallback path (`agg_image.cpp::writeIndexedSpriteFromRGBA`) uses **alpha
 - Tools (extractor, icn2img, pal2img) are in the build directory
 
 ## Android Build
-- Requires Java 17 (system Java 25 is too new for Gradle 8.13)
-- Java 17 installed via SDKMAN: `~/.sdkman/candidates/java/17.0.13-tem`
-- Android SDK location: `~/Android/Sdk`
-- Android deps script (`script/android/install_packages.sh`) may have stale checksum — if it fails, download with `curl -L` and extract manually with `unzip -d android`
-- Build command:
+- Requires Java 17 (system Java 25 is too new for Gradle 8.13). Installed via SDKMAN: `~/.sdkman/candidates/java/17.0.13-tem`
+- Android SDK location: `~/Android/Sdk`. NDK 28.0.13004108 used for SDL3 prebuilts.
+- **SDL3 + SDL3_mixer prebuilts live under `android/app/jni/SDL3*/`** (replaced the old SDL2 ones). Currently only `arm64-v8a` is shipped — the `app/build.gradle` `abiFilters` is set to `'arm64-v8a'` only. Other ABIs were removed during the SDL3 migration to keep the build tree small. To add other ABIs back: build SDL3 + SDL3_mixer for each, drop `.so` under `jni/SDL3*/lib/<abi>/`, reinstate the ABI in `abiFilters`.
+- **Java glue is in `android/sdl3/`** (was `android/sdl2/`). Sources copied verbatim from upstream SDL3 release-3.4.8 `android-project/app/src/main/java/org/libsdl/app/`. `GameActivity.getLibraries()` is overridden to load `{"SDL3", "SDL3_mixer", "main"}` in order.
+- **Manifest orientation: `landscape` (forced) + `resizeableActivity="false"`.** Samsung One UI on Galaxy A56 (and probably similar) ignored the weaker `sensorLandscape` even with the SDL_HINT_ORIENTATIONS hint set; the activity launched at the device's current physical orientation and rendered nothing visible. With the stricter manifest the launching device must already be physically held in landscape — phones held in portrait at launch may not auto-rotate. Stock-Android phones don't seem to need this.
+- Build command (no change):
   ```
   cd android
   JAVA_HOME=~/.sdkman/candidates/java/17.0.13-tem ANDROID_HOME=~/Android/Sdk ./gradlew assembleDebug
   ```
 - APK output: `android/app/build/outputs/apk/debug/app-debug.apk`
 - Install: `adb install -r <apk>` (may need `adb uninstall org.fheroes2` first if signing key differs)
-- Phone device ID: RZCX50PCXYA (Samsung)
+- Phone device ID: RZCX50PCXYA (Samsung Galaxy A56)
+- **Known issue (not fixed yet):** dialog backgrounds leak through to show what was rendered behind the dialog (most reliably reproduced: editor → "Battle Only" → "Select Monster" — the wood-textured interior shows through to the previous main-menu sprites). Linux Vulkan does not exhibit this. See `SDL3_GPU_SHADER_PLAN.md` Phase 6 for the suspected Samsung Xclipse 540 driver quirk.
+
+### Regenerating SDL3 / SDL3_mixer Android prebuilts
+
+If SDL3 needs upgrading (or another ABI added), the build process is:
+
+```bash
+# SDL3 — clone matching version and build via NDK CMake toolchain
+cd ~/Projects/sdl3-android/SDL3
+git checkout release-3.4.8  # match the version SDL3_mixer expects
+cmake -B build-android-arm64 -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/28.0.13004108/build/cmake/android.toolchain.cmake \
+    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=~/Projects/sdl3-android/install-arm64 \
+    -DSDL_STATIC=OFF -DSDL_SHARED=ON -DSDL_TEST_LIBRARY=OFF
+cmake --build build-android-arm64 -j$(nproc)
+cmake --install build-android-arm64
+
+# SDL3_mixer — needs SDL3_DIR explicitly because find_package doesn't honour CMAKE_PREFIX_PATH
+# under the NDK toolchain the same way native does. Sources need ./external/download.sh first.
+cd ~/Projects/sdl3-android/SDL3_mixer
+./external/download.sh   # only first time; clones libogg/vorbis/mpg123/etc.
+cmake -B build-android-arm64 -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/28.0.13004108/build/cmake/android.toolchain.cmake \
+    -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-21 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DSDL3_DIR=~/Projects/sdl3-android/install-arm64/lib/cmake/SDL3 \
+    -DSDLMIXER_VENDORED=ON \
+    -DSDLMIXER_GME=OFF -DSDLMIXER_OPUS=OFF -DSDLMIXER_WAVPACK=OFF \
+    -DSDLMIXER_VORBIS=STB -DSDLMIXER_FLAC=OFF -DSDLMIXER_MOD=OFF \
+    -DSDLMIXER_MP3=MPG123 -DSDLMIXER_MIDI=OFF \
+    -DSDLMIXER_SAMPLES=OFF -DBUILD_SHARED_LIBS=ON
+cmake --build build-android-arm64 -j$(nproc)
+# Tests will fail to link (no main()) — that's fine, libSDL3_mixer.so still built.
+
+# Drop into the Android tree
+cp ~/Projects/sdl3-android/install-arm64/libSDL3.so   android/app/jni/SDL3/lib/arm64-v8a/
+cp ~/Projects/sdl3-android/SDL3_mixer/build-android-arm64/libSDL3_mixer.so   android/app/jni/SDL3_mixer/lib/arm64-v8a/
+# Headers update (only when SDL3 version changes):
+rm -rf android/app/jni/SDL3/include/SDL3 && cp -r ~/Projects/sdl3-android/install-arm64/include/SDL3 android/app/jni/SDL3/include/
+```
+
+If the Java glue changed in upstream SDL3, copy `org.libsdl.app.*.java` into `android/sdl3/src/main/java/org/libsdl/app/` too.
+
+## Linux Build (SDL3)
+
+The system has SDL3-devel from Fedora repos (`dnf install SDL3-devel glslang vulkan-tools`). SDL3_mixer is not packaged on Fedora — build from source. Tested setup:
+
+```bash
+cd /tmp && rm -rf SDL_mixer
+git clone --depth 1 --branch release-3.2.0 https://github.com/libsdl-org/SDL_mixer
+cd SDL_mixer && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DSDLMIXER_VENDORED=OFF -DSDLMIXER_GME=OFF -DSDLMIXER_OPUS=OFF -DSDLMIXER_WAVPACK=OFF \
+    -DSDLMIXER_VORBIS=STB -DSDLMIXER_FLAC=OFF -DSDLMIXER_MOD=OFF -DSDLMIXER_MP3=MPG123
+cmake --build build  # produces /tmp/SDL_mixer/build/libSDL3_mixer.so + Config.cmake
+```
+
+Then configure fheroes2 against it via `CMAKE_PREFIX_PATH` (no need to `sudo cmake --install`):
+
+```bash
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=/tmp/SDL_mixer/build
+cmake --build build -j$(nproc)
+LD_LIBRARY_PATH=/tmp/SDL_mixer/build ./build/fheroes2
+```
+
+Game data + music expected at `build/data/`, `build/files/`, `build/music/` — symlink them: `ln -s "/path/to/HoMM 2 Gold/DATA" build/data` etc.
+
+### SDL_GPU shader regeneration
+
+The shader binaries (`src/engine/shaders/composite.*.dxil` and `composite.*.spv`) are checked into git. If you modify the HLSL or GLSL sources you must regenerate (CMake reads the binaries at configure time and embeds them into `composite_shaders_embedded.h`):
+
+```bash
+# SPIR-V via system glslang
+glslang -V -S vert -o src/engine/shaders/composite.vert.spv src/engine/shaders/composite.vert.glsl
+glslang -V -S frag -o src/engine/shaders/composite.frag.spv src/engine/shaders/composite.frag.glsl
+glslang -V -S frag -o src/engine/shaders/cursor.frag.spv    src/engine/shaders/cursor.frag.glsl
+
+# DXIL needs Windows + dxc.exe — see src/engine/shaders/README.md
+```
+
+After regenerating, re-run `cmake -B build` (the embedded header is generated by `configure_file`, not regular build steps).
 
 ### Android asset sync
 

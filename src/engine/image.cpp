@@ -1666,7 +1666,16 @@ namespace fheroes2
             const uint8_t * inBase = in.image();
 
             // Fast path: identical scale on both sides — copy at physical-pixel resolution.
+            // Both scales are derived from physical/game integer ratios so bit-exact
+            // equality is correct here; suppress the FP-equality warning.
+#if defined( __GNUC__ ) || defined( __clang__ )
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfloat-equal"
+#endif
             if ( inScale == scale ) {
+#if defined( __GNUC__ ) || defined( __clang__ )
+#pragma GCC diagnostic pop
+#endif
                 const int32_t physInX = static_cast<int32_t>( static_cast<float>( inX ) * inScale );
                 const int32_t physInY = static_cast<int32_t>( static_cast<float>( inY ) * inScale );
                 const int32_t physOutX = static_cast<int32_t>( static_cast<float>( outX ) * scale );
@@ -5313,7 +5322,15 @@ namespace fheroes2
         uint8_t * dstData = out.image();
 
         // Fast path: matching scale on both sides — copy directly at physical-pixel resolution.
+        // See note in BlitRGBAScaled — both values are derived integer ratios.
+#if defined( __GNUC__ ) || defined( __clang__ )
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfloat-equal"
+#endif
         if ( inScale == scale ) {
+#if defined( __GNUC__ ) || defined( __clang__ )
+#pragma GCC diagnostic pop
+#endif
             const int32_t pSrcX = static_cast<int32_t>( static_cast<float>( srcStartX ) * inScale );
             const int32_t pSrcY = static_cast<int32_t>( static_cast<float>( srcStartY ) * inScale );
             const int32_t pDstX = static_cast<int32_t>( static_cast<float>( dstStartX ) * scale );

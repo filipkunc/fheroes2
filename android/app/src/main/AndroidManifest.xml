@@ -47,7 +47,8 @@
             android:launchMode="singleInstance"
             android:preferMinimalPostProcessing="true"
             android:process=":GameActivityProcess"
-            android:screenOrientation="sensorLandscape"
+            android:resizeableActivity="false"
+            android:screenOrientation="landscape"
             android:taskAffinity="org.fheroes2.GameTask"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             tools:ignore="DiscouragedApi,UnusedAttribute">

@@ -410,7 +410,17 @@ void Audio::Init()
     spec.format = audioFormat;
     spec.channels = audioChannels;
 
+    // SDL3's SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK macro expands to a C-style cast,
+    // which trips -Wold-style-cast in the strict warning configuration the Android
+    // NDK build uses. Suppress locally; the macro itself is the right value.
+#if defined( __GNUC__ ) || defined( __clang__ )
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#endif
     gMixer = MIX_CreateMixerDevice( SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec );
+#if defined( __GNUC__ ) || defined( __clang__ )
+#pragma GCC diagnostic pop
+#endif
     if ( gMixer == nullptr ) {
         ERROR_LOG( "Failed to open an audio device. The error: " << SDL_GetError() )
         MIX_Quit();

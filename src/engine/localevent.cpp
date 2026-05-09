@@ -1338,8 +1338,26 @@ void LocalEvent::onTouchFingerEvent( const TouchFingerEventType eventType, const
         _emulatedPointerPos.y
             = static_cast<double>( screenResolution.height * position.y - windowRect.y ) * ( static_cast<double>( display.height() ) / windowRect.height );
 #else
-        _emulatedPointerPos.x = static_cast<double>( position.x ) * display.width();
-        _emulatedPointerPos.y = static_cast<double>( position.y ) * display.height();
+        // SDL3 reports finger coords normalised in window pixel space (0..1). Multiplying
+        // straight by display.width()/height() (the game's logical resolution) only works
+        // when the game fills the entire window — on Android where the swapchain is the
+        // device's full surface and the game is letterboxed inside it, this maps the right
+        // edge of the touchscreen to the right edge of the *game*, ignoring the letterbox
+        // bars. Convert through the engine's letterbox-aware mapping (same path the desktop
+        // mouse motion handler uses) so a touch at the screen's right edge lands outside the
+        // game area as expected.
+        const fheroes2::Rect windowRect = fheroes2::engine().getActiveWindowROI();
+        if ( windowRect.width > 0 && windowRect.height > 0 ) {
+            float windowX = static_cast<float>( position.x ) * static_cast<float>( windowRect.width );
+            float windowY = static_cast<float>( position.y ) * static_cast<float>( windowRect.height );
+            fheroes2::engine().convertWindowToRenderCoordinates( windowX, windowY );
+            _emulatedPointerPos.x = static_cast<double>( windowX );
+            _emulatedPointerPos.y = static_cast<double>( windowY );
+        }
+        else {
+            _emulatedPointerPos.x = static_cast<double>( position.x ) * display.width();
+            _emulatedPointerPos.y = static_cast<double>( position.y ) * display.height();
+        }
 #endif
 
         _mouseCursorPos.x = static_cast<int32_t>( _emulatedPointerPos.x );

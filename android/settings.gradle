@@ -17,4 +17,4 @@ dependencyResolutionManagement {
 
 rootProject.name = 'fheroes2'
 
-include ':app', ':isotools', ':sdl2'
+include ':app', ':isotools', ':sdl3'
