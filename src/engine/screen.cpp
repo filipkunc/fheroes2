@@ -1983,13 +1983,7 @@ namespace
                 dst.h = static_cast<Uint32>( idxH );
                 dst.d = 1;
 
-                // cycle=false: force a memory barrier instead of aliasing into fresh
-                // GPU memory. The Samsung Xclipse 540 Vulkan driver appeared to read
-                // stale memory mid-frame with cycle=true (dialog interiors showed the
-                // previous menu's pixels through the new dialog background). Linux
-                // RADV did not exhibit the issue. Cost: a small per-frame stall, only
-                // significant on tile-deferred mobile GPUs.
-                SDL_UploadToGPUTexture( copyPass, &src, &dst, false );
+                SDL_UploadToGPUTexture( copyPass, &src, &dst, true );
             }
             if ( idxBytes > 0u && _maskTex != nullptr && maskData != nullptr ) {
                 SDL_GPUTextureTransferInfo src{};
@@ -2004,7 +1998,7 @@ namespace
                 dst.h = static_cast<Uint32>( idxH );
                 dst.d = 1;
 
-                SDL_UploadToGPUTexture( copyPass, &src, &dst, false );
+                SDL_UploadToGPUTexture( copyPass, &src, &dst, true );
             }
             if ( uploadPalette && _paletteTex != nullptr ) {
                 SDL_GPUTextureTransferInfo src{};

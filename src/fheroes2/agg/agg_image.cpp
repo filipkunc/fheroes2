@@ -6907,6 +6907,7 @@ namespace fheroes2::AGG
         if ( !initialized ) {
             initialized = true;
             const std::string spritesDir = System::concatPath( "files", System::concatPath( "data", "sprites" ) );
+            VERBOSE_LOG( "GetRGBACustomFrames: initializing for " << entryCount << " monsters; spritesDir=" << spritesDir )
             for ( size_t entryIdx = 0; entryIdx < entryCount; ++entryIdx ) {
                 const RGBACustomEntry & entry = registry[entryIdx];
                 std::vector<Image> frames;
@@ -6915,17 +6916,34 @@ namespace fheroes2::AGG
                     frames.emplace_back();
                 }
                 bool ok = true;
+                int failedFrame = -1;
+                bool findFileOk = true;
+                std::string firstPath;
                 for ( int i = 0; i < entry.frameCount; ++i ) {
                     char filename[64];
                     snprintf( filename, sizeof( filename ), "%s_%03d.png", entry.prefix, i );
                     std::string fullPath;
-                    if ( !Settings::findFile( spritesDir, filename, fullPath ) || !LoadRGBA( fullPath, frames[i] ) ) {
+                    if ( !Settings::findFile( spritesDir, filename, fullPath ) ) {
+                        findFileOk = false;
+                        failedFrame = i;
+                        ok = false;
+                        break;
+                    }
+                    if ( i == 0 ) {
+                        firstPath = fullPath;
+                    }
+                    if ( !LoadRGBA( fullPath, frames[i] ) ) {
+                        failedFrame = i;
                         ok = false;
                         break;
                     }
                 }
                 if ( ok ) {
+                    VERBOSE_LOG( "GetRGBACustomFrames:   " << entry.prefix << " loaded " << entry.frameCount << " frames OK (first=" << firstPath << ")" )
                     cache[entry.monsterId] = std::move( frames );
+                }
+                else {
+                    VERBOSE_LOG( "GetRGBACustomFrames:   " << entry.prefix << " FAILED at frame " << failedFrame << " (findFile=" << findFileOk << ")" )
                 }
             }
         }

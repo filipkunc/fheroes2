@@ -357,25 +357,62 @@ Not migrated (deferred to follow-up):
   re-launch-after-rotation flow, or remove `orientation|screenSize` from
   `configChanges` to force activity recreation on rotation.
 
-**Known Android-specific bug (not yet root-caused):**
+**Known Android-specific bugs (not yet root-caused):**
 
-Dialog backgrounds leak through to show whatever was rendered behind the
-dialog (most reliably reproduced: open the editor's "Select Monster" dialog
-and the wood-textured interior shows the previous main-menu sprites — CREDITS
-sign, tavern interior — through the dialog body). The dialog's *border* and
-*sprite content* (icons, text, buttons) render correctly; only the
-`Copy(STONEBAK, ...)` interior fill is missing visually. Linux Vulkan does not
-exhibit this. SPIR-V binding indices, texture formats, and CPU-side
-zero-init were verified correct. Tried `cycle=false` on the per-frame
-`SDL_UploadToGPUTexture` calls (forces a memory barrier instead of memory
-aliasing) — did not fix. Best current guess: a Samsung Xclipse 540 Vulkan
-driver quirk in how the indexed/mask R8 textures are sampled when the
-underlying memory was just written from a transfer buffer. Worth trying next:
-disable the engine's GPU path on Android entirely (drop back to the legacy
-SDL_Renderer path) until this is understood, OR add a `SDL_GPU_TEXTUREUSAGE_*`
-flag combination that forces a different memory layout on the indexed/mask
-textures. Reproduce with the in-game editor → "Battle Only" mode → "Select
-Monster" sub-dialog.
+Three related bugs all affect Android Vulkan only — Linux Vulkan and Windows
+D3D12 do not exhibit any of them.
+
+**Bug 1 — Dialog backgrounds leak through.** Most reliably reproduced: from
+the main menu, navigate to New Game → Battle Only → battle setup → click a
+troop slot to open "Select Monster". The dialog's wood-textured interior
+shows the previous main-menu sprites (CREDITS sign, tavern interior) through
+the dialog body. Border + sprite content (icons, text, buttons) render
+correctly; only the `Copy(STONEBAK, ...)` interior fill is missing visually.
+
+**Bug 2 — Hero details dialog close doesn't repaint units.** Open hero
+details from the army bar in battle, close it, and the units that were
+behind the dialog don't repaint until the next forced redraw (e.g. unit
+turn). Suggests `ImageRestorer.restore()` runs on the CPU but the GPU
+doesn't see the restored bytes.
+
+**Bug 3 — Hi-res custom monsters render at low resolution.** Maid, Thor,
+Succubus, Azure Dragon, Dachshund all show their indexed-fallback sprites
+even though the hi-res RGBA frames load successfully (verified by VERBOSE
+log: `GetRGBACustomFrames: maid loaded 38 frames OK ...`) and `BlitRGBAScaled`
+is called with valid data (verified: `RedrawTroopSprite: customRGBA monster
+id=73 frame=1 framesSize=38 frameEmpty=0 spriteSize=68x96`).
+
+**What's verified:**
+
+- CPU-side state is correct on Android: hi-res frames cached, BlitRGBAScaled
+  invoked, ImageRestorer captures + restores.
+- SPIR-V shader binding indices match the engine's slot ordering (verified by
+  cross-checking SDL_GPU SPIR-V layout convention vs the GLSL `set=2,
+  binding=0..3` declarations).
+- Texture formats are R8_UNORM (mask, indexed) + R8G8B8A8_UNORM (RGBA,
+  palette) on both platforms.
+- CPU buffers are zero-initialised at allocation.
+- Tried `cycle=false` on per-frame `SDL_UploadToGPUTexture` (forces a memory
+  barrier instead of memory aliasing) — did not fix.
+
+**Suspected root cause:** The Samsung Xclipse 540 Vulkan driver appears to
+serve the GPU shader stale R8 texture data after `SDL_UploadToGPUTexture`,
+even with explicit barriers. The `mask` channel write that says "use RGBA"
+isn't visible to the shader, so the shader keeps resolving via `palette[idx]`
+and shows the previous indexed-channel content.
+
+**To investigate next session:**
+
+- Try `SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_GRAPHICS_STORAGE_READ`
+  on the indexed/mask textures to force a different memory layout.
+- Try splitting the multi-texture upload into separate copy passes (one
+  per texture) to ensure each upload barrier completes before the next.
+- Try uploading via a single staging buffer with multiple texture-region
+  copies in one upload call instead of separate uploads per texture.
+- If all GPU-side fixes fail, fall back to `FHEROES2_NO_GPU=1` on Android
+  (use the legacy SDL_Renderer path) until SDL_GPU on Xclipse stabilises.
+- File a bug against SDL3 with a minimal repro showing R8_UNORM upload-then-
+  sample on Android (Samsung Galaxy A56 / Xclipse 540 / Vulkan 1.3).
 
 **Still TODO in Phase 6:**
 

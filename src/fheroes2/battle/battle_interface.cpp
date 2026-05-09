@@ -2104,6 +2104,13 @@ void Battle::Interface::RedrawTroopSprite( const Unit & unit )
 
         const std::vector<fheroes2::Image> & frames = *rgbaCustomFramesPtr;
         const int32_t frame = unit.GetFrame();
+        static int logCount = 0;
+        if ( logCount < 10 ) {
+            ++logCount;
+            VERBOSE_LOG( "RedrawTroopSprite: customRGBA monster id=" << unit.GetID() << " frame=" << frame << " framesSize=" << frames.size()
+                                                                     << " frameEmpty=" << ( frame >= 0 && frame < static_cast<int32_t>( frames.size() ) ? frames[frame].empty() : -1 )
+                                                                     << " spriteSize=" << monsterSprite.width() << "x" << monsterSprite.height() )
+        }
         if ( frame >= 0 && frame < static_cast<int32_t>( frames.size() ) && !frames[frame].empty() ) {
             // Direct-paint into Display (RGBA) at absolute game-pixel coords. The earlier indexed
             // troop sprite blit landed in Display via the indexed->RGBA primitive path; this
