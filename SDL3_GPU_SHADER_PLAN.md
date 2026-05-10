@@ -421,10 +421,8 @@ shader ignores it. Cleanup pass to remove the indexed/mask channels from
 **Trade-offs of the painter's algorithm:**
 
 - Color cycling animations no longer take visible effect via a palette
-  LUT — the engine would need to repaint affected ROIs to make a cycling
-  change visible. Not relevant for the menus/dialog/battle paths that
-  this fix targets; cycling has been dormant in the current build since
-  the pure-RGBA refactor anyway.
+  LUT. **Restored 2026-05-10b via per-pixel tag buffer + CPU repaint —
+  see "Fix landed 2026-05-10b" below.**
 - Indexed primitives now do per-physical-pixel work on `Display` (scale²
   pixels per game pixel) instead of one byte per game pixel. CPU cost
   increases on full-screen indexed paints; the existing
@@ -433,6 +431,76 @@ shader ignores it. Cleanup pass to remove the indexed/mask channels from
 - `BlitIndexedToRGBAOutput` translucency (transforms 6-13) now also runs
   on `Display` (was previously a no-op on RGBA targets) so Air-Elemental
   / ghost-style sprites still composite over the battlefield ground.
+
+### Fix landed 2026-05-10b — cycling + Android resolution + OOB read
+
+Three commits closed the remaining items from Phase 6 and the cycling
+trade-off above.
+
+**Color cycling restored — commit `69d9a4f02`.** Re-purposed the
+painter-refactor-orphaned `_indexedBuffer` storage as a 1-byte-per-game-
+pixel "cycling tag" buffer. Indexed-paint primitives set the tag to the
+source palette index when it falls in a cycling range (214..221,
+231..235, 238..241) and clear it otherwise; RGBA-direct primitives clear
+the tag for their painted ROI; `Display::applyCyclingPalette` walks the
+tag buffer each cycle tick and rewrites just the affected pixels in
+`_screenRGBA` using the new remap. Wired from `Display::render()` — the
+existing 220ms tick from `RenderProcessor` stays unchanged.
+
+Tag updates threaded through `BlitIndexedToRGBAOutput` (slow path),
+`CopyIndexedToRGBAOutput` (slow path), `BlitRGBAToRGBAOutput` (per
+opaque pixel), `AlphaBlitIndexedToRGBAOutput` (coarse ROI clear since
+the blend result isn't a pure palette colour),
+`BlitRGBAScaled` / `BlitRGBAScaledAlpha` (coarse ROI clear so hi-res
+sprites don't get repainted with cycle colours), and
+`clearIndexedBboxOnDisplay` (now also clears the tag — covers `CopyRGBA`,
+`CopyRGBAToRGBAOutput`, `AlphaBlitRGBAToRGBAOutput`, `DimRGBA` via one
+shared helper).
+
+`ImageRestorer` extended to capture + restore the cycling tag alongside
+the RGBA pixels. Without this, dialogs (Set Count, Select Monster) drew
+indexed sprites that set tags; the RGBA-only restore on close left the
+tags behind and the next cycle tick repainted cycle colours over the
+restored area — visible as a blue trail.
+
+Trade-offs: cycling pass is O(gameW × gameH) per tick (~500 K iterations
+on Android at 1040×480). Cheap in practice. Some primitives
+(`DrawLineRGBA`, `Fill`) don't update the tag yet — add only if they
+turn out to matter.
+
+**Android device-native widescreen resolution — commit `c351e839a`.**
+Default 640×480 game res paired with a 2340×1080 device swapchain forced
+~450 px black bars on each side and a soft 640→1440 bilinear upscale of
+every sprite (the hi-res RGBA monsters then looked blurry even though
+the path was correct). `GPURenderEngine::getAvailableResolutions()` now
+short-circuits on Android: returns one entry whose game/screen dims both
+match the device's current display mode (in landscape — swap if the
+query came back portrait). The physical buffer ends up the same size as
+the swapchain, so the GPU composite is a 1:1 copy with no bars and no
+second scale. Closes Phase 6's "hi-res monsters render at low resolution"
+bug noted earlier.
+
+**`BlitRGBAScaled` off-by-one OOB read — commit `4e57b65e0`.** `pEndY`
+was clamped against `bufHeight` and `int(endY*scale)`, but not against
+`pOutY + pDstH`. With a non-integer `physicalScale` (Android became 2.25
+after the device-native widescreen mode), `int(endY*scale)` and
+`int(outY*scale) + int(dstH*scale)` could disagree by 1 due to
+truncation. The extra row pushed `relPy` up to `pDstH`, which made
+`sy0 == srcH` — a one-row read past the end of the source PNG and an
+immediate SIGSEGV when scrolling the Select Monster dialog. The bug was
+latent on Linux because the engine ran at integer scale there. Same fix
+applied to `BlitRGBAScaledAlpha`.
+
+**Linux SDL3_mixer build moved off `/tmp`.** Fedora wipes `/tmp` on
+reboot; the recipe now builds under `~/Projects/sdl3-linux/SDL_mixer/`,
+matching the convention already used for the Android prebuilts under
+`~/Projects/sdl3-android/`. CLAUDE.md updated.
+
+**Phase 6c status:** the user has hands-on validated on the Galaxy A56:
+dialogs render correctly, units repaint after dialog close, hi-res
+monsters render at full fidelity, color cycling animates on the
+adventure map and is properly cleared in battle and dialogs. Spell
+effects + fade transitions still need a hands-on pass.
 
 ### Original suspected root cause (kept for historical context)
 
@@ -516,12 +584,15 @@ value, producing visible bugs:
 
 **Still TODO in Phase 6:**
 
-- **Android dialog rendering bug** (above) — root-cause + fix.
-- **User to do hands-on visual verification** on Linux + the Galaxy A56:
-  cycling animations (water/gold/lava), hi-res monsters (Thor/Succubus/Azure
-  Dragon) battle sprites + portraits, spell effects (Death Wave / Holy Shout /
-  Armageddon / Lightning Bolt / Cold Ring), fade transitions (main menu, battle
-  entry/exit), dialog open/close, letterbox edges solid black.
+- **Android dialog rendering bug** — DONE (painter's-algorithm refactor,
+  commit `a7cbba3eb`; dialog open/close + tag clearing across battle and
+  Set-Count flows finished in `69d9a4f02`).
+- **Hands-on visual verification** — partial. Validated on the Galaxy A56:
+  dialogs, repaints, hi-res monsters, color cycling on the adventure map +
+  proper clearing in battle + dialogs. Still to verify: spell effects
+  (Death Wave / Holy Shout / Armageddon / Lightning Bolt / Cold Ring),
+  fade transitions (main menu, battle entry/exit), letterbox edges solid
+  black at non-2.25× scales.
 - **Other Android ABIs** (`armeabi-v7a`, `x86`, `x86_64`). Currently only
   `arm64-v8a` ships. Each needs a parallel SDL3 + SDL3_mixer NDK build and the
   corresponding `.so` files dropped under `jni/SDL3/lib/<abi>/`. Filter in
@@ -537,8 +608,27 @@ value, producing visible bugs:
   Android session likewise needs music to actually come out of the speakers.
 - **`SDL_Renderer` removal**. Once the cross-platform path is fully
   validated, the legacy fallback (`FHEROES2_NO_GPU=1`) can be retired.
+- **Cleanup pass to remove the dead indexed/mask channels from Display +
+  the GPU pipeline entirely.** Now that the painter pipeline is the
+  permanent default and cycling lives on the repurposed `_indexedBuffer`
+  storage as a tag buffer, the parallel `_maskBuffer`, `markIndexedDirty`
+  / `consumeIndexedDirtyRoi`, the GPU-side `_indexedTex` / `_maskTex` /
+  `_paletteTex` and the embedded composite shader's mask + palette
+  branches are all dead. Renaming `_indexedBuffer` → `_cyclingTagBuffer`
+  and dropping the `indexedBuffer()` / `maskBuffer()` virtuals would
+  shrink the surface meaningfully.
 
 ### Where work happens today — CPU vs GPU split
+
+> **Stale as of 2026-05-10:** describes the dual-channel indexed/mask GPU
+> pipeline. The painter's-algorithm refactor (`a7cbba3eb`) collapsed the
+> shader to a one-line RGBA passthrough and moved palette LUT resolution +
+> shadow factor + cycling sample back onto the CPU's per-physical-pixel
+> RGBA writes. Items 1, 2, 4, 6 below are no longer on the GPU. The
+> "biggest CPU pixel hog" assessment in the closing paragraph still holds
+> in spirit — hi-res RGBA scaling and battle spell composite effects are
+> the obvious Phase 7 targets — but the per-game-pixel vs per-physical-
+> pixel framing is gone. Keeping the section for historical context.
 
 Snapshot as of `108f17cea` (Windows + GPU). Useful for picking what to tackle in Phase 7 — anything currently on the CPU side that's hot or pixel-heavy is a candidate to push down.
 
@@ -610,8 +700,9 @@ The hi-res monster pipeline (Thor / Succubus / Azure Dragon / Blood Dragon / Ave
 | 5     | Palette upload hook + re-enable cycling              | **DONE** | 1-2d     |
 | 6a    | Linux SPIR-V shaders + build + smoke-runs            | **DONE (2026-05-09)** | 1d  |
 | 6b    | Android arm64-v8a SDL3 prebuilts + APK + smoke-run   | **DONE (2026-05-09)** | 1d  |
-| 6c    | Hands-on visual verification (Linux + Android)       | **TODO** | 1-2d   |
+| 6c    | Hands-on visual verification (Linux + Android)       | **PARTIAL (2026-05-10b)** | 1-2d |
 | 6d    | Other Android ABIs + macOS MSL shaders               | **TODO** | 2-3d   |
+| 6e    | Painter refactor + cycling tag + Android resolution  | **DONE (2026-05-10/10b)** | 1d |
 | **Remaining** | **excluding phase 7 follow-ups**             |          | **~3-5 days** |
 
 vs ~200 lines / 1-2 days for the indexed-shadow-buffer interim solution.
