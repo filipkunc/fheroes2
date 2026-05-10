@@ -4964,21 +4964,27 @@ namespace fheroes2
             return;
         }
 
-        // Convert game-coord destination span -> physical-pixel destination span.
-        const int32_t pStartX = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startX ) * scale ) );
-        const int32_t pStartY = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startY ) * scale ) );
-        const int32_t pEndX = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( endX ) * scale ) );
-        const int32_t pEndY = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( endY ) * scale ) );
-        if ( pStartX >= pEndX || pStartY >= pEndY ) {
-            return;
-        }
-
         // Physical-pixel extent of the dst rect (used for source mapping).
         const int32_t pDstW = static_cast<int32_t>( static_cast<float>( dstW ) * scale );
         const int32_t pDstH = static_cast<int32_t>( static_cast<float>( dstH ) * scale );
         const int32_t pOutX = static_cast<int32_t>( static_cast<float>( outX ) * scale );
         const int32_t pOutY = static_cast<int32_t>( static_cast<float>( outY ) * scale );
         if ( pDstW <= 0 || pDstH <= 0 ) {
+            return;
+        }
+
+        // Convert game-coord destination span -> physical-pixel destination span. Clamp the
+        // end against pOut + pDst so non-integer scales (e.g. 2.25 on Android) cannot push
+        // relPy/relPx == pDstH/pDstW, which would compute sy0/sx0 == srcH/srcW (off-by-one
+        // OOB read on the source PNG). int(endY*scale) and pOutY + pDstH can disagree by
+        // 1 when truncation falls differently between the components.
+        const int32_t pStartX = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startX ) * scale ) );
+        const int32_t pStartY = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startY ) * scale ) );
+        const int32_t pEndX
+            = std::min<int32_t>( { bufStride, static_cast<int32_t>( static_cast<float>( endX ) * scale ), pOutX + pDstW } );
+        const int32_t pEndY
+            = std::min<int32_t>( { bufHeight, static_cast<int32_t>( static_cast<float>( endY ) * scale ), pOutY + pDstH } );
+        if ( pStartX >= pEndX || pStartY >= pEndY ) {
             return;
         }
 
@@ -5107,19 +5113,23 @@ namespace fheroes2
             return;
         }
 
-        const int32_t pStartX = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startX ) * scale ) );
-        const int32_t pStartY = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startY ) * scale ) );
-        const int32_t pEndX = std::min<int32_t>( bufStride, static_cast<int32_t>( static_cast<float>( endX ) * scale ) );
-        const int32_t pEndY = std::min<int32_t>( bufHeight, static_cast<int32_t>( static_cast<float>( endY ) * scale ) );
-        if ( pStartX >= pEndX || pStartY >= pEndY ) {
-            return;
-        }
-
         const int32_t pDstW = static_cast<int32_t>( static_cast<float>( dstW ) * scale );
         const int32_t pDstH = static_cast<int32_t>( static_cast<float>( dstH ) * scale );
         const int32_t pOutX = static_cast<int32_t>( static_cast<float>( outX ) * scale );
         const int32_t pOutY = static_cast<int32_t>( static_cast<float>( outY ) * scale );
         if ( pDstW <= 0 || pDstH <= 0 ) {
+            return;
+        }
+
+        // See note in BlitRGBAScaled: clamp the end against pOut + pDst so non-integer
+        // scales can't push the relative loop index up to pDstH/pDstW (off-by-one OOB read).
+        const int32_t pStartX = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startX ) * scale ) );
+        const int32_t pStartY = std::max<int32_t>( 0, static_cast<int32_t>( static_cast<float>( startY ) * scale ) );
+        const int32_t pEndX
+            = std::min<int32_t>( { bufStride, static_cast<int32_t>( static_cast<float>( endX ) * scale ), pOutX + pDstW } );
+        const int32_t pEndY
+            = std::min<int32_t>( { bufHeight, static_cast<int32_t>( static_cast<float>( endY ) * scale ), pOutY + pDstH } );
+        if ( pStartX >= pEndX || pStartY >= pEndY ) {
             return;
         }
 
