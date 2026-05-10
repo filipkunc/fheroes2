@@ -159,6 +159,15 @@ namespace fheroes2
             // Default: identity.
         }
 
+        // True when the engine uses SDL_SetRenderLogicalPresentation (legacy SDL_Renderer
+        // path). LocalEvent's touch handler uses this to decide whether normalised touch
+        // coords map directly to game coords (logical presentation) or need to be scaled
+        // through window pixel size + letterbox math (GPU path with no logical wrapper).
+        virtual bool usesLogicalPresentation() const
+        {
+            return false;
+        }
+
     protected:
         BaseRenderEngine()
             : _isFullScreen( false )

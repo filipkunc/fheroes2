@@ -1338,14 +1338,20 @@ void LocalEvent::onTouchFingerEvent( const TouchFingerEventType eventType, const
         _emulatedPointerPos.y
             = static_cast<double>( screenResolution.height * position.y - windowRect.y ) * ( static_cast<double>( display.height() ) / windowRect.height );
 #else
-        // SDL3 reports finger coords normalised in window pixel space (0..1). Multiplying
-        // straight by display.width()/height() (the game's logical resolution) only works
-        // when the game fills the entire window — on Android where the swapchain is the
-        // device's full surface and the game is letterboxed inside it, this maps the right
-        // edge of the touchscreen to the right edge of the *game*, ignoring the letterbox
-        // bars. Convert through the engine's letterbox-aware mapping (same path the desktop
-        // mouse motion handler uses) so a touch at the screen's right edge lands outside the
-        // game area as expected.
+        // SDL3 reports finger coords normalised (0..1) of the touch device, which is mapped
+        // 1:1 to the SDL window. Two cases:
+        //
+        //   - Engine uses SDL_SetRenderLogicalPresentation (legacy SDL_Renderer path): the
+        //     normalised position maps directly to the logical/game coordinate system, since
+        //     the logical presentation already handles the letterbox and pixel-density math.
+        //     position * game-resolution gives the game pixel coord directly.
+        //
+        //   - Engine has no logical presentation (SDL_GPU path): we have to scale by the
+        //     window pixel size and run convertWindowToRenderCoordinates which open-codes the
+        //     letterbox math. Otherwise a touch at the screen's right edge would land at the
+        //     right edge of the *game* instead of outside-the-game-area in the letterbox bar.
+        // SDL3 normalised touch position [0..1] of the touch device → window pixel coords →
+        // logical/render coords via the engine's letterbox-aware mapping.
         const fheroes2::Rect windowRect = fheroes2::engine().getActiveWindowROI();
         if ( windowRect.width > 0 && windowRect.height > 0 ) {
             float windowX = static_cast<float>( position.x ) * static_cast<float>( windowRect.width );

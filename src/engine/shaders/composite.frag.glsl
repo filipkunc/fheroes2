@@ -23,18 +23,24 @@
 
 #version 450
 
-layout( set = 2, binding = 0 ) uniform sampler2D indexedSampler;
+// gameSampler packs the indexed value (R) and mask (G) into a single R8G8 texture.
+// Combined to avoid multi-R8-texture upload sync issues observed on the Samsung
+// Xclipse 540 Vulkan driver: when both indexed and mask were uploaded as separate
+// R8_UNORM textures in the same frame, the shader read stale memory for one of
+// them, causing dialog backgrounds to leak through and hi-res monsters to render
+// at low resolution.
+layout( set = 2, binding = 0 ) uniform sampler2D gameSampler;
 layout( set = 2, binding = 1 ) uniform sampler2D rgbaSampler;
 layout( set = 2, binding = 2 ) uniform sampler2D paletteSampler;
-layout( set = 2, binding = 3 ) uniform sampler2D maskSampler;
 
 layout( location = 0 ) in vec2 v_uv;
 layout( location = 0 ) out vec4 outColor;
 
 void main()
 {
-    float maskValid = texture( maskSampler, v_uv ).r;
-    float idxNorm = texture( indexedSampler, v_uv ).r;
+    vec2 gameSample = texture( gameSampler, v_uv ).rg;
+    float idxNorm = gameSample.r;
+    float maskValid = gameSample.g;
     float idxScaled = idxNorm * 255.0;
 
     if ( maskValid > 0.5 ) {

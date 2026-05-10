@@ -19,14 +19,14 @@
 // Doing the dimming in-shader makes shadows idempotent: a primitive can
 // re-write the same byte each frame without compounding multiplication.
 
-Texture2D<float4> indexedTex     : register( t0, space2 );
-SamplerState      indexedSampler : register( s0, space2 );
+// gameTex packs the indexed value (R) and mask (G) into a single R8G8 texture.
+// See composite.frag.glsl for why we combined them.
+Texture2D<float4> gameTex        : register( t0, space2 );
+SamplerState      gameSampler    : register( s0, space2 );
 Texture2D<float4> rgbaTex        : register( t1, space2 );
 SamplerState      rgbaSampler    : register( s1, space2 );
 Texture2D<float4> paletteTex     : register( t2, space2 );
 SamplerState      paletteSampler : register( s2, space2 );
-Texture2D<float4> maskTex        : register( t3, space2 );
-SamplerState      maskSampler    : register( s3, space2 );
 
 struct PSInput
 {
@@ -36,8 +36,9 @@ struct PSInput
 
 float4 main( PSInput input ) : SV_TARGET
 {
-    const float maskValid = maskTex.Sample( maskSampler, input.uv ).r;
-    const float idxNorm = indexedTex.Sample( indexedSampler, input.uv ).r;
+    const float2 gameSample = gameTex.Sample( gameSampler, input.uv ).rg;
+    const float idxNorm = gameSample.r;
+    const float maskValid = gameSample.g;
     const float idxScaled = idxNorm * 255.0;
 
     if ( maskValid > 0.5 ) {

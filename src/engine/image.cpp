@@ -4900,20 +4900,23 @@ namespace fheroes2
         }
         assert( in.format() == ImageFormat::RGBA_32BIT && out.format() == ImageFormat::RGBA_32BIT );
 
-        // Phase 3: BlitRGBAScaled iterates per physical destination pixel and writes only
-        // where the (downsampled) source block has rgbCount > 0. For a game pixel whose
-        // source block is partially transparent, only some of the scale² physical pixels
-        // get a fresh RGBA write — the rest keep stale content. Marking the whole game
-        // pixel as mask=0 (RGBA wins) then exposes those stale physical pixels (often
-        // zeros from initial reset, sometimes leftovers from older frames), producing
-        // edge artefacts on hi-res monster downscales.
+        // 2026-05-10: Originally `materializeIndexedRoi(out, outX, outY, dstW, dstH)` ran here
+        // to clear mask=0 over the full sprite bbox so RGBA writes "win". Symptom this caused:
+        // when an indexed primitive subsequently re-painted the area (e.g. dialog open over
+        // monsters in battle, or another unit moves through a previous monster's bbox edge),
+        // the engine's indexed paints set mask=255 only where the new sprite is opaque —
+        // transparent edges of the new sprite kept mask=0 from the previous BlitRGBAScaled,
+        // and the GPU shader resolved through stale RGBA (the previous monster's pixels)
+        // instead of the newly-painted background. On Linux Vulkan + Windows D3D12 this was
+        // hidden by overlapping repaints; on Samsung Xclipse Vulkan the trails were obvious.
         //
-        // Materialize the dst ROI first: every mask=255 cell becomes mask=0+idx=0 with
-        // palette[idx] written into its scale² RGBA block. After this, the source-
-        // transparent physical pixels show the underlying slot frame and the source-
-        // opaque physical pixels get the freshly averaged RGBA on top.
-        materializeIndexedRoi( out, outX, outY, dstW, dstH );
-
+        // New approach: only touch mask/idx for game pixels where this sprite has at least
+        // one opaque source physical pixel. Fully-transparent game pixels (no source content)
+        // keep their existing mask + indexed state untouched, so a regular indexed background
+        // re-paint still wins. For partially-transparent game pixels (some opaque, some
+        // transparent source physical pixels), materialize JUST that game pixel inline before
+        // writing the opaque physical pixels — that fills the transparent physical pixels
+        // with the underlying indexed colour so they don't show garbage RGBA.
         uint8_t * outMaskBase = out.maskBuffer();
         uint8_t * outIdxBase = out.indexedBuffer();
         const int32_t outIdxStride = ( outMaskBase != nullptr ) ? out.indexedStride() : 0;
@@ -5000,10 +5003,37 @@ namespace fheroes2
                 }
 
                 if ( rgbCount == 0 ) {
-                    // Whole source block fully transparent — leave destination as-is so
-                    // sprite shapes still composite over the existing framebuffer (matches
-                    // the alpha==0 skip in the previous nearest-neighbour code path).
+                    // Whole source block fully transparent — leave destination as-is. The
+                    // game pixel containing this physical pixel keeps its existing mask
+                    // (typically 255 + an indexed background colour set by the engine's
+                    // earlier paint), so a future indexed re-paint still wins.
                     continue;
+                }
+
+                // Per-game-pixel just-in-time materialise: if this is the first opaque
+                // source physical pixel for the game pixel containing it, and the game
+                // pixel is currently in indexed mode (mask=255), resolve the entire
+                // scale² physical block to the indexed colour first. That way the
+                // physical pixels we DON'T overwrite (because the source is partially
+                // transparent within the game pixel) still show a sensible colour rather
+                // than stale RGBA from before. Once mask=0 + idx=0, subsequent opaque
+                // physical pixels in the same game pixel just go straight to the write.
+                if ( outMaskBase != nullptr ) {
+                    const int32_t gx = static_cast<int32_t>( static_cast<float>( px ) / scale );
+                    const int32_t gy = static_cast<int32_t>( static_cast<float>( py ) / scale );
+                    if ( gx >= 0 && gx < outFbW && gy >= 0 && gy < outFbH ) {
+                        const ptrdiff_t off = static_cast<ptrdiff_t>( gy ) * outIdxStride + gx;
+                        if ( outMaskBase[off] == 255 ) {
+                            uint8_t mr;
+                            uint8_t mg;
+                            uint8_t mb;
+                            paletteIdxToRGBA( outIdxBase[off], mr, mg, mb );
+                            const PhysicalBlock pb = toPhysicalBlock( gx, gy, scale, bufStride, bufHeight );
+                            fillRGBABlock( dstData, pb, bufStride, mr, mg, mb, 255 );
+                        }
+                        outMaskBase[off] = 0;
+                        outIdxBase[off] = 0;
+                    }
                 }
 
                 uint8_t * dstPx = dstRow + static_cast<ptrdiff_t>( px ) * 4;
@@ -5011,20 +5041,6 @@ namespace fheroes2
                 dstPx[1] = static_cast<uint8_t>( gSum / rgbCount );
                 dstPx[2] = static_cast<uint8_t>( bSum / rgbCount );
                 dstPx[3] = static_cast<uint8_t>( aSum / totalCount );
-
-                // Mark this game pixel as RGBA-resolved so the shader's sentinel picks
-                // the just-written RGBA. Multiple physical pixels covering one game
-                // pixel write the same byte redundantly — cheap and keeps the inner
-                // loop branch-free.
-                if ( outMaskBase != nullptr ) {
-                    const int32_t gx = static_cast<int32_t>( static_cast<float>( px ) / scale );
-                    const int32_t gy = static_cast<int32_t>( static_cast<float>( py ) / scale );
-                    if ( gx >= 0 && gx < outFbW && gy >= 0 && gy < outFbH ) {
-                        const ptrdiff_t off = static_cast<ptrdiff_t>( gy ) * outIdxStride + gx;
-                        outMaskBase[off] = 0;
-                        outIdxBase[off] = 0;
-                    }
-                }
             }
         }
         if ( outMaskBase != nullptr ) {

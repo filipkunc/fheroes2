@@ -863,6 +863,11 @@ namespace
             }
         }
 
+        bool usesLogicalPresentation() const override
+        {
+            return true;
+        }
+
         void setWindowPos( const fheroes2::Point pos ) override
         {
             if ( pos == fheroes2::Point{ -1, -1 } ) {
@@ -1624,15 +1629,10 @@ namespace
                     _rgbaTransfer = nullptr;
                     _rgbaTransferSize = 0;
                 }
-                if ( _indexedTransfer != nullptr ) {
-                    SDL_ReleaseGPUTransferBuffer( _device, _indexedTransfer );
-                    _indexedTransfer = nullptr;
-                    _indexedTransferSize = 0;
-                }
-                if ( _maskTransfer != nullptr ) {
-                    SDL_ReleaseGPUTransferBuffer( _device, _maskTransfer );
-                    _maskTransfer = nullptr;
-                    _maskTransferSize = 0;
+                if ( _gameTransfer != nullptr ) {
+                    SDL_ReleaseGPUTransferBuffer( _device, _gameTransfer );
+                    _gameTransfer = nullptr;
+                    _gameTransferSize = 0;
                 }
                 if ( _paletteTransfer != nullptr ) {
                     SDL_ReleaseGPUTransferBuffer( _device, _paletteTransfer );
@@ -1649,17 +1649,11 @@ namespace
                     _rgbaTexW = 0;
                     _rgbaTexH = 0;
                 }
-                if ( _indexedTex != nullptr ) {
-                    SDL_ReleaseGPUTexture( _device, _indexedTex );
-                    _indexedTex = nullptr;
-                    _indexedTexW = 0;
-                    _indexedTexH = 0;
-                }
-                if ( _maskTex != nullptr ) {
-                    SDL_ReleaseGPUTexture( _device, _maskTex );
-                    _maskTex = nullptr;
-                    _maskTexW = 0;
-                    _maskTexH = 0;
+                if ( _gameTex != nullptr ) {
+                    SDL_ReleaseGPUTexture( _device, _gameTex );
+                    _gameTex = nullptr;
+                    _gameTexW = 0;
+                    _gameTexH = 0;
                 }
                 if ( _paletteTex != nullptr ) {
                     SDL_ReleaseGPUTexture( _device, _paletteTex );
@@ -1872,8 +1866,7 @@ namespace
             const int32_t idxH = display.height();
             const uint8_t * idxData = display.indexedBuffer();
             const uint8_t * maskData = display.maskBuffer();
-            if ( idxData != nullptr && idxW > 0 && idxH > 0
-                 && ( !_ensureIndexedTexture( idxW, idxH ) || !_ensureMaskTexture( idxW, idxH ) ) ) {
+            if ( idxData != nullptr && idxW > 0 && idxH > 0 && !_ensureGameTexture( idxW, idxH ) ) {
                 SDL_SubmitGPUCommandBuffer( cmd );
                 return;
             }
@@ -1908,20 +1901,27 @@ namespace
             std::memcpy( mapped, display.image(), fbBytes );
             SDL_UnmapGPUTransferBuffer( _device, _rgbaTransfer );
 
-            // Indexed + mask channel uploads (game-res, 1 byte per pixel each).
-            const Uint32 idxBytes = ( idxData != nullptr ) ? static_cast<Uint32>( idxW * idxH ) : 0u;
-            if ( idxBytes > 0u && _ensureIndexedTransfer( idxBytes ) ) {
-                void * imapped = SDL_MapGPUTransferBuffer( _device, _indexedTransfer, true );
-                if ( imapped != nullptr ) {
-                    std::memcpy( imapped, idxData, idxBytes );
-                    SDL_UnmapGPUTransferBuffer( _device, _indexedTransfer );
+            // Combined indexed + mask upload as a single R8G8B8A8 texture (game-res,
+            // 4 bytes per pixel). R = indexed, G = mask, B/A unused. Wastes 2 bytes per
+            // pixel vs R8G8 but is universally supported on every Vulkan implementation
+            // including older mobile GPUs that may have R8G8 sampling quirks.
+            const Uint32 idxPixelCount = ( idxData != nullptr ) ? static_cast<Uint32>( idxW * idxH ) : 0u;
+            const Uint32 gameBytes = idxPixelCount * 4u;
+            if ( idxPixelCount > 0u && maskData != nullptr && _ensureGameTransfer( gameBytes ) ) {
+                if ( _gamePackedBuffer.size() < gameBytes ) {
+                    _gamePackedBuffer.resize( gameBytes );
                 }
-            }
-            if ( idxBytes > 0u && maskData != nullptr && _ensureMaskTransfer( idxBytes ) ) {
-                void * mmapped = SDL_MapGPUTransferBuffer( _device, _maskTransfer, true );
-                if ( mmapped != nullptr ) {
-                    std::memcpy( mmapped, maskData, idxBytes );
-                    SDL_UnmapGPUTransferBuffer( _device, _maskTransfer );
+                uint8_t * packed = _gamePackedBuffer.data();
+                for ( Uint32 i = 0; i < idxPixelCount; ++i ) {
+                    packed[4 * i] = idxData[i];      // R = indexed
+                    packed[4 * i + 1] = maskData[i]; // G = mask
+                    packed[4 * i + 2] = 0;           // B unused
+                    packed[4 * i + 3] = 255;         // A unused (set to 255)
+                }
+                void * gmapped = SDL_MapGPUTransferBuffer( _device, _gameTransfer, true );
+                if ( gmapped != nullptr ) {
+                    std::memcpy( gmapped, packed, gameBytes );
+                    SDL_UnmapGPUTransferBuffer( _device, _gameTransfer );
                 }
             }
 
@@ -1954,83 +1954,40 @@ namespace
                 }
             }
 
-            SDL_GPUCopyPass * copyPass = SDL_BeginGPUCopyPass( cmd );
-            {
+            // EXPERIMENT 2026-05-09: separate copy passes per texture instead of one big
+            // pass with five uploads. Hypothesis: the Samsung Xclipse 540 Vulkan driver may
+            // not properly synchronise multiple `SDL_UploadToGPUTexture` calls inside the
+            // same copy pass when the destinations have different formats (R8 mask/indexed
+            // vs R8G8B8A8 framebuffer/palette/cursor) — the shader then reads stale memory
+            // for one or more of the R8 textures. Force a copy-pass boundary between each
+            // upload so SDL_GPU emits explicit barriers.
+            auto runUpload = [cmd]( SDL_GPUTransferBuffer * transfer, Uint32 ppr, Uint32 rpl, SDL_GPUTexture * tex, Uint32 w, Uint32 h ) {
+                SDL_GPUCopyPass * pass = SDL_BeginGPUCopyPass( cmd );
                 SDL_GPUTextureTransferInfo src{};
-                src.transfer_buffer = _rgbaTransfer;
+                src.transfer_buffer = transfer;
                 src.offset = 0;
-                src.pixels_per_row = static_cast<Uint32>( fbW );
-                src.rows_per_layer = static_cast<Uint32>( fbH );
-
+                src.pixels_per_row = ppr;
+                src.rows_per_layer = rpl;
                 SDL_GPUTextureRegion dst{};
-                dst.texture = _rgbaTex;
-                dst.w = static_cast<Uint32>( fbW );
-                dst.h = static_cast<Uint32>( fbH );
+                dst.texture = tex;
+                dst.w = w;
+                dst.h = h;
                 dst.d = 1;
+                SDL_UploadToGPUTexture( pass, &src, &dst, true );
+                SDL_EndGPUCopyPass( pass );
+            };
 
-                SDL_UploadToGPUTexture( copyPass, &src, &dst, true );
-            }
-            if ( idxBytes > 0u && _indexedTex != nullptr ) {
-                SDL_GPUTextureTransferInfo src{};
-                src.transfer_buffer = _indexedTransfer;
-                src.offset = 0;
-                src.pixels_per_row = static_cast<Uint32>( idxW );
-                src.rows_per_layer = static_cast<Uint32>( idxH );
-
-                SDL_GPUTextureRegion dst{};
-                dst.texture = _indexedTex;
-                dst.w = static_cast<Uint32>( idxW );
-                dst.h = static_cast<Uint32>( idxH );
-                dst.d = 1;
-
-                SDL_UploadToGPUTexture( copyPass, &src, &dst, true );
-            }
-            if ( idxBytes > 0u && _maskTex != nullptr && maskData != nullptr ) {
-                SDL_GPUTextureTransferInfo src{};
-                src.transfer_buffer = _maskTransfer;
-                src.offset = 0;
-                src.pixels_per_row = static_cast<Uint32>( idxW );
-                src.rows_per_layer = static_cast<Uint32>( idxH );
-
-                SDL_GPUTextureRegion dst{};
-                dst.texture = _maskTex;
-                dst.w = static_cast<Uint32>( idxW );
-                dst.h = static_cast<Uint32>( idxH );
-                dst.d = 1;
-
-                SDL_UploadToGPUTexture( copyPass, &src, &dst, true );
+            runUpload( _rgbaTransfer, static_cast<Uint32>( fbW ), static_cast<Uint32>( fbH ), _rgbaTex, static_cast<Uint32>( fbW ), static_cast<Uint32>( fbH ) );
+            if ( idxPixelCount > 0u && _gameTex != nullptr && maskData != nullptr ) {
+                runUpload( _gameTransfer, static_cast<Uint32>( idxW ), static_cast<Uint32>( idxH ), _gameTex, static_cast<Uint32>( idxW ), static_cast<Uint32>( idxH ) );
             }
             if ( uploadPalette && _paletteTex != nullptr ) {
-                SDL_GPUTextureTransferInfo src{};
-                src.transfer_buffer = _paletteTransfer;
-                src.offset = 0;
-                src.pixels_per_row = 256;
-                src.rows_per_layer = 1;
-
-                SDL_GPUTextureRegion dst{};
-                dst.texture = _paletteTex;
-                dst.w = 256;
-                dst.h = 1;
-                dst.d = 1;
-
-                SDL_UploadToGPUTexture( copyPass, &src, &dst, true );
+                runUpload( _paletteTransfer, 256, 1, _paletteTex, 256, 1 );
             }
             if ( drawCursor && _cursorTex != nullptr && !cursorRgba.empty() ) {
-                SDL_GPUTextureTransferInfo src{};
-                src.transfer_buffer = _cursorTransfer;
-                src.offset = 0;
-                src.pixels_per_row = static_cast<Uint32>( cursorSprite.width() );
-                src.rows_per_layer = static_cast<Uint32>( cursorSprite.height() );
-
-                SDL_GPUTextureRegion dst{};
-                dst.texture = _cursorTex;
-                dst.w = static_cast<Uint32>( cursorSprite.width() );
-                dst.h = static_cast<Uint32>( cursorSprite.height() );
-                dst.d = 1;
-
-                SDL_UploadToGPUTexture( copyPass, &src, &dst, true );
+                runUpload( _cursorTransfer, static_cast<Uint32>( cursorSprite.width() ), static_cast<Uint32>( cursorSprite.height() ), _cursorTex,
+                           static_cast<Uint32>( cursorSprite.width() ), static_cast<Uint32>( cursorSprite.height() ) );
             }
-            SDL_EndGPUCopyPass( copyPass );
 
             // Mark palette uploaded.
             if ( uploadPalette ) {
@@ -2049,15 +2006,16 @@ namespace
 
             SDL_GPUSampler * fbSampler = isNearestScaling() ? _samplerNearest : _samplerLinear;
 
-            // Framebuffer pass: dual-channel composite shader needs (indexedTex, rgbaTex,
-            // paletteTex, maskTex) at slots 0/1/2/3. Indexed/mask always use the nearest
+            // Framebuffer pass: composite shader needs (gameTex [R8G8 packed: idx+mask],
+            // rgbaTex, paletteTex) at slots 0/1/2. The game texture always uses the nearest
             // sampler — bilinear interpolation across game-pixel boundaries would corrupt
-            // the palette index and mask. The RGBA sampler honours the user's nearest/linear
-            // preference; the palette sampler is nearest so each idx hits exactly one entry.
+            // the palette index and mask channels. The RGBA sampler honours the user's
+            // nearest/linear preference; the palette sampler is nearest so each idx hits
+            // exactly one entry.
             SDL_BindGPUGraphicsPipeline( pass, _pipelineOpaque );
-            const SDL_GPUTextureSamplerBinding fbBindings[4]
-                = { { _indexedTex, _samplerNearest }, { _rgbaTex, fbSampler }, { _paletteTex, _samplerNearest }, { _maskTex, _samplerNearest } };
-            SDL_BindGPUFragmentSamplers( pass, 0, fbBindings, 4 );
+            const SDL_GPUTextureSamplerBinding fbBindings[3]
+                = { { _gameTex, _samplerNearest }, { _rgbaTex, fbSampler }, { _paletteTex, _samplerNearest } };
+            SDL_BindGPUFragmentSamplers( pass, 0, fbBindings, 3 );
 
             const float fbRect[4] = { _ndcX( _dstX, swapW ), _ndcY( _dstY + _dstH, swapH ), _ndcW( _dstW, swapW ), _ndcH( _dstH, swapH ) };
             SDL_PushGPUVertexUniformData( cmd, 0, fbRect, sizeof( fbRect ) );
@@ -2130,17 +2088,15 @@ namespace
         Uint32 _rgbaTransferSize{ 0 };
 
         // Phase 3: indexed (game-res, R8) + mask (game-res, R8) + palette (256x1, RGBA8).
-        SDL_GPUTexture * _indexedTex{ nullptr };
-        int32_t _indexedTexW{ 0 };
-        int32_t _indexedTexH{ 0 };
-        SDL_GPUTransferBuffer * _indexedTransfer{ nullptr };
-        Uint32 _indexedTransferSize{ 0 };
+        // Combined R8G8 texture (R = indexed value, G = mask). Replaces the previous
+        // separate _indexedTex + _maskTex pair.
+        SDL_GPUTexture * _gameTex{ nullptr };
+        int32_t _gameTexW{ 0 };
+        int32_t _gameTexH{ 0 };
+        SDL_GPUTransferBuffer * _gameTransfer{ nullptr };
+        Uint32 _gameTransferSize{ 0 };
+        std::vector<uint8_t> _gamePackedBuffer; // Local CPU staging for (idx,mask) interleave.
 
-        SDL_GPUTexture * _maskTex{ nullptr };
-        int32_t _maskTexW{ 0 };
-        int32_t _maskTexH{ 0 };
-        SDL_GPUTransferBuffer * _maskTransfer{ nullptr };
-        Uint32 _maskTransferSize{ 0 };
 
         SDL_GPUTexture * _paletteTex{ nullptr };
         SDL_GPUTransferBuffer * _paletteTransfer{ nullptr };
@@ -2234,7 +2190,7 @@ namespace
             fsCompositeInfo.entrypoint = "main";
             fsCompositeInfo.format = shaderFormat;
             fsCompositeInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
-            fsCompositeInfo.num_samplers = 4; // indexedTex, rgbaTex, paletteTex, maskTex
+            fsCompositeInfo.num_samplers = 3; // gameTex (R8G8: indexed+mask), rgbaTex, paletteTex
 
             SDL_GPUShader * compositeFragShader = SDL_CreateGPUShader( _device, &fsCompositeInfo );
             if ( compositeFragShader == nullptr ) {
@@ -2449,107 +2405,63 @@ namespace
             return true;
         }
 
-        bool _ensureIndexedTexture( int32_t w, int32_t h )
+        // Combined indexed+mask game-resolution texture (R8G8 packed: .r = indexed, .g = mask).
+        // Replaces the previous separate _indexedTex (R8) + _maskTex (R8) pair to work around
+        // a Samsung Xclipse 540 Vulkan driver issue where uploading two R8 textures in the
+        // same frame caused the shader to read stale memory for one of them. See plan doc.
+        bool _ensureGameTexture( int32_t w, int32_t h )
         {
-            if ( _indexedTex != nullptr && _indexedTexW == w && _indexedTexH == h ) {
+            if ( _gameTex != nullptr && _gameTexW == w && _gameTexH == h ) {
                 return true;
             }
-            if ( _indexedTex != nullptr ) {
-                SDL_ReleaseGPUTexture( _device, _indexedTex );
-                _indexedTex = nullptr;
+            if ( _gameTex != nullptr ) {
+                SDL_ReleaseGPUTexture( _device, _gameTex );
+                _gameTex = nullptr;
             }
+            // 2026-05-10: switched from R8G8 to R8G8B8A8 for maximum mobile-GPU
+            // compatibility. R8G8 should work but Samsung Xclipse Vulkan was reading
+            // back only the .r byte and treating .g as zero, breaking the mask check.
+            // Using R8G8B8A8 wastes 2 bytes/pixel but is universally supported.
             SDL_GPUTextureCreateInfo info{};
             info.type = SDL_GPU_TEXTURETYPE_2D;
-            info.format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
+            info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
             info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
             info.width = static_cast<Uint32>( w );
             info.height = static_cast<Uint32>( h );
             info.layer_count_or_depth = 1;
             info.num_levels = 1;
             info.sample_count = SDL_GPU_SAMPLECOUNT_1;
-            _indexedTex = SDL_CreateGPUTexture( _device, &info );
-            if ( _indexedTex == nullptr ) {
-                ERROR_LOG( "Failed to allocate indexed GPU texture. The error: " << SDL_GetError() )
-                _indexedTexW = 0;
-                _indexedTexH = 0;
+            _gameTex = SDL_CreateGPUTexture( _device, &info );
+            if ( _gameTex == nullptr ) {
+                ERROR_LOG( "Failed to allocate game GPU texture (R8G8B8A8). The error: " << SDL_GetError() )
+                _gameTexW = 0;
+                _gameTexH = 0;
                 return false;
             }
-            _indexedTexW = w;
-            _indexedTexH = h;
+            _gameTexW = w;
+            _gameTexH = h;
             return true;
         }
 
-        bool _ensureIndexedTransfer( Uint32 size )
+        bool _ensureGameTransfer( Uint32 size )
         {
-            if ( _indexedTransfer != nullptr && _indexedTransferSize >= size ) {
+            if ( _gameTransfer != nullptr && _gameTransferSize >= size ) {
                 return true;
             }
-            if ( _indexedTransfer != nullptr ) {
-                SDL_ReleaseGPUTransferBuffer( _device, _indexedTransfer );
-                _indexedTransfer = nullptr;
+            if ( _gameTransfer != nullptr ) {
+                SDL_ReleaseGPUTransferBuffer( _device, _gameTransfer );
+                _gameTransfer = nullptr;
             }
             SDL_GPUTransferBufferCreateInfo info{};
             info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
             info.size = size;
-            _indexedTransfer = SDL_CreateGPUTransferBuffer( _device, &info );
-            if ( _indexedTransfer == nullptr ) {
-                ERROR_LOG( "Failed to allocate indexed transfer buffer. The error: " << SDL_GetError() )
-                _indexedTransferSize = 0;
+            _gameTransfer = SDL_CreateGPUTransferBuffer( _device, &info );
+            if ( _gameTransfer == nullptr ) {
+                ERROR_LOG( "Failed to allocate game transfer buffer. The error: " << SDL_GetError() )
+                _gameTransferSize = 0;
                 return false;
             }
-            _indexedTransferSize = size;
-            return true;
-        }
-
-        bool _ensureMaskTexture( int32_t w, int32_t h )
-        {
-            if ( _maskTex != nullptr && _maskTexW == w && _maskTexH == h ) {
-                return true;
-            }
-            if ( _maskTex != nullptr ) {
-                SDL_ReleaseGPUTexture( _device, _maskTex );
-                _maskTex = nullptr;
-            }
-            SDL_GPUTextureCreateInfo info{};
-            info.type = SDL_GPU_TEXTURETYPE_2D;
-            info.format = SDL_GPU_TEXTUREFORMAT_R8_UNORM;
-            info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
-            info.width = static_cast<Uint32>( w );
-            info.height = static_cast<Uint32>( h );
-            info.layer_count_or_depth = 1;
-            info.num_levels = 1;
-            info.sample_count = SDL_GPU_SAMPLECOUNT_1;
-            _maskTex = SDL_CreateGPUTexture( _device, &info );
-            if ( _maskTex == nullptr ) {
-                ERROR_LOG( "Failed to allocate mask GPU texture. The error: " << SDL_GetError() )
-                _maskTexW = 0;
-                _maskTexH = 0;
-                return false;
-            }
-            _maskTexW = w;
-            _maskTexH = h;
-            return true;
-        }
-
-        bool _ensureMaskTransfer( Uint32 size )
-        {
-            if ( _maskTransfer != nullptr && _maskTransferSize >= size ) {
-                return true;
-            }
-            if ( _maskTransfer != nullptr ) {
-                SDL_ReleaseGPUTransferBuffer( _device, _maskTransfer );
-                _maskTransfer = nullptr;
-            }
-            SDL_GPUTransferBufferCreateInfo info{};
-            info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-            info.size = size;
-            _maskTransfer = SDL_CreateGPUTransferBuffer( _device, &info );
-            if ( _maskTransfer == nullptr ) {
-                ERROR_LOG( "Failed to allocate mask transfer buffer. The error: " << SDL_GetError() )
-                _maskTransferSize = 0;
-                return false;
-            }
-            _maskTransferSize = size;
+            _gameTransferSize = size;
             return true;
         }
 
@@ -2703,16 +2615,16 @@ namespace
         }
     };
 
-    // Engine selection: SDL_GPU is the default render path on Windows from Phase 3 onward
-    // (the indexed channel + palette LUT live on the GPU and indexed-source primitives skip
-    // the per-pixel scale² block expansion). The legacy SDL_Renderer path remains opt-in via
-    // FHEROES2_NO_GPU=1 as a safety net but does not understand the indexed channel, so any
-    // content drawn through Phase 4 primitives will show stale RGBA there. Removing it is on
-    // the SDL3_GPU_SHADER_PLAN backlog.
+    // Engine selection: SDL_GPU is the default render path. The legacy SDL_Renderer path
+    // remains opt-in via FHEROES2_NO_GPU=1 as a safety net but does not understand the indexed
+    // channel, so any content drawn through Phase 4 primitives will show stale RGBA there.
+    // (Android attempted to default to the legacy path to work around an SDL_GPU rendering bug
+    // — see SDL3_GPU_SHADER_PLAN.md — but the legacy path's touch input handling is broken on
+    // Android in ways the GPU path's open-coded letterbox math wasn't. Reverted to GPU default.)
     fheroes2::BaseRenderEngine * createEngine()
     {
-        const char * value = SDL_getenv( "FHEROES2_NO_GPU" );
-        if ( value != nullptr && value[0] != '\0' && value[0] != '0' ) {
+        const char * noGpu = SDL_getenv( "FHEROES2_NO_GPU" );
+        if ( noGpu != nullptr && noGpu[0] != '\0' && noGpu[0] != '0' ) {
             return RenderEngine::create();
         }
         return GPURenderEngine::create();
