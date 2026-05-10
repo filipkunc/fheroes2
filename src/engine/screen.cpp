@@ -1465,6 +1465,39 @@ namespace
 
         std::vector<fheroes2::ResolutionInfo> getAvailableResolutions() const override
         {
+#if defined( ANDROID ) || defined( __ANDROID__ )
+            // The device screen size is fixed and the activity is locked to landscape
+            // (AndroidManifest.xml: screenOrientation="landscape"). The PC resolution list
+            // (640x480, 800x600, …) is wrong here: picking a 4:3 game resolution against a
+            // wide swapchain leaves heavy side bars and forces a soft bilinear upscale of all
+            // sprites — including the hi-res RGBA monsters which then look blurry.
+            //
+            // Collapse the choice to a single "widescreen scaled" entry where the physical
+            // buffer matches the device pixel dimensions exactly, so the GPU swapchain
+            // composite is a 1:1 copy with no bars and no second scale.
+            {
+                int adCount = 0;
+                SDL_DisplayID * adDisplays = SDL_GetDisplays( &adCount );
+                if ( adDisplays != nullptr && adCount >= 1 ) {
+                    const SDL_DisplayMode * mode = SDL_GetCurrentDisplayMode( adDisplays[0] );
+                    if ( mode != nullptr && mode->w > 0 && mode->h > 0 ) {
+                        int32_t devW = mode->w;
+                        int32_t devH = mode->h;
+                        if ( devH > devW ) {
+                            // Display reported in portrait (queried before orientation lock kicks in).
+                            std::swap( devW, devH );
+                        }
+                        SDL_free( adDisplays );
+                        const int32_t gameH = fheroes2::Display::DEFAULT_HEIGHT;
+                        const int32_t gameW = devW * gameH / devH;
+                        return { { gameW, gameH, devW, devH } };
+                    }
+                }
+                SDL_free( adDisplays );
+                // Fall through to the generic path if SDL queries failed.
+            }
+#endif
+
             // Identical to RenderEngine's implementation — the available display
             // modes don't depend on the render backend.
             std::set<fheroes2::ResolutionInfo> resolutionSet;
