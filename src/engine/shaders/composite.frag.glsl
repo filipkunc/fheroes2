@@ -23,12 +23,14 @@
 
 #version 450
 
-// gameSampler packs the indexed value (R) and mask (G) into a single R8G8 texture.
-// Combined to avoid multi-R8-texture upload sync issues observed on the Samsung
-// Xclipse 540 Vulkan driver: when both indexed and mask were uploaded as separate
-// R8_UNORM textures in the same frame, the shader read stale memory for one of
-// them, causing dialog backgrounds to leak through and hi-res monsters to render
-// at low resolution.
+// Painter's-algorithm shader (2026-05-10): the engine writes everything as RGBA
+// at physical pixel scale, so the GPU just samples + outputs. Mask + palette LUT
+// + shadow markers are gone — the engine applies palette resolution and shadow
+// dimming on the CPU side via paletteIdxToRGBA / shadeRGBABlock as it writes.
+//
+// Slots 0 (gameSampler) and 2 (paletteSampler) are still bound from the engine
+// for layout compatibility but ignored. They can be removed in a future cleanup
+// pass once we're confident no other code path needs them.
 layout( set = 2, binding = 0 ) uniform sampler2D gameSampler;
 layout( set = 2, binding = 1 ) uniform sampler2D rgbaSampler;
 layout( set = 2, binding = 2 ) uniform sampler2D paletteSampler;
@@ -38,34 +40,5 @@ layout( location = 0 ) out vec4 outColor;
 
 void main()
 {
-    vec2 gameSample = texture( gameSampler, v_uv ).rg;
-    float idxNorm = gameSample.r;
-    float maskValid = gameSample.g;
-    float idxScaled = idxNorm * 255.0;
-
-    if ( maskValid > 0.5 ) {
-        // Indexed pixel - palette LUT lookup.
-        float u = ( idxScaled + 0.5 ) / 256.0;
-        outColor = texture( paletteSampler, vec2( u, 0.5 ) );
-        return;
-    }
-
-    // RGBA pixel, possibly with shadow flag in idx.
-    vec4 rgba = texture( rgbaSampler, v_uv );
-    float factor = 1.0;
-    if ( idxScaled > 1.5 && idxScaled < 5.5 ) {
-        if ( idxScaled < 2.5 ) {
-            factor = 0.25;
-        }
-        else if ( idxScaled < 3.5 ) {
-            factor = 0.40;
-        }
-        else if ( idxScaled < 4.5 ) {
-            factor = 0.55;
-        }
-        else {
-            factor = 0.70;
-        }
-    }
-    outColor = vec4( rgba.rgb * factor, rgba.a );
+    outColor = texture( rgbaSampler, v_uv );
 }

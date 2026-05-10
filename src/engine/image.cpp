@@ -1284,6 +1284,11 @@ namespace fheroes2
             const int32_t bufHeight = out.bufferHeight();
             uint8_t * outBase = out.image();
 
+            // Painter's-algorithm rewrite (2026-05-10): Display::indexedBuffer() and
+            // maskBuffer() now return nullptr, so this falls into the per-physical-pixel
+            // RGBA-write slow path naturally. The mask=0→255 transition Android Vulkan bug
+            // is bypassed entirely — the engine writes only RGBA, and the GPU shader
+            // resolves only RGBA.
             uint8_t * idxBase = out.indexedBuffer();
             uint8_t * maskBase = out.maskBuffer();
             const bool useIndexedFastPath = ( idxBase != nullptr && maskBase != nullptr );
@@ -1363,13 +1368,28 @@ namespace fheroes2
                                 }
                             }
                             else if ( *trIn <= 5 ) {
-                                // Non-Display RGBA target — fall back to the existing in-place
-                                // physical-pixel multiply for shadows. Translucency on a
-                                // non-Display RGBA target is a no-op (rare and historically
-                                // never supported on this code path either).
+                                // Shadow (transforms 2-5): in-place physical-pixel dim of the dst.
                                 const float f = shadowFactor[*trIn];
                                 const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
                                 shadeRGBABlock( outBase, pb, bufStride, f );
+                            }
+                            else {
+                                // Translucency (transforms 6-13): legacy palette-LUT blend.
+                                // Reverse-look-up the dst's palette index, apply transformTable,
+                                // convert back to RGBA. Without this branch, Air-Elemental and
+                                // ghost-style sprites disappear against the RGBA-painted
+                                // battlefield ground.
+                                const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
+                                const uint8_t * srcPx = outBase + ( static_cast<ptrdiff_t>( pb.pYStart ) * bufStride + pb.pXStart ) * 4;
+                                if ( srcPx[3] != 0 ) {
+                                    const uint8_t srcIdx = GetPALColorId( srcPx[0] >> 2, srcPx[1] >> 2, srcPx[2] >> 2 );
+                                    const uint8_t newIdx = transformTable[static_cast<size_t>( *trIn ) * 256 + srcIdx];
+                                    uint8_t r;
+                                    uint8_t g;
+                                    uint8_t b;
+                                    paletteIdxToRGBA( newIdx, r, g, b );
+                                    fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
+                                }
                             }
                             trIn += inDir;
                             if ( idxOut ) {
@@ -1603,6 +1623,9 @@ namespace fheroes2
 
             const int32_t widthIn = in.width();
 
+            // Painter's-algorithm rewrite (2026-05-10): Display::indexedBuffer() and
+            // maskBuffer() now return nullptr, so the indexed-channel fast path below is
+            // dead in practice. Falls through to the per-physical-pixel RGBA write.
             uint8_t * idxBase = out.indexedBuffer();
             uint8_t * maskBase = out.maskBuffer();
             if ( idxBase != nullptr && maskBase != nullptr ) {

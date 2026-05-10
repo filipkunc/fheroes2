@@ -326,27 +326,29 @@ namespace fheroes2
             return getPhysicalScale();
         }
 
-        // Phase 3 (SDL_GPU): a second game-resolution buffer carrying palette indices, plus
-        // a parallel mask buffer holding the validity bit (0 = use RGBA, 255 = use indexed).
-        // Indexed-source primitives skip scale² block expansion and write one byte per game
-        // pixel to the indexed buffer (and 255 to the mask). RGBA-source primitives clear the
-        // mask for their bbox so the GPU composite shader resolves through their RGBA result.
-        // Both buffers are sized at width()×height() (game dims).
+        // Painter's-algorithm refactor (2026-05-10): all primitives now write RGBA at
+        // physical pixel scale. The indexed + mask channels are dead. We return nullptr
+        // here so every primitive's `if (idx != nullptr && mask != nullptr)` fast-path
+        // check fails and the existing physical-pixel-write slow path runs uniformly. The
+        // _indexedBuffer / _maskBuffer members + their backing storage are also unused
+        // and could be removed in a follow-up cleanup. Color cycling is sacrificed: the
+        // engine no longer keeps a reusable indexed copy on the GPU side, so cycling
+        // would need a full re-render of affected ROIs to take visible effect.
         uint8_t * indexedBuffer() override
         {
-            return _indexedBuffer.get();
+            return nullptr;
         }
         const uint8_t * indexedBuffer() const override
         {
-            return _indexedBuffer.get();
+            return nullptr;
         }
         uint8_t * maskBuffer() override
         {
-            return _maskBuffer.get();
+            return nullptr;
         }
         const uint8_t * maskBuffer() const override
         {
-            return _maskBuffer.get();
+            return nullptr;
         }
         int32_t indexedStride() const override
         {

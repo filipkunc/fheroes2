@@ -1862,11 +1862,16 @@ namespace
             }
 
             // (Re)allocate the indexed/mask channel textures at GAME resolution.
+            // Painter's-algorithm rewrite (2026-05-10): Display::indexedBuffer() / maskBuffer()
+            // now return nullptr — the engine writes only to the RGBA channel. The game
+            // texture is still allocated (the framebuffer pipeline expects a binding at
+            // slot 0) but its contents stay all-zero forever, which the simplified shader
+            // ignores. We allocate it 1×1 to minimise memory.
             const int32_t idxW = display.width();
             const int32_t idxH = display.height();
             const uint8_t * idxData = display.indexedBuffer();
             const uint8_t * maskData = display.maskBuffer();
-            if ( idxData != nullptr && idxW > 0 && idxH > 0 && !_ensureGameTexture( idxW, idxH ) ) {
+            if ( !_ensureGameTexture( ( idxW > 0 && idxH > 0 ) ? idxW : 1, ( idxW > 0 && idxH > 0 ) ? idxH : 1 ) ) {
                 SDL_SubmitGPUCommandBuffer( cmd );
                 return;
             }
