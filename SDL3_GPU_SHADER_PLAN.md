@@ -396,23 +396,82 @@ id=73 frame=1 framesSize=38 frameEmpty=0 spriteSize=68x96`).
   barrier instead of memory aliasing) — did not fix.
 
 **Suspected root cause:** The Samsung Xclipse 540 Vulkan driver appears to
-serve the GPU shader stale R8 texture data after `SDL_UploadToGPUTexture`,
-even with explicit barriers. The `mask` channel write that says "use RGBA"
-isn't visible to the shader, so the shader keeps resolving via `palette[idx]`
-and shows the previous indexed-channel content.
+serve the GPU shader stale R8 texture data after `SDL_UploadToGPUTexture`.
+Specifically, the **mask=0 → mask=255 transition does not propagate** for
+texture pixels that were previously cleared to mask=0 by `_copyFullSurface`
+or `materializeIndexedRoi`. The shader keeps resolving these pixels through
+the RGBA channel even after the engine writes mask=255 + a new indexed
+value, producing visible bugs:
+- Dialog interior fills (Copy STONEBAK over a previously-RGBA area) don't
+  show — the area keeps showing whatever RGBA was there.
+- Indexed-sprite units painted over a previously-RGBA battlefield (e.g.
+  Peasants over the `_battleGroundRGBA` fast-path region) don't appear —
+  they render to the indexed channel + mask=255 but the GPU still samples
+  through RGBA.
+- After `ImageRestorer.restore()` for a dialog close, the units behind
+  the dialog don't repaint until a fresh render pass touches them with
+  RGBA.
 
-**To investigate next session:**
+**Things attempted in 2026-05-10 session — none of which fully fixed it:**
 
-- Try `SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_GRAPHICS_STORAGE_READ`
-  on the indexed/mask textures to force a different memory layout.
-- Try splitting the multi-texture upload into separate copy passes (one
-  per texture) to ensure each upload barrier completes before the next.
-- Try uploading via a single staging buffer with multiple texture-region
-  copies in one upload call instead of separate uploads per texture.
-- If all GPU-side fixes fail, fall back to `FHEROES2_NO_GPU=1` on Android
-  (use the legacy SDL_Renderer path) until SDL_GPU on Xclipse stabilises.
-- File a bug against SDL3 with a minimal repro showing R8_UNORM upload-then-
-  sample on Android (Samsung Galaxy A56 / Xclipse 540 / Vulkan 1.3).
+- `SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_GRAPHICS_STORAGE_READ`
+  combined: SDL_GPU asserts that these flags are mutually exclusive, so
+  this approach is unavailable.
+- Split the multi-texture upload into separate copy passes (one per
+  texture) so each upload completes its barrier before the next begins.
+  No effect.
+- `cycle=true` vs `cycle=false` on per-frame uploads. No difference.
+- Pack mask + indexed into a single R8G8 texture, then a single
+  R8G8B8A8 texture (replacing the dual R8 textures). Reduces upload from
+  two textures to one and bypasses any multi-texture sync issue. No
+  effect — the bug shifts to the .g byte of the packed texture not
+  updating, suggesting the issue isn't multi-texture sync but
+  per-byte texture-update propagation.
+- `BlitRGBAScaled` per-pixel materialize replacing bbox-wide
+  `materializeIndexedRoi`. Eliminates ghost-trail residue from
+  fully-transparent edges of hi-res sprite bboxes (which previously
+  swallowed mask=255 + indexed background pixels into mask=0). Helped
+  cleanly fix the hi-res-monster-overdraws-background issue on Linux
+  too, but the underlying Android propagation bug persists.
+- Tried defaulting Android to the legacy `SDL_Renderer` path
+  (`FHEROES2_NO_GPU` semantics inverted on Android). Renders through
+  the legacy path's logical-presentation pipeline and would bypass the
+  SDL_GPU bug entirely. Reverted because the legacy path's touch-input
+  handling on Android isn't compatible with the engine's existing
+  click/hover bookkeeping (cursor renders at the right pixel but menu
+  hover/click never fire, so menus are unclickable).
+
+**Confirmed working with the current 2026-05-10 commit
+(`2f6d33ac9`):**
+
+- Clicks register and menus work end-to-end on the Galaxy A56.
+- Hi-res monsters render at the correct fidelity (Maid is properly
+  hi-res in the army bar and on the battlefield).
+- Battle setup, "Select Monster" dialog (when not opened in the editor's
+  battle-only flow), and the main-menu are usable.
+
+**Next-session ideas:**
+
+- **Single-channel encoding.** Drop the `mask` channel entirely and use a
+  reserved indexed value (e.g. `idx=0` or `idx=255`) as the "use RGBA"
+  sentinel. Eliminates the `mask` channel and reduces the game texture
+  to R8. If the bug reproduces with the .r byte alone, the issue isn't
+  channel-specific and we need a fundamentally different fix (different
+  upload mechanism, recreate the texture each frame, etc.). If the bug
+  goes away with single-channel encoding, mask was specifically
+  problematic for some unknown driver reason and the workaround sticks.
+- **Recreate the game texture each frame.** Wasteful but guaranteed-fresh
+  memory. Should rule out any caching/aliasing bug in SDL_GPU's
+  `cycle`-style memory recycler.
+- **File a bug against SDL3** with a minimal repro showing R8 (or R8G8)
+  texture upload-then-sample on Android (Samsung Galaxy A56 / Xclipse
+  540 / Vulkan 1.3) where bytes don't propagate after the destination
+  was previously cleared.
+- **Drop logical-presentation issues with the legacy `SDL_Renderer`
+  path on Android** so it can be the fallback. The cursor renders at
+  the right pixel but menu hover/click never fires — this is a
+  separate touch-coord issue that needs investigation before the
+  legacy path can be used as a workaround.
 
 **Still TODO in Phase 6:**
 
