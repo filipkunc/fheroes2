@@ -187,23 +187,23 @@ If the Java glue changed in upstream SDL3, copy `org.libsdl.app.*.java` into `an
 
 ## Linux Build (SDL3)
 
-The system has SDL3-devel from Fedora repos (`dnf install SDL3-devel glslang vulkan-tools`). SDL3_mixer is not packaged on Fedora — build from source. Tested setup:
+The system has SDL3-devel from Fedora repos (`dnf install SDL3-devel glslang vulkan-tools`). SDL3_mixer is not packaged on Fedora — build from source. **Build under `~/Projects/sdl3-linux/` (NOT `/tmp/`) so it survives reboots:**
 
 ```bash
-cd /tmp && rm -rf SDL_mixer
+mkdir -p ~/Projects/sdl3-linux && cd ~/Projects/sdl3-linux && rm -rf SDL_mixer
 git clone --depth 1 --branch release-3.2.0 https://github.com/libsdl-org/SDL_mixer
 cd SDL_mixer && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DSDLMIXER_VENDORED=OFF -DSDLMIXER_GME=OFF -DSDLMIXER_OPUS=OFF -DSDLMIXER_WAVPACK=OFF \
     -DSDLMIXER_VORBIS=STB -DSDLMIXER_FLAC=OFF -DSDLMIXER_MOD=OFF -DSDLMIXER_MP3=MPG123
-cmake --build build  # produces /tmp/SDL_mixer/build/libSDL3_mixer.so + Config.cmake
+cmake --build build  # produces ~/Projects/sdl3-linux/SDL_mixer/build/libSDL3_mixer.so + Config.cmake
 ```
 
 Then configure fheroes2 against it via `CMAKE_PREFIX_PATH` (no need to `sudo cmake --install`):
 
 ```bash
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=/tmp/SDL_mixer/build
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/Projects/sdl3-linux/SDL_mixer/build
 cmake --build build -j$(nproc)
-LD_LIBRARY_PATH=/tmp/SDL_mixer/build ./build/fheroes2
+LD_LIBRARY_PATH=$HOME/Projects/sdl3-linux/SDL_mixer/build ./build/fheroes2
 ```
 
 Game data + music expected at `build/data/`, `build/files/`, `build/music/` — symlink them: `ln -s "/path/to/HoMM 2 Gold/DATA" build/data` etc.
