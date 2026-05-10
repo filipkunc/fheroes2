@@ -329,11 +329,7 @@ namespace fheroes2
         // Painter's-algorithm refactor (2026-05-10): all primitives now write RGBA at
         // physical pixel scale. The indexed + mask channels are dead. We return nullptr
         // here so every primitive's `if (idx != nullptr && mask != nullptr)` fast-path
-        // check fails and the existing physical-pixel-write slow path runs uniformly. The
-        // _indexedBuffer / _maskBuffer members + their backing storage are also unused
-        // and could be removed in a follow-up cleanup. Color cycling is sacrificed: the
-        // engine no longer keeps a reusable indexed copy on the GPU side, so cycling
-        // would need a full re-render of affected ROIs to take visible effect.
+        // check fails and the existing physical-pixel-write slow path runs uniformly.
         uint8_t * indexedBuffer() override
         {
             return nullptr;
@@ -359,6 +355,30 @@ namespace fheroes2
             return height();
         }
         void markIndexedDirty( const Rect & roi ) override;
+
+        // Cycling tag buffer: re-purposes the painter-refactor-orphaned _indexedBuffer
+        // storage. Sized at width()×height() bytes (game coords). Indexed primitives set
+        // the byte to the original palette index when it falls in a cycling range and
+        // to 0 otherwise; RGBA-direct primitives clear the bytes for their painted ROI.
+        // Display::render() walks this buffer when the cycle palette ticks and rewrites
+        // just the affected pixels in the RGBA buffer.
+        uint8_t * cyclingTagBuffer() override
+        {
+            return _indexedBuffer.get();
+        }
+        const uint8_t * cyclingTagBuffer() const override
+        {
+            return _indexedBuffer.get();
+        }
+        int32_t cyclingTagStride() const override
+        {
+            return width();
+        }
+        // Walk the cycling tag buffer and rewrite each tagged game pixel in the RGBA
+        // buffer using the new colour for that index under `remap` (a 256-byte cycling
+        // remap as returned by PAL::GetCyclingPalette). Called from render() when the
+        // pre-render hook reports a cycling palette tick.
+        void applyCyclingPalette( const std::vector<uint8_t> & remap );
 
         // Returns the game-coord ROI that has been written to the indexed buffer since the
         // last consumeIndexedDirtyRoi() call, intersected with the framebuffer. Empty Rect

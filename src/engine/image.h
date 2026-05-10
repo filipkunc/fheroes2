@@ -149,6 +149,28 @@ namespace fheroes2
         // non-Display.
         virtual void markIndexedDirty( const Rect & /* roi */ ) {}
 
+        // Cycling tag buffer (Display-only; nullptr elsewhere). 1 byte per game pixel:
+        //   0 = pixel is NOT a cycling color (RGBA in image() is final)
+        //   X = original palette index (X is in 214..221 or 231..241 — the cycling ranges).
+        // Display::applyCyclingPalette walks this buffer each cycle tick and rewrites just
+        // the affected pixels in the RGBA buffer with the new colour, avoiding a full frame
+        // re-render. Indexed-paint primitives set/clear the tag when writing through
+        // paletteIdxToRGBA; RGBA-direct primitives (BlitRGBAScaled etc.) clear the tag for
+        // their painted ROI so a hi-res sprite over a cycling tile doesn't get repainted
+        // with the cycle colour on the next tick.
+        virtual uint8_t * cyclingTagBuffer()
+        {
+            return nullptr;
+        }
+        virtual const uint8_t * cyclingTagBuffer() const
+        {
+            return nullptr;
+        }
+        virtual int32_t cyclingTagStride() const
+        {
+            return 0;
+        }
+
         virtual uint8_t * image();
 
         virtual const uint8_t * image() const;
@@ -339,6 +361,11 @@ namespace fheroes2
         // buffer (every Image except Display).
         std::vector<uint8_t> _indexedCopy;
         std::vector<uint8_t> _maskCopy;
+        // Cycling tag side-channel: a dialog drawn over the saved area sets cycling
+        // tags for its indexed pixels. Restoring the RGBA pixels alone leaves those
+        // tags behind, and the next cycle tick repaints over the restored content.
+        // Saved/restored alongside the RGBA copy so the round-trip is exact.
+        std::vector<uint8_t> _cyclingTagCopy;
 
         int32_t _x{ 0 };
         int32_t _y{ 0 };
@@ -347,6 +374,7 @@ namespace fheroes2
 
         void _updateRoi();
         // Phase 3: capture / restore the game-resolution indexed bytes for the saved ROI.
+        // Now also saves and restores the cycling tag bytes.
         void _captureIndexed();
         void _restoreIndexed();
 

@@ -2785,6 +2785,11 @@ namespace fheroes2
             std::vector<uint8_t> palette;
             if ( _preprocessing( palette ) ) {
                 _engine->updatePalette( palette );
+                // Painter pipeline: the GPU shader doesn't sample the palette LUT anymore,
+                // so updatePalette alone has no visible effect. Re-apply the new colours by
+                // walking the cycling tag buffer and rewriting the tagged pixels in
+                // _screenRGBA before the render-pass uploads it.
+                applyCyclingPalette( palette );
             }
         }
 

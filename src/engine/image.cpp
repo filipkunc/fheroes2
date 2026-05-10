@@ -250,6 +250,32 @@ namespace
         }
     }
 
+    // Cycling-tag write helper. Set the per-game-pixel tag to `paletteIdx` if the index
+    // falls in one of the engine's cycling ranges (214..221 gold, 231..235 cyan/blue,
+    // 238..241), and to 0 otherwise. tagBase may be nullptr (non-Display) — the caller
+    // can safely pass it through. Display::applyCyclingPalette walks this buffer.
+    inline void noteCyclingPixel( uint8_t * tagBase, const int32_t tagStride, const int32_t gx, const int32_t gy, const uint8_t paletteIdx )
+    {
+        if ( tagBase == nullptr ) {
+            return;
+        }
+        const bool isCycling = ( paletteIdx >= 214 && paletteIdx <= 221 ) || ( paletteIdx >= 231 && paletteIdx <= 235 ) || ( paletteIdx >= 238 && paletteIdx <= 241 );
+        tagBase[static_cast<ptrdiff_t>( gy ) * tagStride + gx] = isCycling ? paletteIdx : 0;
+    }
+
+    // Clear the cycling tag for a game-coord ROI. Called by RGBA-direct primitives so
+    // pixels they paint over are no longer tracked for cycling (otherwise the next
+    // cycle tick would overwrite hi-res sprite pixels with the cycle colour).
+    inline void clearCyclingTagRoi( uint8_t * tagBase, const int32_t tagStride, const int32_t gx0, const int32_t gy0, const int32_t gx1, const int32_t gy1 )
+    {
+        if ( tagBase == nullptr || gx0 >= gx1 || gy0 >= gy1 ) {
+            return;
+        }
+        for ( int32_t gy = gy0; gy < gy1; ++gy ) {
+            std::memset( tagBase + static_cast<ptrdiff_t>( gy ) * tagStride + gx0, 0, static_cast<size_t>( gx1 - gx0 ) );
+        }
+    }
+
     // Apply a per-pixel shadow-darkening factor to every physical pixel in a block.
     inline void shadeRGBABlock( uint8_t * outBase, const PhysicalBlock & pb, const int32_t bufStride, const float factor )
     {
@@ -556,7 +582,10 @@ namespace
     {
         uint8_t * idx = out.indexedBuffer();
         uint8_t * mask = out.maskBuffer();
-        if ( idx == nullptr || mask == nullptr ) {
+        uint8_t * tag = out.cyclingTagBuffer();
+        // Painter pipeline: idx/mask are nullptr on Display, but the cycling tag may be
+        // non-null. Bail only if there is nothing to clear at all.
+        if ( idx == nullptr && mask == nullptr && tag == nullptr ) {
             return;
         }
         const int32_t fbW = out.width();
@@ -578,13 +607,22 @@ namespace
         if ( outY + height > fbH ) {
             height = fbH - outY;
         }
-        const int32_t stride = out.indexedStride();
+        const int32_t idxStride = ( idx != nullptr ) ? out.indexedStride() : 0;
+        const int32_t tagStride = ( tag != nullptr ) ? out.cyclingTagStride() : 0;
         for ( int32_t row = 0; row < height; ++row ) {
-            const ptrdiff_t off = static_cast<ptrdiff_t>( outY + row ) * stride + outX;
-            std::memset( idx + off, 0, static_cast<size_t>( width ) );
-            std::memset( mask + off, 0, static_cast<size_t>( width ) );
+            if ( idx != nullptr ) {
+                const ptrdiff_t off = static_cast<ptrdiff_t>( outY + row ) * idxStride + outX;
+                std::memset( idx + off, 0, static_cast<size_t>( width ) );
+                std::memset( mask + off, 0, static_cast<size_t>( width ) );
+            }
+            if ( tag != nullptr ) {
+                const ptrdiff_t off = static_cast<ptrdiff_t>( outY + row ) * tagStride + outX;
+                std::memset( tag + off, 0, static_cast<size_t>( width ) );
+            }
         }
-        out.markIndexedDirty( { outX, outY, width, height } );
+        if ( idx != nullptr ) {
+            out.markIndexedDirty( { outX, outY, width, height } );
+        }
     }
 
     void ApplyRawPalette( const fheroes2::Image & in, int32_t inX, int32_t inY, fheroes2::Image & out, int32_t outX, int32_t outY, int32_t width, int32_t height,
@@ -1160,43 +1198,75 @@ namespace fheroes2
 
     void ImageRestorer::_captureIndexed()
     {
-        const uint8_t * idx = _image.indexedBuffer();
-        const uint8_t * mask = _image.maskBuffer();
-        if ( idx == nullptr || mask == nullptr || _width <= 0 || _height <= 0 ) {
+        if ( _width <= 0 || _height <= 0 ) {
             _indexedCopy.clear();
             _maskCopy.clear();
+            _cyclingTagCopy.clear();
             return;
         }
-        const int32_t stride = _image.indexedStride();
         const size_t bytes = static_cast<size_t>( _width ) * static_cast<size_t>( _height );
-        _indexedCopy.resize( bytes );
-        _maskCopy.resize( bytes );
-        for ( int32_t row = 0; row < _height; ++row ) {
-            const ptrdiff_t srcOff = static_cast<ptrdiff_t>( _y + row ) * stride + _x;
-            const ptrdiff_t dstOff = static_cast<ptrdiff_t>( row ) * _width;
-            std::memcpy( _indexedCopy.data() + dstOff, idx + srcOff, static_cast<size_t>( _width ) );
-            std::memcpy( _maskCopy.data() + dstOff, mask + srcOff, static_cast<size_t>( _width ) );
+
+        const uint8_t * idx = _image.indexedBuffer();
+        const uint8_t * mask = _image.maskBuffer();
+        if ( idx != nullptr && mask != nullptr ) {
+            const int32_t stride = _image.indexedStride();
+            _indexedCopy.resize( bytes );
+            _maskCopy.resize( bytes );
+            for ( int32_t row = 0; row < _height; ++row ) {
+                const ptrdiff_t srcOff = static_cast<ptrdiff_t>( _y + row ) * stride + _x;
+                const ptrdiff_t dstOff = static_cast<ptrdiff_t>( row ) * _width;
+                std::memcpy( _indexedCopy.data() + dstOff, idx + srcOff, static_cast<size_t>( _width ) );
+                std::memcpy( _maskCopy.data() + dstOff, mask + srcOff, static_cast<size_t>( _width ) );
+            }
+        }
+        else {
+            _indexedCopy.clear();
+            _maskCopy.clear();
+        }
+
+        const uint8_t * tag = _image.cyclingTagBuffer();
+        if ( tag != nullptr ) {
+            const int32_t stride = _image.cyclingTagStride();
+            _cyclingTagCopy.resize( bytes );
+            for ( int32_t row = 0; row < _height; ++row ) {
+                const ptrdiff_t srcOff = static_cast<ptrdiff_t>( _y + row ) * stride + _x;
+                const ptrdiff_t dstOff = static_cast<ptrdiff_t>( row ) * _width;
+                std::memcpy( _cyclingTagCopy.data() + dstOff, tag + srcOff, static_cast<size_t>( _width ) );
+            }
+        }
+        else {
+            _cyclingTagCopy.clear();
         }
     }
 
     void ImageRestorer::_restoreIndexed()
     {
-        if ( _indexedCopy.empty() || _maskCopy.empty() ) {
-            return;
+        if ( !_indexedCopy.empty() && !_maskCopy.empty() ) {
+            uint8_t * idx = _image.indexedBuffer();
+            uint8_t * mask = _image.maskBuffer();
+            if ( idx != nullptr && mask != nullptr ) {
+                const int32_t stride = _image.indexedStride();
+                for ( int32_t row = 0; row < _height; ++row ) {
+                    const ptrdiff_t dstOff = static_cast<ptrdiff_t>( _y + row ) * stride + _x;
+                    const ptrdiff_t srcOff = static_cast<ptrdiff_t>( row ) * _width;
+                    std::memcpy( idx + dstOff, _indexedCopy.data() + srcOff, static_cast<size_t>( _width ) );
+                    std::memcpy( mask + dstOff, _maskCopy.data() + srcOff, static_cast<size_t>( _width ) );
+                }
+                _image.markIndexedDirty( { _x, _y, _width, _height } );
+            }
         }
-        uint8_t * idx = _image.indexedBuffer();
-        uint8_t * mask = _image.maskBuffer();
-        if ( idx == nullptr || mask == nullptr ) {
-            return;
+
+        if ( !_cyclingTagCopy.empty() ) {
+            uint8_t * tag = _image.cyclingTagBuffer();
+            if ( tag != nullptr ) {
+                const int32_t stride = _image.cyclingTagStride();
+                for ( int32_t row = 0; row < _height; ++row ) {
+                    const ptrdiff_t dstOff = static_cast<ptrdiff_t>( _y + row ) * stride + _x;
+                    const ptrdiff_t srcOff = static_cast<ptrdiff_t>( row ) * _width;
+                    std::memcpy( tag + dstOff, _cyclingTagCopy.data() + srcOff, static_cast<size_t>( _width ) );
+                }
+            }
         }
-        const int32_t stride = _image.indexedStride();
-        for ( int32_t row = 0; row < _height; ++row ) {
-            const ptrdiff_t dstOff = static_cast<ptrdiff_t>( _y + row ) * stride + _x;
-            const ptrdiff_t srcOff = static_cast<ptrdiff_t>( row ) * _width;
-            std::memcpy( idx + dstOff, _indexedCopy.data() + srcOff, static_cast<size_t>( _width ) );
-            std::memcpy( mask + dstOff, _maskCopy.data() + srcOff, static_cast<size_t>( _width ) );
-        }
-        _image.markIndexedDirty( { _x, _y, _width, _height } );
     }
 
     void ImageRestorer::_updateRoi()
@@ -1294,6 +1364,12 @@ namespace fheroes2
             const bool useIndexedFastPath = ( idxBase != nullptr && maskBase != nullptr );
             const int32_t idxStride = useIndexedFastPath ? out.indexedStride() : 0;
 
+            // Display-only cycling tag: 1 byte per game pixel updated alongside the RGBA
+            // write. nullptr on every non-Display target so the per-pixel call is a cheap
+            // null check that the optimiser hoists out for non-Display blits.
+            uint8_t * tagBase = out.cyclingTagBuffer();
+            const int32_t tagStride = ( tagBase != nullptr ) ? out.cyclingTagStride() : 0;
+
             const uint8_t * imageInY = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX );
             const uint8_t * transformInY = hasTransform
                                                ? ( in.transform() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + ( flip ? ( widthIn - 1 - inX ) : inX ) )
@@ -1372,6 +1448,9 @@ namespace fheroes2
                                 const float f = shadowFactor[*trIn];
                                 const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
                                 shadeRGBABlock( outBase, pb, bufStride, f );
+                                // Shadow over a previously-cycling pixel: clear the tag so the next
+                                // cycle tick doesn't undo the dim by repainting the un-dimmed colour.
+                                noteCyclingPixel( tagBase, tagStride, outX + col, outY + row, 0 );
                             }
                             else {
                                 // Translucency (transforms 6-13): legacy palette-LUT blend.
@@ -1389,6 +1468,7 @@ namespace fheroes2
                                     uint8_t b;
                                     paletteIdxToRGBA( newIdx, r, g, b );
                                     fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
+                                    noteCyclingPixel( tagBase, tagStride, outX + col, outY + row, newIdx );
                                 }
                             }
                             trIn += inDir;
@@ -1414,6 +1494,7 @@ namespace fheroes2
                         paletteIdxToRGBA( *imgIn, r, g, b );
                         const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
                         fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
+                        noteCyclingPixel( tagBase, tagStride, outX + col, outY + row, *imgIn );
                     }
                 }
 
@@ -1446,6 +1527,11 @@ namespace fheroes2
             // blend baseline is the stale RGBA leftovers (black). Used for the castle
             // building fade-in animation, hero pickup fades, etc.
             materializeIndexedRoi( out, outX, outY, width, height );
+
+            // Alpha-blend produces a non-palette colour, so any cycling tag previously set
+            // here would corrupt the blend on the next cycle tick. Coarse ROI clear.
+            clearCyclingTagRoi( out.cyclingTagBuffer(), out.cyclingTagStride(), std::max( outX, 0 ),
+                                std::max( outY, 0 ), std::min( outX + width, out.width() ), std::min( outY + height, out.height() ) );
 
             const int32_t widthIn = in.width();
             const bool hasTransform = !in.singleLayer();
@@ -1524,6 +1610,8 @@ namespace fheroes2
             uint8_t * outMaskBase = out.maskBuffer();
             uint8_t * outIdxBase = out.indexedBuffer();
             const int32_t outIdxStride = ( outMaskBase != nullptr ) ? out.indexedStride() : 0;
+            uint8_t * outTagBase = out.cyclingTagBuffer();
+            const int32_t outTagStride = ( outTagBase != nullptr ) ? out.cyclingTagStride() : 0;
 
             const int32_t inStride = in.bufferStride();
             const float inScale = in.physicalScale();
@@ -1554,6 +1642,11 @@ namespace fheroes2
                         const ptrdiff_t off = static_cast<ptrdiff_t>( outY + y ) * outIdxStride + ( outX + x );
                         outMaskBase[off] = 0;
                         outIdxBase[off] = 0;
+                    }
+                    // Same logic for cycling tag: opaque RGBA paint over a previously-cycling
+                    // pixel must clear the tag, or the next cycle tick repaints over the sprite.
+                    if ( outTagBase != nullptr ) {
+                        outTagBase[static_cast<ptrdiff_t>( outY + y ) * outTagStride + ( outX + x )] = 0;
                     }
                 }
             }
@@ -1646,6 +1739,8 @@ namespace fheroes2
             const int32_t bufStride = out.bufferStride();
             const int32_t bufHeight = out.bufferHeight();
             uint8_t * outBase = out.image();
+            uint8_t * tagBase = out.cyclingTagBuffer();
+            const int32_t tagStride = ( tagBase != nullptr ) ? out.cyclingTagStride() : 0;
             const uint8_t * srcRow = in.image() + ( static_cast<ptrdiff_t>( inY ) * widthIn ) + inX;
             for ( int32_t row = 0; row < height; ++row ) {
                 const uint8_t * src = srcRow;
@@ -1656,6 +1751,7 @@ namespace fheroes2
                     paletteIdxToRGBA( *src, r, g, b );
                     const PhysicalBlock pb = toPhysicalBlock( outX + col, outY + row, scale, bufStride, bufHeight );
                     fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
+                    noteCyclingPixel( tagBase, tagStride, outX + col, outY + row, *src );
                 }
                 srcRow += widthIn;
             }
@@ -4964,6 +5060,10 @@ namespace fheroes2
             return;
         }
 
+        // Hi-res RGBA paint over the destination ROI: clear cycling tags for affected
+        // game pixels so the next cycle tick doesn't repaint over this sprite.
+        clearCyclingTagRoi( out.cyclingTagBuffer(), out.cyclingTagStride(), startX, startY, endX, endY );
+
         // Physical-pixel extent of the dst rect (used for source mapping).
         const int32_t pDstW = static_cast<int32_t>( static_cast<float>( dstW ) * scale );
         const int32_t pDstH = static_cast<int32_t>( static_cast<float>( dstH ) * scale );
@@ -5112,6 +5212,9 @@ namespace fheroes2
         if ( startX >= endX || startY >= endY ) {
             return;
         }
+
+        // See note in BlitRGBAScaled — clear cycling tags over the dest ROI.
+        clearCyclingTagRoi( out.cyclingTagBuffer(), out.cyclingTagStride(), startX, startY, endX, endY );
 
         const int32_t pDstW = static_cast<int32_t>( static_cast<float>( dstW ) * scale );
         const int32_t pDstH = static_cast<int32_t>( static_cast<float>( dstH ) * scale );
@@ -5458,6 +5561,44 @@ namespace fheroes2
                     px[1] = static_cast<uint8_t>( static_cast<float>( px[1] ) * f );
                     px[2] = static_cast<uint8_t>( static_cast<float>( px[2] ) * f );
                 }
+            }
+        }
+    }
+
+    // Display::applyCyclingPalette body. Defined here (not in screen.cpp) so it can use
+    // the file-local helpers paletteIdxToRGBA / toPhysicalBlock / fillRGBABlock.
+    void Display::applyCyclingPalette( const std::vector<uint8_t> & remap )
+    {
+        const uint8_t * tag = cyclingTagBuffer();
+        if ( tag == nullptr || empty() || remap.size() < 256 ) {
+            return;
+        }
+
+        const int32_t gameW = width();
+        const int32_t gameH = height();
+        if ( gameW <= 0 || gameH <= 0 ) {
+            return;
+        }
+
+        const float scale = physicalScale();
+        const int32_t bufStride = bufferStride();
+        const int32_t bufHeight = bufferHeight();
+        const int32_t tagStride = cyclingTagStride();
+        uint8_t * outBase = image();
+
+        for ( int32_t gy = 0; gy < gameH; ++gy ) {
+            const uint8_t * tagRow = tag + static_cast<ptrdiff_t>( gy ) * tagStride;
+            for ( int32_t gx = 0; gx < gameW; ++gx ) {
+                const uint8_t origIdx = tagRow[gx];
+                if ( origIdx == 0 ) {
+                    continue;
+                }
+                uint8_t r;
+                uint8_t g;
+                uint8_t b;
+                paletteIdxToRGBA( remap[origIdx], r, g, b );
+                const PhysicalBlock pb = toPhysicalBlock( gx, gy, scale, bufStride, bufHeight );
+                fillRGBABlock( outBase, pb, bufStride, r, g, b, 255 );
             }
         }
     }
