@@ -744,7 +744,23 @@ namespace
         const fheroes2::Sprite & port = isActiveHero ? activeHero->GetPortrait( PORT_SMALL ) : activeCaptain->GetPortrait( PORT_SMALL );
         if ( !port.empty() ) {
             fheroes2::Blit( heroPortraitFrame, display, cur_rt.x + ( cur_rt.width - heroPortraitFrame.width() ) / 2, cur_rt.y + 12 );
-            fheroes2::Blit( port, display, cur_rt.x + ( cur_rt.width - port.width() ) / 2, cur_rt.y + 16 );
+            const int32_t portX = cur_rt.x + ( cur_rt.width - port.width() ) / 2;
+            const int32_t portY = cur_rt.y + 16;
+            fheroes2::Blit( port, display, portX, portY );
+
+            // Hi-res RGBA overlay: this dialog draws the small portrait directly
+            // (no PortraitRedraw call), so we replicate its overlay path. Prefer
+            // the dedicated small RGBA, fall back to the cropped big one, mirror
+            // of Heroes::PortraitRedraw's PORT_SMALL branch.
+            if ( isActiveHero ) {
+                const int heroId = activeHero->getPortraitId();
+                if ( const fheroes2::Image * smallRGBA = fheroes2::AGG::GetRGBACustomHeroPortraitSmall( heroId ); smallRGBA != nullptr ) {
+                    fheroes2::AGG::renderHiResHeroPortraitInBoxFilled( *smallRGBA, portX, portY, port.width(), port.height() );
+                }
+                else if ( const fheroes2::Image * bigRGBA = fheroes2::AGG::GetRGBACustomHeroPortrait( heroId ); bigRGBA != nullptr ) {
+                    fheroes2::AGG::renderHiResHeroPortraitInBoxFilled( *bigRGBA, portX, portY, port.width(), port.height() );
+                }
+            }
         }
 
         // luck

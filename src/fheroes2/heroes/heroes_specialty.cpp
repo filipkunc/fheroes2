@@ -18,7 +18,7 @@ namespace
     /* SIRGALLANTH (2) */ {},
     /* ECTOR (3) */ { HeroSpecialty::RESOURCE, 0, 0, 0, {}, 0, 0, 0, Resource::WOOD, 2 },
     /* GVENNETH (4) */ { HeroSpecialty::UNIT, 0, 0, 0, { Monster::CAVALRY, Monster::CHAMPION, Monster::PALADIN, Monster::CRUSADER, Monster::AVENGER }, 5, 5, 1, 0, 0 },
-    /* TYRO (5) */ {},
+    /* TYRO (5) */ { HeroSpecialty::SPELL, Spell::RESURRECTTRUE, 50, 10, {}, 0, 0, 0, 0, 0 },
     /* AMBROSE (6) */ {},
     /* RUBY (7) */ { HeroSpecialty::RESOURCE, 0, 0, 0, {}, 0, 0, 0, Resource::CRYSTAL, 1 },
     /* MAXIMUS (8) */ {},

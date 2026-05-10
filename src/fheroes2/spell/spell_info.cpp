@@ -137,11 +137,18 @@ namespace fheroes2
 
     uint32_t getHPRestorePoints( const Spell & spell, const uint32_t spellPower, const HeroBase * hero )
     {
-        (void)hero;
-
         assert( spellPower > 0 );
 
-        return spell.Restore() * spellPower;
+        uint32_t restorePoints = spell.Restore() * spellPower;
+
+        // Hero specialty: the damage-bonus-percent field is reinterpreted as a
+        // generic "spell effectiveness percent" for non-damage spells, so a
+        // hero specialised in a restore spell heals proportionally more HP.
+        if ( const int specialtyBonus = getSpecialtySpellDamageBonusPercent( hero, spell.GetID() ); specialtyBonus != 0 ) {
+            restorePoints = restorePoints * ( 100 + specialtyBonus ) / 100;
+        }
+
+        return restorePoints;
     }
 
     uint32_t getResurrectPoints( const Spell & spell, const uint32_t spellPower, const HeroBase * hero )
@@ -159,6 +166,13 @@ namespace fheroes2
 
         for ( const int32_t value : extraSpellEffectivenessPercent ) {
             resurrectionPoints = resurrectionPoints * ( 100 + value ) / 100;
+        }
+
+        // Hero specialty: same field as damage spells, reinterpreted as a heal
+        // percent for resurrection spells. Tyro's RESURRECTTRUE specialty uses
+        // this so the HP-per-cast scales with the configured percent.
+        if ( const int specialtyBonus = getSpecialtySpellDamageBonusPercent( hero, spell.GetID() ); specialtyBonus != 0 ) {
+            resurrectionPoints = resurrectionPoints * ( 100 + specialtyBonus ) / 100;
         }
 
         return resurrectionPoints;

@@ -68,6 +68,36 @@ BUILD_DIR = _find_build_dir(PROJECT_ROOT)
 AGG_PATH = _find_agg_path()
 
 
+def _load_hero_thumbnail(cfg: HeroConfig, sprites_dir: Path, miniport) -> QPixmap | None:
+    """Pick the best available source for the hero list thumbnail. The hi-res
+    PNGs win when present, so the list shows at a glance which heroes have
+    custom portraits authored.
+
+    Order of precedence:
+      1. {prefix}_small_000.png — slice authored from the big portrait
+      2. {prefix}_000.png — full big portrait (fallback)
+      3. MINIPORT[port_index] — original palette art
+    """
+    small_path = sprites_dir / f"{cfg.prefix}_small_000.png"
+    if small_path.exists():
+        pixmap = QPixmap(str(small_path))
+        if not pixmap.isNull():
+            return pixmap
+
+    big_path = sprites_dir / f"{cfg.prefix}_000.png"
+    if big_path.exists():
+        pixmap = QPixmap(str(big_path))
+        if not pixmap.isNull():
+            return pixmap
+
+    if miniport is None:
+        return None
+    frame = miniport.get_frame(cfg.port_index)
+    if frame and not frame.is_placeholder:
+        return frame.to_qpixmap()
+    return None
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -114,7 +144,6 @@ class MainWindow(QMainWindow):
             try:
                 bg_rgb = tuple(int(c) for c in bg)
                 self._gemini_panel.set_bg_color(bg_rgb)
-                self._hero_portrait_panel.set_bg_color(bg_rgb)
             except (TypeError, ValueError):
                 pass
 
@@ -234,9 +263,9 @@ class MainWindow(QMainWindow):
         # either tab keeps both panels in sync.
         self._hero_portrait_panel = HeroPortraitPanel()
         self._hero_portrait_panel.portrait_accepted.connect(self._on_hero_portrait_changed)
-        # Persist + share bg-colour / reference-image with the other Gemini panels
-        # via the same QSettings the Edit-Frames panel already uses.
-        self._hero_portrait_panel.bg_color_changed.connect(self._save_bg_color)
+        # Reference image path is shared with the monster Gemini panel via QSettings.
+        # Hero portraits no longer use a BG-colour picker (no keying step), so the
+        # bg_color_changed wiring is gone.
         self._hero_portrait_panel.reference_changed.connect(self._save_reference_path)
 
         self._tabs = QTabWidget()
@@ -1013,22 +1042,24 @@ class MainWindow(QMainWindow):
                 self._hero_list.select_hero(first.name)
 
     def _load_hero_thumbnails(self):
-        """Extract MINIPORT.icn frames and apply as thumbnails on the hero list."""
+        """Build the hero list thumbnails. For each hero, prefer the hi-res
+        small slice if authored, then the hi-res big PNG, then the original
+        MINIPORT.icn frame — so the list is also a visual progress indicator
+        for which heroes have hi-res portraits."""
         try:
             from .tools.icn_extractor import extract_icn
             miniport = extract_icn("MINIPORT", BUILD_DIR, AGG_PATH)
         except Exception as e:
             self._status.showMessage(f"Could not extract MINIPORT: {e}")
-            return
+            miniport = None
         if not miniport:
-            self._status.showMessage("MINIPORT.icn not found — hero thumbnails unavailable.")
-            return
+            self._status.showMessage("MINIPORT.icn not found — hero thumbnails may be incomplete.")
 
         thumbnails: dict[str, QPixmap] = {}
         for name, cfg in self._heroes.items():
-            frame = miniport.get_frame(cfg.port_index)
-            if frame and not frame.is_placeholder:
-                thumbnails[name] = frame.to_qpixmap()
+            pixmap = _load_hero_thumbnail(cfg, SPRITES_DIR, miniport)
+            if pixmap is not None:
+                thumbnails[name] = pixmap
         self._hero_list.set_thumbnails(thumbnails)
 
     def _on_hero_selected(self, name: str):
@@ -1045,8 +1076,9 @@ class MainWindow(QMainWindow):
 
     def _on_hero_portrait_changed(self, hero_name: str):
         """A portrait was accepted or deleted — refresh the codegen so the C++
-        RGBA registry reflects the new has_custom_sprites state, and reload the
-        portrait preview on the Heroes tab so the user sees the new art."""
+        RGBA registry reflects the new has_custom_sprites state, refresh the
+        portrait preview on the Heroes tab, and update the hero-list thumbnail
+        so authored heroes are visually distinct in the sidebar."""
         try:
             export_specialties(self._heroes, default_dst_dir())
         except Exception as e:
@@ -1058,9 +1090,42 @@ class MainWindow(QMainWindow):
         cfg = self._heroes.get(hero_name)
         if cfg is not None and cfg is self._current_hero:
             self._update_hero_portrait_preview(cfg)
+        self._refresh_hero_thumbnail(hero_name)
+
+    def _refresh_hero_thumbnail(self, hero_name: str):
+        """Re-pick the best thumbnail source for one hero and push it to the
+        list. Used after a portrait is saved/deleted so the sidebar updates
+        without reloading every hero's thumbnail."""
+        cfg = self._heroes.get(hero_name)
+        if cfg is None:
+            return
+        try:
+            from .tools.icn_extractor import extract_icn
+            miniport = extract_icn("MINIPORT", BUILD_DIR, AGG_PATH)
+        except Exception:
+            miniport = None
+        pixmap = _load_hero_thumbnail(cfg, SPRITES_DIR, miniport)
+        if pixmap is not None:
+            self._hero_list.set_thumbnails({hero_name: pixmap})
 
     def _update_hero_portrait_preview(self, cfg: HeroConfig):
-        """Show the big PORT0xxx portrait for the selected hero."""
+        """Show the hero portrait next to the specialty editor. Prefer the
+        hi-res hero_<name>_000.png when one is authored — same precedence as
+        the sidebar thumbnails — and only fall back to PORT0xxx.icn otherwise."""
+        big_path = SPRITES_DIR / f"{cfg.prefix}_000.png"
+        if big_path.exists():
+            pixmap = QPixmap(str(big_path))
+            if not pixmap.isNull():
+                # Hi-res source — scale smoothly to ~2x the original PORT footprint
+                # so it visually matches the legacy preview size while staying crisp.
+                scaled = pixmap.scaled(
+                    202, 186,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                self._hero_portrait_label.setPixmap(scaled)
+                return
+
         try:
             from .tools.icn_extractor import extract_icn
             icn_name = f"PORT{cfg.port_index:04d}"
