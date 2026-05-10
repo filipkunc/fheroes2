@@ -395,6 +395,47 @@ id=73 frame=1 framesSize=38 frameEmpty=0 spriteSize=68x96`).
 - Tried `cycle=false` on per-frame `SDL_UploadToGPUTexture` (forces a memory
   barrier instead of memory aliasing) — did not fix.
 
+### Fix landed 2026-05-10 (commit `a7cbba3eb`)
+
+**Painter's-algorithm rewrite.** Bypassed the indexed + mask channels on
+`Display` entirely — every primitive now writes plain RGBA at physical
+pixel scale, exactly like the engine did before the Phase 3 optimisation.
+The GPU shader is a one-line passthrough: `outColor = texture(rgbaSampler, v_uv)`.
+
+The fix is a one-line change in `screen.h`: `Display::indexedBuffer()` and
+`Display::maskBuffer()` return `nullptr`. Every primitive's
+`if ( idx != nullptr && mask != nullptr )` fast-path check fails and the
+existing per-physical-pixel RGBA-write slow path runs uniformly. No
+primitive code needed to change — the slow paths were already fully
+implemented for non-`Display` targets.
+
+User confirmed all three Android Vulkan bugs (dialog interior leaks,
+units-not-repainting-after-close, hi-res-monster ghost trails) are fixed
+on the Samsung Galaxy A56. Linux + Windows GPU paths still work (they
+just take the same slow path now, which is correctness-equivalent).
+
+The `gameTex` slot is still bound at 1×1 for layout compatibility but the
+shader ignores it. Cleanup pass to remove the indexed/mask channels from
+`Display` + the GPU pipeline entirely is on the backlog.
+
+**Trade-offs of the painter's algorithm:**
+
+- Color cycling animations no longer take visible effect via a palette
+  LUT — the engine would need to repaint affected ROIs to make a cycling
+  change visible. Not relevant for the menus/dialog/battle paths that
+  this fix targets; cycling has been dormant in the current build since
+  the pure-RGBA refactor anyway.
+- Indexed primitives now do per-physical-pixel work on `Display` (scale²
+  pixels per game pixel) instead of one byte per game pixel. CPU cost
+  increases on full-screen indexed paints; the existing
+  `_battleGroundRGBA` fast path in `Battle::Interface` keeps the hot
+  path on RGBA-source memcpy.
+- `BlitIndexedToRGBAOutput` translucency (transforms 6-13) now also runs
+  on `Display` (was previously a no-op on RGBA targets) so Air-Elemental
+  / ghost-style sprites still composite over the battlefield ground.
+
+### Original suspected root cause (kept for historical context)
+
 **Suspected root cause:** The Samsung Xclipse 540 Vulkan driver appears to
 serve the GPU shader stale R8 texture data after `SDL_UploadToGPUTexture`.
 Specifically, the **mask=0 → mask=255 transition does not propagate** for
