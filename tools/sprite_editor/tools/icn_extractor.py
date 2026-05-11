@@ -61,6 +61,26 @@ def resolve_extractor(build_dir: Path) -> Path:
     return build_dir / "extractor"
 
 
+def _subprocess_env() -> dict[str, str]:
+    """Return an env dict for the subprocess that includes the SDL3_mixer
+    library path on Linux when it's checked out in the standard location.
+
+    The engine (and its tools) link against SDL3_mixer, but on Fedora the
+    library isn't system-installed — CLAUDE.md documents the out-of-tree build
+    under ~/Projects/sdl3-linux/SDL_mixer/build/. Without LD_LIBRARY_PATH the
+    extractor binary fails with 'libSDL3_mixer.so.0: cannot open shared object'
+    before it ever opens the AGG, and we get an empty extraction dir.
+    """
+    env = os.environ.copy()
+    extra_lib_dir = Path.home() / "Projects" / "sdl3-linux" / "SDL_mixer" / "build"
+    if (extra_lib_dir / "libSDL3_mixer.so.0").exists() or (extra_lib_dir / "libSDL3_mixer.so").exists():
+        existing = env.get("LD_LIBRARY_PATH", "")
+        env["LD_LIBRARY_PATH"] = (
+            f"{extra_lib_dir}:{existing}" if existing else str(extra_lib_dir)
+        )
+    return env
+
+
 def ensure_extractor_built(build_dir: Path, *, log=print) -> Path | None:
     """Return the path to a working extractor binary, building it if needed.
 
@@ -148,6 +168,7 @@ def _extract_agg(build_dir: Path, agg_path: Path) -> Path | None:
         subprocess.run(
             [str(extractor), str(tmp), str(agg_path)],
             capture_output=True, text=True, timeout=60,
+            env=_subprocess_env(),
         )
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         print(f"Extractor failed: {e}")
@@ -210,7 +231,7 @@ def _get_or_extract_agg(build_dir: Path, agg_path: Path) -> Path | None:
         cmd = [str(extractor), str(tmp), str(agg_path)]
         if expansion_agg is not None:
             cmd.append(str(expansion_agg))
-        subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=_subprocess_env())
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         print(f"Extractor failed: {e}")
         shutil.rmtree(tmp, ignore_errors=True)

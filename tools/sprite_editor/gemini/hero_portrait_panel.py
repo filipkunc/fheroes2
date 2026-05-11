@@ -25,6 +25,7 @@ from PySide6.QtGui import QImage, QPixmap, QPainter, QPen, QColor
 from PIL import Image
 
 from ..models.hero_config import HeroConfig, update_hero_manifest_entry
+from ..widgets.busy_spinner import BusySpinner
 from .gemini_client import GeminiClient
 from .cost_tracker import CostTracker
 
@@ -462,6 +463,9 @@ class HeroPortraitPanel(QWidget):
         self._send_btn.clicked.connect(self._send_to_gemini)
         self._send_btn.setEnabled(False)
         action_layout.addWidget(self._send_btn)
+
+        self._spinner = BusySpinner()
+        action_layout.addWidget(self._spinner)
 
         self._cancel_btn = QPushButton("Cancel")
         self._cancel_btn.setToolTip(
@@ -924,6 +928,7 @@ class HeroPortraitPanel(QWidget):
 
         self._send_btn.setEnabled(False)
         self._cancel_btn.setEnabled(True)
+        self._spinner.start()
         self._status_label.setText("Sending to Gemini...")
 
         reference = self._reference_image if self._ref_group.isChecked() else None
@@ -941,6 +946,7 @@ class HeroPortraitPanel(QWidget):
     def _on_result(self, result: Image.Image | None):
         self._send_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
+        self._spinner.stop()
 
         if result is None:
             self._status_label.setText("Gemini returned no image")
@@ -980,6 +986,7 @@ class HeroPortraitPanel(QWidget):
     def _on_error(self, error_msg: str):
         self._send_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
+        self._spinner.stop()
         self._status_label.setText(f"Error: {error_msg}")
         if error_msg != "Cancelled by user":
             QMessageBox.critical(self, "Gemini Error", error_msg)

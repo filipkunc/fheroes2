@@ -226,11 +226,12 @@
     "port_index": 13,
     "campaign": "",
     "prefix": "hero_jezebel",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "jaclyn": {
     "enum": "JACLYN",
@@ -240,11 +241,12 @@
     "port_index": 14,
     "campaign": "",
     "prefix": "hero_jaclyn",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "ergon": {
     "enum": "ERGON",
@@ -335,11 +337,12 @@
     "port_index": 20,
     "campaign": "",
     "prefix": "hero_troyan",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "vatawna": {
     "enum": "VATAWNA",
@@ -349,10 +352,12 @@
     "port_index": 21,
     "campaign": "",
     "prefix": "hero_vatawna",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "rebecca": {
     "enum": "REBECCA",
@@ -377,11 +382,12 @@
     "port_index": 23,
     "campaign": "",
     "prefix": "hero_gem",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "ariel": {
     "enum": "ARIEL",
@@ -391,11 +397,12 @@
     "port_index": 24,
     "campaign": "",
     "prefix": "hero_ariel",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "carlawn": {
     "enum": "CARLAWN",
@@ -424,10 +431,12 @@
     "port_index": 26,
     "campaign": "",
     "prefix": "hero_luna",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "arie": {
     "enum": "ARIE",
@@ -437,10 +446,12 @@
     "port_index": 27,
     "campaign": "",
     "prefix": "hero_arie",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "alamar": {
     "enum": "ALAMAR",
@@ -450,10 +461,12 @@
     "port_index": 28,
     "campaign": "",
     "prefix": "hero_alamar",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "vesper": {
     "enum": "VESPER",
@@ -463,10 +476,12 @@
     "port_index": 29,
     "campaign": "",
     "prefix": "hero_vesper",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "crodo": {
     "enum": "CRODO",
@@ -476,10 +491,12 @@
     "port_index": 30,
     "campaign": "",
     "prefix": "hero_crodo",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "barok": {
     "enum": "BAROK",
@@ -489,13 +506,15 @@
     "port_index": 31,
     "campaign": "",
     "prefix": "hero_barok",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "spell",
       "spell": "ARROW",
       "damage_bonus_percent": 50,
       "sp_cost_reduction": 0
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "kastore": {
     "enum": "KASTORE",
@@ -531,10 +550,12 @@
     "port_index": 33,
     "campaign": "",
     "prefix": "hero_agar",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "falagar": {
     "enum": "FALAGAR",
@@ -649,10 +670,12 @@
     "port_index": 41,
     "campaign": "",
     "prefix": "hero_wilfrey",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "sarakin": {
     "enum": "SARAKIN",
@@ -662,10 +685,12 @@
     "port_index": 42,
     "campaign": "",
     "prefix": "hero_sarakin",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "kalindra": {
     "enum": "KALINDRA",
@@ -705,10 +730,12 @@
     "port_index": 45,
     "campaign": "",
     "prefix": "hero_zom",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "darlana": {
     "enum": "DARLANA",
@@ -747,11 +774,12 @@
     "port_index": 48,
     "campaign": "",
     "prefix": "hero_ranloo",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "charity": {
     "enum": "CHARITY",
@@ -761,11 +789,12 @@
     "port_index": 49,
     "campaign": "",
     "prefix": "hero_charity",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "has_custom_sprites_small": true
   },
   "rialdo": {
     "enum": "RIALDO",
@@ -850,7 +879,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "eliza": {
     "enum": "ELIZA",
@@ -863,7 +893,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "archibald": {
     "enum": "ARCHIBALD",
@@ -876,7 +907,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "halton": {
     "enum": "HALTON",
@@ -889,7 +921,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "brax": {
     "enum": "BRAX",
@@ -902,7 +935,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "solmyr": {
     "enum": "SOLMYR",
@@ -915,7 +949,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "dainwin": {
     "enum": "DAINWIN",
@@ -928,7 +963,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "mog": {
     "enum": "MOG",
@@ -941,7 +977,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "uncle_ivan": {
     "enum": "UNCLEIVAN",
@@ -954,7 +991,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "joseph": {
     "enum": "JOSEPH",
@@ -967,7 +1005,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "gallavant": {
     "enum": "GALLAVANT",
@@ -980,7 +1019,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "elderian": {
     "enum": "ELDERIAN",
@@ -993,7 +1033,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "ceallach": {
     "enum": "CEALLACH",
@@ -1006,7 +1047,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "drakonia": {
     "enum": "DRAKONIA",
@@ -1019,7 +1061,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "martine": {
     "enum": "MARTINE",
@@ -1032,7 +1075,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "jarkonas": {
     "enum": "JARKONAS",
@@ -1045,7 +1089,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
   },
   "debug_hero": {
     "enum": "DEBUG_HERO",

@@ -14,6 +14,7 @@ from PySide6.QtGui import QImage, QPixmap, QColor
 from PIL import Image
 
 from ..models.sprite_data import SpriteFrame
+from ..widgets.busy_spinner import BusySpinner
 from .gemini_client import GeminiClient, build_sheet, slice_sheet, SlicedFrame, load_api_key
 from ..models.sprite_data import save_custom_offsets, FrameOverride
 from .cost_tracker import CostTracker
@@ -213,6 +214,9 @@ class GeminiPanel(QWidget):
         self._send_btn.setEnabled(False)
         action_layout.addWidget(self._send_btn)
 
+        self._spinner = BusySpinner()
+        action_layout.addWidget(self._spinner)
+
         layout.addLayout(action_layout)
 
         # Accept/reject section
@@ -394,6 +398,7 @@ class GeminiPanel(QWidget):
             return
 
         self._send_btn.setEnabled(False)
+        self._spinner.start()
         self._status_label.setText("Sending to Gemini...")
 
         self._worker = GeminiWorker(client, self._input_sheet, prompt, system, self._reference_image)
@@ -404,6 +409,7 @@ class GeminiPanel(QWidget):
     def _on_gemini_result(self, result: Image.Image | None):
         """Handle Gemini API response."""
         self._send_btn.setEnabled(True)
+        self._spinner.stop()
 
         if result is None:
             self._status_label.setText("Gemini returned no image")
@@ -457,6 +463,7 @@ class GeminiPanel(QWidget):
     def _on_gemini_error(self, error_msg: str):
         """Handle Gemini API error."""
         self._send_btn.setEnabled(True)
+        self._spinner.stop()
         self._status_label.setText(f"Error: {error_msg}")
         self._cost_tracker.log_call(
             self._model_combo.currentText(), self._frame_indices,

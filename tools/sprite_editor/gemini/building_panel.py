@@ -28,6 +28,7 @@ from PySide6.QtGui import QImage, QPixmap, QColor
 from PIL import Image
 
 from ..models.monster_config import MonsterConfig, update_manifest_entry
+from ..widgets.busy_spinner import BusySpinner
 from .gemini_client import GeminiClient, _replace_bg_with_color
 from .cost_tracker import CostTracker
 
@@ -207,6 +208,9 @@ class BuildingPanel(QWidget):
         self._send_btn.clicked.connect(self._send_to_gemini)
         self._send_btn.setEnabled(False)
         action_layout.addWidget(self._send_btn)
+
+        self._spinner = BusySpinner()
+        action_layout.addWidget(self._spinner)
 
         self._cancel_btn = QPushButton("Cancel")
         self._cancel_btn.setToolTip("Abort the current generation. The HTTP request itself "
@@ -660,6 +664,7 @@ class BuildingPanel(QWidget):
 
         self._send_btn.setEnabled(False)
         self._cancel_btn.setEnabled(True)
+        self._spinner.start()
         self._status_label.setText("Sending to Gemini...")
 
         self._worker = BuildingWorker(client, upscaled, prompt, system, self._reference_image)
@@ -676,6 +681,7 @@ class BuildingPanel(QWidget):
     def _on_result(self, result: Image.Image | None):
         self._send_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
+        self._spinner.stop()
 
         if result is None:
             self._status_label.setText("Gemini returned no image")
@@ -711,6 +717,7 @@ class BuildingPanel(QWidget):
     def _on_error(self, error_msg: str):
         self._send_btn.setEnabled(True)
         self._cancel_btn.setEnabled(False)
+        self._spinner.stop()
         self._status_label.setText(f"Error: {error_msg}")
         if error_msg != "Cancelled by user":
             QMessageBox.critical(self, "Gemini Error", error_msg)

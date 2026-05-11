@@ -223,7 +223,7 @@ class GeminiClient:
 
     def __init__(self, api_key: str | None = None,
                  model: str = "gemini-2.0-flash-preview-image-generation",
-                 timeout_seconds: int = 60):
+                 timeout_seconds: int = 180):
         if api_key is None:
             api_key = load_api_key()
         if not api_key:
@@ -332,8 +332,9 @@ class GeminiClient:
                 elif "timeout" in msg.lower() or "timed out" in msg.lower():
                     raise RuntimeError(
                         f"Gemini request timed out after {self.timeout_seconds}s on model "
-                        f"'{self.model}'. The model may be ungated/not deployed for your "
-                        f"project — try a different model from the dropdown."
+                        f"'{self.model}'. The model is probably under heavy load — preview "
+                        f"image models can take >60s to respond at peak hours. Try again, "
+                        f"or switch to gemini-2.5-flash-image (the stable variant)."
                     ) from e
                 elif "503" in msg or "UNAVAILABLE" in msg.upper():
                     # Out of retries on 503 specifically — give the user actionable advice.
