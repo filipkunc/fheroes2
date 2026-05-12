@@ -142,35 +142,40 @@
     "base_icn": "GOBLIN",
     "bin_file": "GOBLNFRM.BIN",
     "base_monster": "Goblin",
-    "faction": "Barbarian"
+    "faction": "Barbarian",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "orc": {
     "prefix": "orc",
     "base_icn": "ORC",
     "bin_file": "ORC__FRM.BIN",
     "base_monster": "Orc",
-    "faction": "Barbarian"
+    "faction": "Barbarian",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "orc_chief": {
     "prefix": "orc_chief",
     "base_icn": "ORC2",
     "bin_file": "ORC__FRM.BIN",
     "base_monster": "Orc Chief",
-    "faction": "Barbarian"
+    "faction": "Barbarian",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "wolf": {
     "prefix": "wolf",
     "base_icn": "WOLF",
     "bin_file": "WOLF_FRM.BIN",
     "base_monster": "Wolf",
-    "faction": "Barbarian"
+    "faction": "Barbarian",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "ogre": {
     "prefix": "ogre",
     "base_icn": "OGRE",
     "bin_file": "OGRE_FRM.BIN",
     "base_monster": "Ogre",
-    "faction": "Barbarian"
+    "faction": "Barbarian",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "ogre_lord": {
     "prefix": "ogre_lord",
@@ -184,28 +189,32 @@
     "base_icn": "TROLL",
     "bin_file": "TROLLFRM.BIN",
     "base_monster": "Troll",
-    "faction": "Barbarian"
+    "faction": "Barbarian",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "war_troll": {
     "prefix": "war_troll",
     "base_icn": "TROLL2",
     "bin_file": "TROLLFRM.BIN",
     "base_monster": "War Troll",
-    "faction": "Barbarian"
+    "faction": "Barbarian",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "cyclops": {
     "prefix": "cyclops",
     "base_icn": "CYCLOPS",
     "bin_file": "CYCLOFRM.BIN",
     "base_monster": "Cyclops",
-    "faction": "Barbarian"
+    "faction": "Barbarian",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "sprite": {
     "prefix": "sprite",
     "base_icn": "SPRITE",
     "bin_file": "SPRITFRM.BIN",
     "base_monster": "Sprite",
-    "faction": "Sorceress"
+    "faction": "Sorceress",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "dwarf": {
     "prefix": "dwarf",
@@ -219,49 +228,56 @@
     "base_icn": "DWARF2",
     "bin_file": "DWARFFRM.BIN",
     "base_monster": "Battle Dwarf",
-    "faction": "Sorceress"
+    "faction": "Sorceress",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "elf": {
     "prefix": "elf",
     "base_icn": "ELF",
     "bin_file": "ELF__FRM.BIN",
     "base_monster": "Elf",
-    "faction": "Sorceress"
+    "faction": "Sorceress",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "grand_elf": {
     "prefix": "grand_elf",
     "base_icn": "ELF2",
     "bin_file": "ELF__FRM.BIN",
     "base_monster": "Grand Elf",
-    "faction": "Sorceress"
+    "faction": "Sorceress",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "druid": {
     "prefix": "druid",
     "base_icn": "DRUID",
     "bin_file": "DRUIDFRM.BIN",
     "base_monster": "Druid",
-    "faction": "Sorceress"
+    "faction": "Sorceress",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "greater_druid": {
     "prefix": "greater_druid",
     "base_icn": "DRUID2",
     "bin_file": "DRUIDFRM.BIN",
     "base_monster": "Greater Druid",
-    "faction": "Sorceress"
+    "faction": "Sorceress",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "unicorn": {
     "prefix": "unicorn",
     "base_icn": "UNICORN",
     "bin_file": "UNICOFRM.BIN",
     "base_monster": "Unicorn",
-    "faction": "Sorceress"
+    "faction": "Sorceress",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "phoenix": {
     "prefix": "phoenix",
     "base_icn": "PHOENIX",
     "bin_file": "PHOENFRM.BIN",
     "base_monster": "Phoenix",
-    "faction": "Sorceress"
+    "faction": "Sorceress",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "centaur": {
     "prefix": "centaur",
@@ -289,7 +305,8 @@
     "base_icn": "MINOTAUR",
     "bin_file": "MINOTFRM.BIN",
     "base_monster": "Minotaur",
-    "faction": "Warlock"
+    "faction": "Warlock",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "minotaur_king": {
     "prefix": "minotaur_king",
@@ -303,28 +320,32 @@
     "base_icn": "HYDRA",
     "bin_file": "HYDRAFRM.BIN",
     "base_monster": "Hydra",
-    "faction": "Warlock"
+    "faction": "Warlock",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "green_dragon": {
     "prefix": "green_dragon",
     "base_icn": "DRAGGREE",
     "bin_file": "DRAGGFRM.BIN",
     "base_monster": "Green Dragon",
-    "faction": "Warlock"
+    "faction": "Warlock",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "red_dragon": {
     "prefix": "red_dragon",
     "base_icn": "DRAGRED",
     "bin_file": "DRAGRFRM.BIN",
     "base_monster": "Red Dragon",
-    "faction": "Warlock"
+    "faction": "Warlock",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "black_dragon": {
     "prefix": "black_dragon",
     "base_icn": "DRAGBLAK",
     "bin_file": "DRAGBFRM.BIN",
     "base_monster": "Black Dragon",
-    "faction": "Warlock"
+    "faction": "Warlock",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "halfling": {
     "prefix": "halfling",
@@ -345,56 +366,64 @@
     "base_icn": "GOLEM",
     "bin_file": "GOLEMFRM.BIN",
     "base_monster": "Iron Golem",
-    "faction": "Wizard"
+    "faction": "Wizard",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "steel_golem": {
     "prefix": "steel_golem",
     "base_icn": "GOLEM2",
     "bin_file": "GOLEMFRM.BIN",
     "base_monster": "Steel Golem",
-    "faction": "Wizard"
+    "faction": "Wizard",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "roc": {
     "prefix": "roc",
     "base_icn": "ROC",
     "bin_file": "ROC__FRM.BIN",
     "base_monster": "Roc",
-    "faction": "Wizard"
+    "faction": "Wizard",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "mage": {
     "prefix": "mage",
     "base_icn": "MAGE1",
     "bin_file": "MAGE1FRM.BIN",
     "base_monster": "Mage",
-    "faction": "Wizard"
+    "faction": "Wizard",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "archmage": {
     "prefix": "archmage",
     "base_icn": "MAGE2",
     "bin_file": "MAGE1FRM.BIN",
     "base_monster": "Archmage",
-    "faction": "Wizard"
+    "faction": "Wizard",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "giant": {
     "prefix": "giant",
     "base_icn": "TITANBLU",
     "bin_file": "TITANFRM.BIN",
     "base_monster": "Giant",
-    "faction": "Wizard"
+    "faction": "Wizard",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "titan": {
     "prefix": "titan",
     "base_icn": "TITANBLA",
     "bin_file": "TITA2FRM.BIN",
     "base_monster": "Titan",
-    "faction": "Wizard"
+    "faction": "Wizard",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "skeleton": {
     "prefix": "skeleton",
     "base_icn": "SKELETON",
     "bin_file": "SKEL_FRM.BIN",
     "base_monster": "Skeleton",
-    "faction": "Necromancer"
+    "faction": "Necromancer",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "zombie": {
     "prefix": "zombie",
@@ -415,7 +444,8 @@
     "base_icn": "MUMMYW",
     "bin_file": "MUMMYFRM.BIN",
     "base_monster": "Mummy",
-    "faction": "Necromancer"
+    "faction": "Necromancer",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "royal_mummy": {
     "prefix": "royal_mummy",
@@ -429,70 +459,80 @@
     "base_icn": "VAMPIRE",
     "bin_file": "VAMPIFRM.BIN",
     "base_monster": "Vampire",
-    "faction": "Necromancer"
+    "faction": "Necromancer",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "vampire_lord": {
     "prefix": "vampire_lord",
     "base_icn": "VAMPIRE2",
     "bin_file": "VAMPIFRM.BIN",
     "base_monster": "Vampire Lord",
-    "faction": "Necromancer"
+    "faction": "Necromancer",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "lich": {
     "prefix": "lich",
     "base_icn": "LICH",
     "bin_file": "LICH_FRM.BIN",
     "base_monster": "Lich",
-    "faction": "Necromancer"
+    "faction": "Necromancer",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "power_lich": {
     "prefix": "power_lich",
     "base_icn": "LICH2",
     "bin_file": "LICH_FRM.BIN",
     "base_monster": "Power Lich",
-    "faction": "Necromancer"
+    "faction": "Necromancer",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "bone_dragon": {
     "prefix": "bone_dragon",
     "base_icn": "DRAGBONE",
     "bin_file": "DRABNFRM.BIN",
     "base_monster": "Bone Dragon",
-    "faction": "Necromancer"
+    "faction": "Necromancer",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "rogue": {
     "prefix": "rogue",
     "base_icn": "ROGUE",
     "bin_file": "ROGUEFRM.BIN",
     "base_monster": "Rogue",
-    "faction": "Neutral"
+    "faction": "Neutral",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "nomad": {
     "prefix": "nomad",
     "base_icn": "NOMAD",
     "bin_file": "NOMADFRM.BIN",
     "base_monster": "Nomad",
-    "faction": "Neutral"
+    "faction": "Neutral",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "ghost": {
     "prefix": "ghost",
     "base_icn": "GHOST",
     "bin_file": "GHOSTFRM.BIN",
     "base_monster": "Ghost",
-    "faction": "Neutral"
+    "faction": "Neutral",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "genie": {
     "prefix": "genie",
     "base_icn": "GENIE",
     "bin_file": "GENIEFRM.BIN",
     "base_monster": "Genie",
-    "faction": "Neutral"
+    "faction": "Neutral",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "medusa": {
     "prefix": "medusa",
     "base_icn": "MEDUSA",
     "bin_file": "MEDUSFRM.BIN",
     "base_monster": "Medusa",
-    "faction": "Neutral"
+    "faction": "Neutral",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "earth_element": {
     "prefix": "earth_element",
@@ -506,21 +546,24 @@
     "base_icn": "AELEM",
     "bin_file": "FELEMFRM.BIN",
     "base_monster": "Air Element",
-    "faction": "Neutral"
+    "faction": "Neutral",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "fire_element": {
     "prefix": "fire_element",
     "base_icn": "FELEM",
     "bin_file": "FELEMFRM.BIN",
     "base_monster": "Fire Element",
-    "faction": "Neutral"
+    "faction": "Neutral",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "water_element": {
     "prefix": "water_element",
     "base_icn": "WELEM",
     "bin_file": "FELEMFRM.BIN",
     "base_monster": "Water Element",
-    "faction": "Neutral"
+    "faction": "Neutral",
+    "building_prompt": "Transform the building by making light adjustment to the tower shape to make it look it is a dwelling of Azure Dragon. The building MUST fill the entire frame edge-to-edge \u2014 match the framing and footprint of the original. Keep the same ground level at the bottom and the same silhouette. No empty borders."
   },
   "succubus": {
     "prefix": "succubus",
