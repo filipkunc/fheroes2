@@ -122,6 +122,28 @@ The widget code MUST draw the palette art *first* (so the WriteHook mirrors it i
 
 Indexed-fallback path (`agg_image.cpp::writeIndexedSpriteFromRGBA`) uses **alpha-weighted box filter** averaging before `GetColorId` palette quantisation — preserves dramatically more detail than the engine's default nearest-neighbour `Resize` at large downscale ratios.
 
+## Sprite Editor — AI generation backends
+
+The sprite editor's "Generate Monster" tab routes through one of two backends, picked from the `Model:` dropdown:
+
+- **Gemini** (`gemini-3-pro-image-preview`, etc.) — cloud, paid, needs `~/.config/gemini/api_key`. Default.
+- **FLUX.1 Kontext [dev] (local)** — runs against a user-managed ComfyUI server. Free at the GPU; **non-commercial license** on the model weights, so generated assets are fine on personal branches but should not be merged upstream without legal review. Reference-image group is Gemini-only (FLUX takes the sheet + text prompt; no separate reference input).
+
+### Setting up the FLUX.1 Kontext backend
+
+1. Install ComfyUI (any 2025+ release; the native Kontext nodes — `UNETLoader`, `DualCLIPLoader`, `FluxKontextImageScale`, `ReferenceLatent`, `FluxGuidance` — are built in).
+2. Download model files into ComfyUI's model dirs:
+   - `ComfyUI/models/diffusion_models/flux1-dev-kontext_fp8_scaled.safetensors` (~12 GB, needs ~16 GB VRAM)
+   - `ComfyUI/models/text_encoders/clip_l.safetensors`
+   - `ComfyUI/models/text_encoders/t5xxl_fp8_e4m3fn_scaled.safetensors`
+   - `ComfyUI/models/vae/ae.safetensors`
+3. Start ComfyUI. Default address `127.0.0.1:8188` is hard-coded; to override, write a different host:port into `~/.config/comfyui/server`.
+4. Pick "FLUX.1 Kontext [dev] (local)" in the dropdown. The panel pings the server on send and shows a clear error if it isn't running.
+
+The workflow template lives at `tools/sprite_editor/comfyui/workflows/flux_kontext_basic.json` — `${INPUT_IMAGE}`, `${PROMPT}`, `${SEED}`, `${STEPS}`, `${GUIDANCE}`, and model filenames are substituted at runtime by `ComfyUIClient.transform_sheet` in `tools/sprite_editor/comfyui/comfyui_client.py`. Communication is plain HTTP (POST `/upload/image`, POST `/prompt`, polled GET `/history/{prompt_id}`, GET `/view`); no `websocket-client` dep was added.
+
+The same `build_sheet` / `slice_sheet` pipeline used for Gemini is reused — FLUX receives the same upscaled multi-cell grid and returns it at identical dimensions, so the accept/reject and per-frame offset workflow is unchanged.
+
 ## Build
 - Build directory: `/home/fkunc/Projects/fheroes2/build/`
 - Tools (extractor, icn2img, pal2img) are in the build directory

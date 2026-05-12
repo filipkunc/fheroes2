@@ -270,7 +270,7 @@ class MainWindow(QMainWindow):
 
         self._tabs = QTabWidget()
         self._tabs.addTab(edit_splitter, "Edit Frames")
-        self._tabs.addTab(gen_splitter, "Generate with Gemini")
+        self._tabs.addTab(gen_splitter, "Generate Monster")
         self._tabs.addTab(self._building_panel, "Generate Building")
         self._heroes_tab_index = self._tabs.addTab(heroes_splitter, "Heroes")
         self._hero_portrait_tab_index = self._tabs.addTab(self._hero_portrait_panel, "Generate Hero Portrait")
@@ -386,7 +386,7 @@ class MainWindow(QMainWindow):
         edit_tab_action.triggered.connect(lambda: self._tabs.setCurrentIndex(0))
         view_menu.addAction(edit_tab_action)
 
-        gen_tab_action = QAction("&Generate with Gemini Tab", self)
+        gen_tab_action = QAction("&Generate Monster Tab", self)
         gen_tab_action.setShortcut(QKeySequence("Ctrl+2"))
         gen_tab_action.triggered.connect(lambda: self._tabs.setCurrentIndex(1))
         view_menu.addAction(gen_tab_action)

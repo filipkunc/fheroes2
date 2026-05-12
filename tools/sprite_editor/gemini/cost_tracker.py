@@ -12,6 +12,7 @@ COST_LOG_PATH = Path.home() / ".config" / "sprite_editor" / "cost_log.json"
 MODEL_COSTS = {
     "gemini-3-pro-image-preview": 0.005,
     "gemini-2.0-flash-preview-image-generation": 0.001,
+    "FLUX.1 Kontext [dev] (local)": 0.0,
 }
 
 

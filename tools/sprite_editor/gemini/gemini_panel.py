@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QFormLayout,
-    QTextEdit, QComboBox, QSpinBox, QPushButton, QLabel,
+    QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPushButton, QLabel,
     QFileDialog, QMessageBox, QCheckBox, QColorDialog,
 )
 from PySide6.QtCore import Qt, QThread, Signal
@@ -18,6 +18,8 @@ from ..widgets.busy_spinner import BusySpinner
 from .gemini_client import GeminiClient, build_sheet, slice_sheet, SlicedFrame, load_api_key
 from ..models.sprite_data import save_custom_offsets, FrameOverride
 from .cost_tracker import CostTracker
+from ..comfyui.comfyui_client import ComfyUIClient, load_server_address
+from ..comfyui.comfyui_worker import COMFYUI_MODELS, ComfyUIWorker, is_comfyui_model
 
 
 class GeminiWorker(QThread):
@@ -118,7 +120,7 @@ class GeminiPanel(QWidget):
         layout.addWidget(prompt_group)
 
         # Reference image — collapsible group with thumbnail
-        ref_group = QGroupBox("Reference image (sent to Gemini)")
+        ref_group = QGroupBox("Reference image (Gemini only — FLUX uses prompt + sheet)")
         ref_group.setCheckable(True)
         ref_group.setChecked(True)
         ref_outer = QVBoxLayout(ref_group)
@@ -166,9 +168,42 @@ class GeminiPanel(QWidget):
             "gemini-3-pro-image-preview",
             "gemini-3.1-flash-image-preview",
             "gemini-2.5-flash-image",
+            *COMFYUI_MODELS.keys(),
         ])
         self._model_combo.setCurrentIndex(0)
+        self._model_combo.setToolTip(
+            "Gemini entries use the cloud API (~$0.04/call). "
+            "FLUX.1 Kontext [dev] runs locally via ComfyUI (free; needs ~16 GB VRAM "
+            "and a running ComfyUI server at 127.0.0.1:8188)."
+        )
+        self._model_combo.currentTextChanged.connect(self._on_model_changed)
         settings_layout.addWidget(self._model_combo)
+
+        # FLUX-only controls (Guidance + Steps) — shown only when a ComfyUI
+        # model is selected. Default guidance 2.5 is Kontext's published
+        # recommendation; bumping to 3.5–5.0 produces stronger stylistic edits.
+        self._flux_guidance_label = QLabel("Guidance:")
+        settings_layout.addWidget(self._flux_guidance_label)
+        self._flux_guidance_spin = QDoubleSpinBox()
+        self._flux_guidance_spin.setRange(1.0, 7.0)
+        self._flux_guidance_spin.setSingleStep(0.5)
+        self._flux_guidance_spin.setDecimals(1)
+        self._flux_guidance_spin.setValue(2.5)
+        self._flux_guidance_spin.setToolTip(
+            "FLUX Kontext guidance. 2.5 = subtle edit (default), 4.0 = noticeable, "
+            "6.0 = strong stylistic shift. Higher values diverge more from the input."
+        )
+        settings_layout.addWidget(self._flux_guidance_spin)
+
+        self._flux_steps_label = QLabel("Steps:")
+        settings_layout.addWidget(self._flux_steps_label)
+        self._flux_steps_spin = QSpinBox()
+        self._flux_steps_spin.setRange(10, 40)
+        self._flux_steps_spin.setValue(20)
+        self._flux_steps_spin.setToolTip(
+            "Sampling steps. 20 is the FLUX default; 28+ produces cleaner detail at extra GPU cost."
+        )
+        settings_layout.addWidget(self._flux_steps_spin)
 
         settings_layout.addWidget(QLabel("Upscale:"))
         self._upscale_spin = QSpinBox()
@@ -198,6 +233,9 @@ class GeminiPanel(QWidget):
         settings_layout.addWidget(self._mask_cb)
 
         layout.addLayout(settings_layout)
+
+        # FLUX spinners start hidden because the default model is a Gemini one.
+        self._on_model_changed(self._model_combo.currentText())
 
         # Build / Send buttons
         action_layout = QHBoxLayout()
@@ -379,7 +417,7 @@ class GeminiPanel(QWidget):
         self.sheet_built.emit(self._input_sheet, cells, label)
 
     def _send_to_gemini(self):
-        """Send the built sheet to Gemini API."""
+        """Send the built sheet to Gemini or ComfyUI depending on model selection."""
         if self._input_sheet is None:
             return
 
@@ -388,8 +426,13 @@ class GeminiPanel(QWidget):
             QMessageBox.warning(self, "No Prompt", "Enter a transform prompt.")
             return
 
-        system = self._system_edit.toPlainText().strip() or None
         model = self._model_combo.currentText()
+
+        if is_comfyui_model(model):
+            self._send_to_comfyui(model, prompt)
+            return
+
+        system = self._system_edit.toPlainText().strip() or None
 
         try:
             client = GeminiClient(model=model)
@@ -405,6 +448,45 @@ class GeminiPanel(QWidget):
         self._worker.finished.connect(self._on_gemini_result)
         self._worker.error.connect(self._on_gemini_error)
         self._worker.start()
+
+    def _send_to_comfyui(self, model: str, prompt: str):
+        """Send the built sheet to a local ComfyUI server."""
+        workflow_name = COMFYUI_MODELS[model]
+        server = load_server_address()
+        client = ComfyUIClient(server=server)
+        if not client.ping():
+            QMessageBox.critical(
+                self, "ComfyUI Not Reachable",
+                f"Could not reach a ComfyUI server at http://{server}.\n\n"
+                f"Start ComfyUI and try again. To change the address, edit "
+                f"~/.config/comfyui/server.",
+            )
+            return
+
+        guidance = self._flux_guidance_spin.value()
+        steps = self._flux_steps_spin.value()
+
+        self._send_btn.setEnabled(False)
+        self._spinner.start()
+        self._status_label.setText(
+            f"Routing to ComfyUI ({model}, guidance={guidance}, steps={steps})..."
+        )
+
+        self._worker = ComfyUIWorker(
+            client, self._input_sheet, prompt, workflow_name,
+            guidance=guidance, steps=steps,
+        )
+        self._worker.finished.connect(self._on_gemini_result)
+        self._worker.error.connect(self._on_gemini_error)
+        self._worker.progress.connect(self._status_label.setText)
+        self._worker.start()
+
+    def _on_model_changed(self, model: str):
+        """Show FLUX-only controls only when a ComfyUI workflow is selected."""
+        is_flux = is_comfyui_model(model)
+        for w in (self._flux_guidance_label, self._flux_guidance_spin,
+                  self._flux_steps_label, self._flux_steps_spin):
+            w.setVisible(is_flux)
 
     def _on_gemini_result(self, result: Image.Image | None):
         """Handle Gemini API response."""
