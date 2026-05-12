@@ -55,7 +55,42 @@ set_property(CACHE USE_SDL_VERSION PROPERTY STRINGS SDL3)
 # Library & feature detection
 #
 find_package(${USE_SDL_VERSION} CONFIG REQUIRED)
-find_package(${USE_SDL_VERSION}_mixer CONFIG REQUIRED)
+
+# Try system SDL3_mixer first; fall back to fetching it from GitHub and building in-tree.
+# The fallback uses only bundled codecs (dr_mp3 for MP3, stb_vorbis for Ogg) so it has
+# no external library dependencies. Distros that ship SDL3_mixer-devel will be detected
+# automatically and the fetch is skipped.
+find_package(${USE_SDL_VERSION}_mixer CONFIG QUIET)
+if(NOT ${USE_SDL_VERSION}_mixer_FOUND)
+	message(STATUS "${USE_SDL_VERSION}_mixer not found on the system - fetching it via FetchContent")
+	set(SDLMIXER_VENDORED        OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_TESTS           OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_EXAMPLES        OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_SAMPLES         OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_VORBIS_STB      ON  CACHE BOOL   "" FORCE)
+	set(SDLMIXER_VORBIS_VORBISFILE OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_VORBIS_TREMOR   OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_MP3_DRMP3       ON  CACHE BOOL   "" FORCE)
+	set(SDLMIXER_MP3_MPG123      OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_FLAC            OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_OPUS            OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_WAVPACK         OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_GME             OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_MOD             OFF CACHE BOOL   "" FORCE)
+	set(SDLMIXER_MIDI            OFF CACHE BOOL   "" FORCE)
+	set(BUILD_SHARED_LIBS        ON  CACHE BOOL   "" FORCE)
+
+	include(FetchContent)
+	FetchContent_Declare(
+		SDL3_mixer
+		GIT_REPOSITORY https://github.com/libsdl-org/SDL_mixer.git
+		GIT_TAG        release-3.2.0
+		GIT_SHALLOW    TRUE
+		GIT_PROGRESS   TRUE
+		)
+	FetchContent_MakeAvailable(SDL3_mixer)
+endif()
+
 find_package(ZLIB REQUIRED)
 find_package(Threads)
 

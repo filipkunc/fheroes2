@@ -187,24 +187,19 @@ If the Java glue changed in upstream SDL3, copy `org.libsdl.app.*.java` into `an
 
 ## Linux Build (SDL3)
 
-The system has SDL3-devel from Fedora repos (`dnf install SDL3-devel glslang vulkan-tools`). SDL3_mixer is not packaged on Fedora — build from source. **Build under `~/Projects/sdl3-linux/` (NOT `/tmp/`) so it survives reboots:**
+System packages required: `dnf install SDL3-devel glslang vulkan-tools`. **SDL3_mixer is not packaged on Fedora** — but the project's root `CMakeLists.txt` handles this: `find_package(SDL3_mixer CONFIG QUIET)` is tried first, and if it fails CMake's `FetchContent` clones `libsdl-org/SDL_mixer` (release-3.2.0) and builds it in-tree with only bundled codecs (dr_mp3 for MP3, stb_vorbis for Ogg — no external codec libs needed). The `SDL3_mixer::SDL3_mixer` ALIAS the engine links against is produced either way.
+
+Build (fresh clone):
 
 ```bash
-mkdir -p ~/Projects/sdl3-linux && cd ~/Projects/sdl3-linux && rm -rf SDL_mixer
-git clone --depth 1 --branch release-3.2.0 https://github.com/libsdl-org/SDL_mixer
-cd SDL_mixer && cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DSDLMIXER_VENDORED=OFF -DSDLMIXER_GME=OFF -DSDLMIXER_OPUS=OFF -DSDLMIXER_WAVPACK=OFF \
-    -DSDLMIXER_VORBIS=STB -DSDLMIXER_FLAC=OFF -DSDLMIXER_MOD=OFF -DSDLMIXER_MP3=MPG123
-cmake --build build  # produces ~/Projects/sdl3-linux/SDL_mixer/build/libSDL3_mixer.so + Config.cmake
-```
-
-Then configure fheroes2 against it via `CMAKE_PREFIX_PATH` (no need to `sudo cmake --install`):
-
-```bash
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=$HOME/Projects/sdl3-linux/SDL_mixer/build
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_TOOLS=ON
 cmake --build build -j$(nproc)
-LD_LIBRARY_PATH=$HOME/Projects/sdl3-linux/SDL_mixer/build ./build/fheroes2
+./build/fheroes2
 ```
+
+The first configure takes an extra ~15s + a one-time ~30s SDL_mixer compile when fetched. Subsequent configures skip both. RPATH is baked into the binary, so no `LD_LIBRARY_PATH` is needed at runtime.
+
+A `CMakeUserPresets.json` exists in the repo root (gitignored) with `linux-debug` / `linux-release` presets that CMake Tools picks up automatically. Use `cmake --preset linux-debug` from the CLI.
 
 Game data + music expected at `build/data/`, `build/files/`, `build/music/` — symlink them: `ln -s "/path/to/HoMM 2 Gold/DATA" build/data` etc.
 
