@@ -91,8 +91,8 @@ class GeminiPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        # Prompt section
-        prompt_group = QGroupBox("Prompt")
+        # Gemini prompt section (shown when a Gemini model is selected).
+        self._gemini_prompt_group = QGroupBox("Gemini prompt")
         prompt_layout = QFormLayout()
 
         self._prompt_edit = QTextEdit()
@@ -116,8 +116,25 @@ class GeminiPanel(QWidget):
         )
         prompt_layout.addRow("System:", self._system_edit)
 
-        prompt_group.setLayout(prompt_layout)
-        layout.addWidget(prompt_group)
+        self._gemini_prompt_group.setLayout(prompt_layout)
+        layout.addWidget(self._gemini_prompt_group)
+
+        # FLUX prompt section (shown when a ComfyUI/FLUX model is selected).
+        # FLUX Kontext has one prompt channel, so no system/transform split —
+        # one textarea, tuned for direct imperative edits without the
+        # preservation language Gemini wants.
+        self._flux_prompt_group = QGroupBox("FLUX prompt")
+        flux_prompt_layout = QVBoxLayout(self._flux_prompt_group)
+        self._flux_prompt_edit = QTextEdit()
+        self._flux_prompt_edit.setMaximumHeight(140)
+        self._flux_prompt_edit.setPlainText(
+            "Repaint every animation frame as the same character transformed into Thor: "
+            "golden plate armor with engraved runes, winged helmet, red cape, glowing hammer. "
+            "Keep the same pose, silhouette, and grid layout in every cell. Pixel art style, "
+            "crisp edges, vivid contrast against the magenta background."
+        )
+        flux_prompt_layout.addWidget(self._flux_prompt_edit)
+        layout.addWidget(self._flux_prompt_group)
 
         # Reference image — collapsible group with thumbnail
         ref_group = QGroupBox("Reference image (Gemini only — FLUX uses prompt + sheet)")
@@ -421,15 +438,19 @@ class GeminiPanel(QWidget):
         if self._input_sheet is None:
             return
 
-        prompt = self._prompt_edit.toPlainText().strip()
-        if not prompt:
-            QMessageBox.warning(self, "No Prompt", "Enter a transform prompt.")
-            return
-
         model = self._model_combo.currentText()
 
         if is_comfyui_model(model):
-            self._send_to_comfyui(model, prompt)
+            flux_prompt = self._flux_prompt_edit.toPlainText().strip()
+            if not flux_prompt:
+                QMessageBox.warning(self, "No Prompt", "Enter a FLUX prompt.")
+                return
+            self._send_to_comfyui(model, flux_prompt)
+            return
+
+        prompt = self._prompt_edit.toPlainText().strip()
+        if not prompt:
+            QMessageBox.warning(self, "No Prompt", "Enter a transform prompt.")
             return
 
         system = self._system_edit.toPlainText().strip() or None
@@ -482,11 +503,13 @@ class GeminiPanel(QWidget):
         self._worker.start()
 
     def _on_model_changed(self, model: str):
-        """Show FLUX-only controls only when a ComfyUI workflow is selected."""
+        """Swap prompt UI + show FLUX-only spinners based on the selected backend."""
         is_flux = is_comfyui_model(model)
         for w in (self._flux_guidance_label, self._flux_guidance_spin,
                   self._flux_steps_label, self._flux_steps_spin):
             w.setVisible(is_flux)
+        self._gemini_prompt_group.setVisible(not is_flux)
+        self._flux_prompt_group.setVisible(is_flux)
 
     def _on_gemini_result(self, result: Image.Image | None):
         """Handle Gemini API response."""

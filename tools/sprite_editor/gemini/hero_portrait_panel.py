@@ -54,6 +54,16 @@ _DEFAULT_SYSTEM_PROMPT = (
     "and metal detail — without leaving the original silhouette."
 )
 
+# FLUX Kontext tends to ignore "do not change" language and rewards direct
+# imperatives. The default below describes the *target image* rather than the
+# *transformation* — Kontext interprets that as "make the input look like this".
+_DEFAULT_FLUX_PROMPT = (
+    "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting "
+    "style with fine brushwork, individual hair strands, detailed skin texture, fabric "
+    "weave, metal highlights, expressive eyes with catchlights, dramatic cinematic "
+    "lighting. Same face, same outfit, same head angle, same framing."
+)
+
 
 class HeroPortraitWorker(QThread):
     """Background thread for the single-image Gemini call."""
@@ -566,11 +576,8 @@ class HeroPortraitPanel(QWidget):
         settings_layout.addStretch()
         layout.addWidget(self._settings_widget)
 
-        # FLUX spinners start hidden because the default model is a Gemini one.
-        self._on_model_changed(self._model_combo.currentText())
-
-        # Prompt — collapsible (Gemini-only)
-        self._prompt_group = QGroupBox("Prompt")
+        # Gemini prompt — collapsible (shown when a Gemini model is selected).
+        self._prompt_group = QGroupBox("Gemini prompt")
         self._prompt_group.setCheckable(True)
         self._prompt_group.setChecked(True)
         prompt_outer = QVBoxLayout(self._prompt_group)
@@ -591,6 +598,27 @@ class HeroPortraitPanel(QWidget):
         prompt_outer.addWidget(self._prompt_body)
         self._prompt_group.toggled.connect(self._prompt_body.setVisible)
         layout.addWidget(self._prompt_group)
+
+        # FLUX prompt — collapsible (shown when a FLUX/ComfyUI model is selected).
+        # Single textarea — FLUX Kontext has one prompt channel, so no system/
+        # transform split. Tuned for direct imperative edits.
+        self._flux_prompt_group = QGroupBox("FLUX prompt")
+        self._flux_prompt_group.setCheckable(True)
+        self._flux_prompt_group.setChecked(True)
+        flux_prompt_outer = QVBoxLayout(self._flux_prompt_group)
+        flux_prompt_outer.setContentsMargins(6, 6, 6, 6)
+        self._flux_prompt_body = QWidget()
+        flux_prompt_body_layout = QVBoxLayout(self._flux_prompt_body)
+        flux_prompt_body_layout.setContentsMargins(0, 0, 0, 0)
+        self._flux_prompt_edit = QTextEdit()
+        self._flux_prompt_edit.setMaximumHeight(140)
+        flux_prompt_body_layout.addWidget(self._flux_prompt_edit)
+        flux_prompt_outer.addWidget(self._flux_prompt_body)
+        self._flux_prompt_group.toggled.connect(self._flux_prompt_body.setVisible)
+        layout.addWidget(self._flux_prompt_group)
+
+        # FLUX spinners + prompt group start hidden because the default model is Gemini.
+        self._on_model_changed(self._model_combo.currentText())
 
         # Reference image — collapsible AND a hard on/off switch (Gemini-only).
         self._ref_group = QGroupBox("Reference image (uncheck to disable)")
@@ -678,8 +706,10 @@ class HeroPortraitPanel(QWidget):
         self._send_btn.setVisible(is_big)
         self._cancel_btn.setVisible(is_big)
         self._settings_widget.setVisible(is_big)
-        self._prompt_group.setVisible(is_big)
         self._ref_group.setVisible(is_big)
+        # Prompt-group visibility also depends on the model — let the model
+        # handler do both axes in one place.
+        self._on_model_changed(self._model_combo.currentText())
 
     def load_reference_image(self, path: str) -> bool:
         try:
@@ -698,26 +728,40 @@ class HeroPortraitPanel(QWidget):
     def _apply_default_prompts(self):
         self._prompt_edit.setPlainText(_DEFAULT_TRANSFORM_PROMPT)
         self._system_edit.setPlainText(_DEFAULT_SYSTEM_PROMPT)
+        self._flux_prompt_edit.setPlainText(_DEFAULT_FLUX_PROMPT)
 
     def _apply_prompt_for_hero(self):
         cfg = self._config
         if cfg is not None and cfg.portrait_prompt:
             self._prompt_edit.setPlainText(cfg.portrait_prompt)
         else:
-            self._apply_default_prompts()
+            self._prompt_edit.setPlainText(_DEFAULT_TRANSFORM_PROMPT)
+        if cfg is not None and cfg.flux_portrait_prompt:
+            self._flux_prompt_edit.setPlainText(cfg.flux_portrait_prompt)
+        else:
+            self._flux_prompt_edit.setPlainText(_DEFAULT_FLUX_PROMPT)
+        # System prompt has no per-hero override yet — keep the global default.
+        self._system_edit.setPlainText(_DEFAULT_SYSTEM_PROMPT)
 
     def _persist_current_prompt(self):
         cfg = self._config
         if cfg is None or self._target != TARGET_BIG:
             return
         prompt = self._prompt_edit.toPlainText()
-        if prompt == cfg.portrait_prompt:
-            return
-        cfg.portrait_prompt = prompt
-        try:
-            update_hero_manifest_entry(cfg.name, {"portrait_prompt": prompt})
-        except OSError as e:
-            self._status_label.setText(f"Could not save prompt: {e}")
+        if prompt != cfg.portrait_prompt:
+            cfg.portrait_prompt = prompt
+            try:
+                update_hero_manifest_entry(cfg.name, {"portrait_prompt": prompt})
+            except OSError as e:
+                self._status_label.setText(f"Could not save prompt: {e}")
+                return
+        flux_prompt = self._flux_prompt_edit.toPlainText()
+        if flux_prompt != cfg.flux_portrait_prompt:
+            cfg.flux_portrait_prompt = flux_prompt
+            try:
+                update_hero_manifest_entry(cfg.name, {"flux_portrait_prompt": flux_prompt})
+            except OSError as e:
+                self._status_label.setText(f"Could not save FLUX prompt: {e}")
 
     def _update_hero_label(self):
         cfg = self._config
@@ -936,10 +980,17 @@ class HeroPortraitPanel(QWidget):
         if self._base_image is None or self._config is None:
             return
 
-        prompt = self._prompt_edit.toPlainText().strip()
-        if not prompt:
-            QMessageBox.warning(self, "No Prompt", "Enter a transform prompt.")
-            return
+        model = self._model_combo.currentText()
+        if is_comfyui_model(model):
+            prompt = self._flux_prompt_edit.toPlainText().strip()
+            if not prompt:
+                QMessageBox.warning(self, "No Prompt", "Enter a FLUX prompt.")
+                return
+        else:
+            prompt = self._prompt_edit.toPlainText().strip()
+            if not prompt:
+                QMessageBox.warning(self, "No Prompt", "Enter a transform prompt.")
+                return
 
         self._persist_current_prompt()
 
@@ -952,8 +1003,6 @@ class HeroPortraitPanel(QWidget):
             Image.Resampling.NEAREST,
         )
         self._upscaled_input = upscaled
-
-        model = self._model_combo.currentText()
 
         if is_comfyui_model(model):
             self._send_to_comfyui(model, upscaled, prompt)
@@ -1012,11 +1061,15 @@ class HeroPortraitPanel(QWidget):
         self._worker.start()
 
     def _on_model_changed(self, model: str):
-        """Show FLUX-only controls only when a ComfyUI workflow is selected."""
+        """Swap prompt UI + show FLUX-only spinners based on the selected backend."""
         is_flux = is_comfyui_model(model)
         for w in (self._flux_guidance_label, self._flux_guidance_spin,
                   self._flux_steps_label, self._flux_steps_spin):
             w.setVisible(is_flux)
+        # Only the Big target shows any prompt UI; the Mini target is a pure slicer.
+        is_big = (self._target == TARGET_BIG)
+        self._prompt_group.setVisible(is_big and not is_flux)
+        self._flux_prompt_group.setVisible(is_big and is_flux)
 
     def _cancel_generation(self):
         if self._worker is not None and self._worker.isRunning():

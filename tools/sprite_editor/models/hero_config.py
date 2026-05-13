@@ -101,6 +101,7 @@ class HeroConfig:
     has_custom_sprites_small: bool = False
     portrait_prompt: str = ""  # per-hero Gemini transform prompt for hi-res portrait
     portrait_prompt_small: str = ""  # per-hero Gemini transform prompt for the mini variant
+    flux_portrait_prompt: str = ""  # per-hero FLUX (ComfyUI) prompt — different style than Gemini
     specialty: HeroSpecialty = field(default_factory=HeroSpecialty)
 
 
@@ -131,6 +132,7 @@ def load_hero_manifest(manifest_path: Path | None = None) -> dict[str, HeroConfi
             has_custom_sprites_small=bool(entry.get("has_custom_sprites_small", False)),
             portrait_prompt=entry.get("portrait_prompt", ""),
             portrait_prompt_small=entry.get("portrait_prompt_small", ""),
+            flux_portrait_prompt=entry.get("flux_portrait_prompt", ""),
             specialty=HeroSpecialty.from_json(entry.get("specialty", {"kind": "none"})),
         )
     return configs

@@ -19,7 +19,8 @@
       "speed_bonus": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "sir_gallanth": {
     "enum": "SIRGALLANTH",
@@ -34,7 +35,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "ector": {
     "enum": "ECTOR",
@@ -51,7 +53,8 @@
       "amount_per_day": 2
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "gvenneth": {
     "enum": "GVENNETH",
@@ -76,7 +79,8 @@
       "speed_bonus": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "tyro": {
     "enum": "TYRO",
@@ -94,7 +98,8 @@
       "sp_cost_reduction": 10
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "ambrose": {
     "enum": "AMBROSE",
@@ -109,7 +114,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "ruby": {
     "enum": "RUBY",
@@ -126,7 +132,8 @@
       "amount_per_day": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "maximus": {
     "enum": "MAXIMUS",
@@ -141,7 +148,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "dimitry": {
     "enum": "DIMITRY",
@@ -156,7 +164,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "thundax": {
     "enum": "THUNDAX",
@@ -180,7 +189,8 @@
       "speed_bonus": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "fineous": {
     "enum": "FINEOUS",
@@ -195,7 +205,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "jojosh": {
     "enum": "JOJOSH",
@@ -210,7 +221,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "crag_hack": {
     "enum": "CRAGHACK",
@@ -225,7 +237,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "jezebel": {
     "enum": "JEZEBEL",
@@ -240,7 +253,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "jaclyn": {
     "enum": "JACLYN",
@@ -255,7 +269,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "ergon": {
     "enum": "ERGON",
@@ -277,7 +292,8 @@
       "speed_bonus": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "tsabu": {
     "enum": "TSABU",
@@ -292,7 +308,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "atlas": {
     "enum": "ATLAS",
@@ -307,7 +324,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "astra": {
     "enum": "ASTRA",
@@ -322,7 +340,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "natasha": {
     "enum": "NATASHA",
@@ -338,7 +357,8 @@
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition.",
     "portrait_prompt_small": "Repaint this tiny hero icon at high resolution. Keep the EXACT face, hair, headwear, and shoulder framing of the original \u2014 this is a mini portrait icon used in game UI, so the framing must match. Sharpen details. Do NOT zoom out, reframe, change the head position, or alter the background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "troyan": {
     "enum": "TROYAN",
@@ -353,7 +373,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "vatawna": {
     "enum": "VATAWNA",
@@ -368,7 +389,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "rebecca": {
     "enum": "REBECCA",
@@ -383,7 +405,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "gem": {
     "enum": "GEM",
@@ -398,7 +421,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "ariel": {
     "enum": "ARIEL",
@@ -413,7 +437,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "carlawn": {
     "enum": "CARLAWN",
@@ -432,7 +457,8 @@
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition.",
     "portrait_prompt_small": "Repaint this tiny hero icon at high resolution. Keep the EXACT face, hair, headwear, and shoulder framing of the original \u2014 this is a mini portrait icon used in game UI, so the framing must match. Sharpen details. Do NOT zoom out, reframe, change the head position, or alter the background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "luna": {
     "enum": "LUNA",
@@ -447,7 +473,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "arie": {
     "enum": "ARIE",
@@ -462,7 +489,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "alamar": {
     "enum": "ALAMAR",
@@ -477,7 +505,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "vesper": {
     "enum": "VESPER",
@@ -492,7 +521,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "crodo": {
     "enum": "CRODO",
@@ -507,7 +537,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "barok": {
     "enum": "BAROK",
@@ -525,7 +556,8 @@
       "sp_cost_reduction": 0
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "kastore": {
     "enum": "KASTORE",
@@ -551,7 +583,8 @@
       "speed_bonus": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "agar": {
     "enum": "AGAR",
@@ -566,7 +599,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "falagar": {
     "enum": "FALAGAR",
@@ -581,7 +615,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "wrathmont": {
     "enum": "WRATHMONT",
@@ -596,7 +631,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "myra": {
     "enum": "MYRA",
@@ -608,10 +644,18 @@
     "prefix": "hero_myra",
     "has_custom_sprites": true,
     "specialty": {
-      "kind": "none"
+      "kind": "unit",
+      "units": [
+        "BOAR",
+        "ROC"
+      ],
+      "atk_bonus": 3,
+      "def_bonus": 3,
+      "speed_bonus": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "flint": {
     "enum": "FLINT",
@@ -623,10 +667,14 @@
     "prefix": "hero_flint",
     "has_custom_sprites": true,
     "specialty": {
-      "kind": "none"
+      "kind": "spell",
+      "spell": "COLDRAY",
+      "damage_bonus_percent": 20,
+      "sp_cost_reduction": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "dawn": {
     "enum": "DAWN",
@@ -641,7 +689,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "halon": {
     "enum": "HALON",
@@ -653,10 +702,14 @@
     "prefix": "hero_halon",
     "has_custom_sprites": true,
     "specialty": {
-      "kind": "none"
+      "kind": "spell",
+      "spell": "PARALYZE",
+      "damage_bonus_percent": 0,
+      "sp_cost_reduction": 2
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "myrini": {
     "enum": "MYRINI",
@@ -671,7 +724,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "wilfrey": {
     "enum": "WILFREY",
@@ -686,7 +740,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "sarakin": {
     "enum": "SARAKIN",
@@ -698,10 +753,21 @@
     "prefix": "hero_sarakin",
     "has_custom_sprites": true,
     "specialty": {
-      "kind": "none"
+      "kind": "unit",
+      "units": [
+        "THOR",
+        "MAGE",
+        "ARCHMAGE",
+        "GIANT",
+        "TITAN"
+      ],
+      "atk_bonus": 2,
+      "def_bonus": 2,
+      "speed_bonus": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "kalindra": {
     "enum": "KALINDRA",
@@ -713,10 +779,14 @@
     "prefix": "hero_kalindra",
     "has_custom_sprites": true,
     "specialty": {
-      "kind": "none"
+      "kind": "spell",
+      "spell": "METEORSHOWER",
+      "damage_bonus_percent": 15,
+      "sp_cost_reduction": 4
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "mandigal": {
     "enum": "MANDIGAL",
@@ -728,10 +798,13 @@
     "prefix": "hero_mandigal",
     "has_custom_sprites": true,
     "specialty": {
-      "kind": "none"
+      "kind": "resource",
+      "resource": "GEMS",
+      "amount_per_day": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "zom": {
     "enum": "ZOM",
@@ -746,7 +819,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "darlana": {
     "enum": "DARLANA",
@@ -761,7 +835,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "zam": {
     "enum": "ZAM",
@@ -776,7 +851,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Convert this hero portrait to more realistic painted fantasy portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Try to keep the purple face color and lighting from the original.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "ranloo": {
     "enum": "RANLOO",
@@ -800,7 +876,8 @@
       "speed_bonus": 1
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "charity": {
     "enum": "CHARITY",
@@ -815,7 +892,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Convert this hero portrait of the necromancer to more realistic painted fantasy portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Keep the very pale gray face color and lighting from the original.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "rialdo": {
     "enum": "RIALDO",
@@ -830,7 +908,8 @@
       "kind": "none"
     },
     "portrait_prompt": "Repaint this hero portrait to be more a little bit more detailed fantasy style at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette. Make sure the teeth and eyes are closer to the original.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "roxana": {
     "enum": "ROXANA",
@@ -842,10 +921,14 @@
     "prefix": "hero_roxana",
     "has_custom_sprites": true,
     "specialty": {
-      "kind": "none"
+      "kind": "spell",
+      "spell": "ANIMATEDEAD",
+      "damage_bonus_percent": 20,
+      "sp_cost_reduction": 2
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "sandro": {
     "enum": "SANDRO",
@@ -863,7 +946,8 @@
       "sp_cost_reduction": 5
     },
     "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette.",
-    "has_custom_sprites_small": true
+    "has_custom_sprites_small": true,
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "celia": {
     "enum": "CELIA",
@@ -877,7 +961,8 @@
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   },
   "roland": {
     "enum": "ROLAND",
@@ -887,11 +972,13 @@
     "port_index": 54,
     "campaign": "SW",
     "prefix": "hero_roland",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Match the original's lighting and colour palette.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "corlagon": {
     "enum": "CORLAGON",
@@ -901,11 +988,13 @@
     "port_index": 55,
     "campaign": "SW",
     "prefix": "hero_corlagon",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "eliza": {
     "enum": "ELIZA",
@@ -915,11 +1004,13 @@
     "port_index": 56,
     "campaign": "SW",
     "prefix": "hero_eliza",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait with more realistic fantasy style with larger breasts and younger look at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character with larger breasts. Painterly oil-painting style with high contrast fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Increased brightness and highlights. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "archibald": {
     "enum": "ARCHIBALD",
@@ -929,11 +1020,13 @@
     "port_index": 57,
     "campaign": "SW",
     "prefix": "hero_archibald",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "halton": {
     "enum": "HALTON",
@@ -943,11 +1036,13 @@
     "port_index": 58,
     "campaign": "SW",
     "prefix": "hero_halton",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "brax": {
     "enum": "BRAX",
@@ -957,11 +1052,13 @@
     "port_index": 59,
     "campaign": "SW",
     "prefix": "hero_brax",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "solmyr": {
     "enum": "SOLMYR",
@@ -971,11 +1068,13 @@
     "port_index": 60,
     "campaign": "PoL",
     "prefix": "hero_solmyr",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "dainwin": {
     "enum": "DAINWIN",
@@ -985,11 +1084,13 @@
     "port_index": 61,
     "campaign": "PoL",
     "prefix": "hero_dainwin",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "mog": {
     "enum": "MOG",
@@ -999,11 +1100,13 @@
     "port_index": 62,
     "campaign": "PoL",
     "prefix": "hero_mog",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "uncle_ivan": {
     "enum": "UNCLEIVAN",
@@ -1013,11 +1116,13 @@
     "port_index": 63,
     "campaign": "PoL",
     "prefix": "hero_uncle_ivan",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "joseph": {
     "enum": "JOSEPH",
@@ -1027,11 +1132,13 @@
     "port_index": 64,
     "campaign": "PoL",
     "prefix": "hero_joseph",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "gallavant": {
     "enum": "GALLAVANT",
@@ -1041,11 +1148,13 @@
     "port_index": 65,
     "campaign": "PoL",
     "prefix": "hero_gallavant",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "elderian": {
     "enum": "ELDERIAN",
@@ -1055,11 +1164,13 @@
     "port_index": 66,
     "campaign": "PoL",
     "prefix": "hero_elderian",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "ceallach": {
     "enum": "CEALLACH",
@@ -1069,11 +1180,13 @@
     "port_index": 67,
     "campaign": "PoL",
     "prefix": "hero_ceallach",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "drakonia": {
     "enum": "DRAKONIA",
@@ -1083,11 +1196,13 @@
     "port_index": 68,
     "campaign": "PoL",
     "prefix": "hero_drakonia",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "martine": {
     "enum": "MARTINE",
@@ -1097,11 +1212,13 @@
     "port_index": 69,
     "campaign": "PoL",
     "prefix": "hero_martine",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "jarkonas": {
     "enum": "JARKONAS",
@@ -1111,11 +1228,13 @@
     "port_index": 70,
     "campaign": "PoL",
     "prefix": "hero_jarkonas",
-    "has_custom_sprites": false,
+    "has_custom_sprites": true,
     "specialty": {
       "kind": "none"
     },
-    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism."
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing.",
+    "has_custom_sprites_small": true
   },
   "debug_hero": {
     "enum": "DEBUG_HERO",
@@ -1128,6 +1247,8 @@
     "has_custom_sprites": false,
     "specialty": {
       "kind": "none"
-    }
+    },
+    "portrait_prompt": "Repaint this hero portrait at high resolution while keeping the EXACT pose, framing, facial features, hair, clothing, and silhouette of the original. Sharpen details and add believable texture (skin, fabric, metal, hair strands). Do NOT change the head position, body angle, expression, or background composition. Improve the quality and realism.",
+    "flux_portrait_prompt": "Photorealistic painted fantasy portrait of the same character. Painterly oil-painting style with fine brushwork, individual hair strands, detailed skin texture, fabric weave, metal highlights, expressive eyes with catchlights, dramatic cinematic lighting. Same face, same outfit, same head angle, same framing."
   }
 }
