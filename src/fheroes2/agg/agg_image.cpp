@@ -7235,8 +7235,12 @@ namespace fheroes2::AGG
             cropX = ( srcW - cropW ) / 2;
         }
 
-        // Build the cropped sub-image and render it to the slot. The cropped image
-        // has the slot's aspect, so renderHiResMonsterPortrait fills the box exactly.
+        // Build the cropped sub-image. The cropped aspect is only approximately the
+        // slot's aspect — integer truncation in cropW/cropH means the rescale below
+        // can fall short by 1 pixel along the bound axis. Pass boxW *and* boxH to
+        // BlitRGBAScaled directly so the slot is covered exactly; otherwise the
+        // bottom row (or rightmost column) of the indexed MINIPORT sprite shows
+        // through under the hi-res overlay.
         Image cropped( cropW, cropH, ImageFormat::RGBA_32BIT );
         const uint8_t * srcData = portrait.image();
         uint8_t * dstData = cropped.image();
@@ -7245,7 +7249,10 @@ namespace fheroes2::AGG
                          srcData + ( ( static_cast<ptrdiff_t>( cropY + y ) * srcW + cropX ) * 4 ),
                          static_cast<size_t>( cropW ) * 4 );
         }
-        renderHiResMonsterPortrait( cropped, boxX, boxY, boxW );
+        Display & display = Display::instance();
+        if ( !display.empty() ) {
+            BlitRGBAScaled( cropped, display, boxX, boxY, boxW, boxH, false );
+        }
     }
 
     void renderHiResHeroPortraitInBox( const Image & portrait, const int32_t boxX, const int32_t boxY, const int32_t boxW, const int32_t boxH )
