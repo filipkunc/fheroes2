@@ -789,7 +789,20 @@ Castle::CastleDialogReturnValue Castle::OpenDialog( const bool openConstructionW
                 bottomArmyBar.SetArmy( &hero->GetArmy() );
             }
 
-            fheroes2::AlphaBlit( surfaceHero, display, dialogRoi.x, dialogRoi.y + 356, static_cast<uint8_t>( alphaHero ) );
+            const uint8_t fadeAlpha = static_cast<uint8_t>( alphaHero );
+            fheroes2::AlphaBlit( surfaceHero, display, dialogRoi.x, dialogRoi.y + 356, fadeAlpha );
+
+            // surfaceHero is INDEXED_8BIT so it can only carry the indexed PORT_BIG
+            // baked by generateHeroImage. Fade the hi-res RGBA portrait in on top at
+            // the same alpha — at alpha=255 BlitRGBAScaled replaces the indexed copy
+            // with the hi-res art, so the fade ends on the hi-res image instead of
+            // snapping in after a follow-up repaint.
+            if ( hero != nullptr ) {
+                const fheroes2::Image * heroRGBA = fheroes2::AGG::GetRGBACustomHeroPortrait( hero->getPortraitId() );
+                if ( heroRGBA != nullptr ) {
+                    fheroes2::AGG::renderHiResHeroPortraitInBox( *heroRGBA, dialogRoi.x + 5, dialogRoi.y + 361, 101, 93, fadeAlpha );
+                }
+            }
 
             if ( !needRedraw ) {
                 display.render( dialogRoi );

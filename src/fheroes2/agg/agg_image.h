@@ -90,7 +90,10 @@ namespace fheroes2
         // source is taller than the slot so the overlay never overflows into
         // surrounding UI. No-op when `portrait` is empty or the box is degenerate.
         // Writes directly to Display::screenRGBA() — palette art must be drawn first.
-        void renderHiResHeroPortraitInBox( const Image & portrait, int32_t boxX, int32_t boxY, int32_t boxW, int32_t boxH );
+        // alpha < 255 enables a fade-in render path used by the castle's recruit-hero
+        // fade so the hi-res art ramps up in step with the indexed AlphaBlit, instead
+        // of snapping in at the end.
+        void renderHiResHeroPortraitInBox( const Image & portrait, int32_t boxX, int32_t boxY, int32_t boxW, int32_t boxH, uint8_t alpha = 255 );
 
         // Same fit-into-box semantics as renderHiResHeroPortraitInBox, but the source
         // is auto-cropped to the slot's aspect ratio first so the overlay fills the

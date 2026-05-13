@@ -7255,7 +7255,7 @@ namespace fheroes2::AGG
         }
     }
 
-    void renderHiResHeroPortraitInBox( const Image & portrait, const int32_t boxX, const int32_t boxY, const int32_t boxW, const int32_t boxH )
+    void renderHiResHeroPortraitInBox( const Image & portrait, const int32_t boxX, const int32_t boxY, const int32_t boxW, const int32_t boxH, const uint8_t alpha )
     {
         if ( portrait.empty() || boxW <= 0 || boxH <= 0 ) {
             return;
@@ -7280,7 +7280,7 @@ namespace fheroes2::AGG
         }
         const int32_t overlayX = boxX + ( boxW - overlayW ) / 2;
         const int32_t overlayY = boxY;
-        renderHiResMonsterPortrait( portrait, overlayX, overlayY, overlayW );
+        renderHiResMonsterPortrait( portrait, overlayX, overlayY, overlayW, false, alpha );
     }
 
     const Image * GetRGBACustomHeroPortrait( const int heroId )
