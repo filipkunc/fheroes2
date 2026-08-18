@@ -65,6 +65,9 @@
 *.smk
 *.ogg
 DATA/NETLODR.DAT
+/DATA/
+/homm2-data/
+/original-game-data/
 
 # build directory
 build

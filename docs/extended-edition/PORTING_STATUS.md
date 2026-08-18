@@ -17,9 +17,9 @@ Status markers:
 * [x] Define the proprietary-data boundary and synthetic CI approach.
 * [x] Create the clean rebuild branch from upstream commit `495c790e`.
 * [x] Fast-forward the fork's `master` branch to the clean upstream base.
-* [ ] Establish the initial Linux and Android CI baseline.
-* [ ] Add repository safeguards against accidental proprietary asset commits.
-* [ ] Add the first synthetic renderer test executable and fixtures.
+* [x] Establish the initial Linux and Android CI baseline.
+* [x] Add repository safeguards against accidental proprietary asset commits.
+* [x] Add the first synthetic renderer test executable and fixtures.
 
 No gameplay or renderer behavior has been ported on this branch yet.
 
@@ -46,11 +46,11 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ### Foundation
 
-* [ ] Confirm the clean upstream Linux build.
-* [ ] Confirm the clean upstream Android build.
-* [ ] Add or adjust CI without requiring original game data.
-* [ ] Add asset-path ignore rules and a tracked-file guard.
-* [ ] Introduce synthetic renderer fixtures described in `TESTING.md`.
+* [x] Confirm the clean upstream Linux build.
+* [x] Confirm the clean upstream Android build.
+* [x] Add or adjust CI without requiring original game data.
+* [x] Add asset-path ignore rules and a tracked-file guard.
+* [x] Introduce synthetic renderer fixtures described in `TESTING.md`.
 
 ### Custom game model
 
@@ -98,16 +98,17 @@ Last updated: 2026-08-18
 
 Completed in the latest session:
 
-* Recorded architecture, testing and migration decisions on a clean upstream branch.
-* Made synthetic fixtures and the Ubisoft data restriction explicit project rules.
-* Synced the fork's `master` branch and opened draft PR #1 for this documentation checkpoint.
+* Merged documentation checkpoint PR #1 after 19 Linux, Android and other platform jobs passed.
+* Disabled the PS Vita CI job on this fork because its cached SDK is incomplete; upstream CI remains unchanged.
+* Added a tracked-file guard for original game data and a dedicated fork CI workflow.
+* Added generated pixel-buffer tests for painter order, clipping and nearest-neighbor scaling at 1x, 2x and 3x.
 
 Validation:
 
-* Internal links, trailing whitespace and the absence of asset file types were checked.
-* The four new documents pass the repository's Markdown linter.
-* The published branch changes contain only four added Markdown files and no source or asset changes.
+* The tracked-file guard passes against the repository and rejects representative mixed-case proprietary filenames.
+* The new commit contains no image, audio, map or original game data files.
+* GitHub Actions configured, built and passed the synthetic renderer CTest target.
 
 Best next step:
 
-* Review and merge draft PR #1 after CI passes, then validate clean Linux and Android builds before porting custom behavior.
+* Start the smallest SDL3 port that preserves upstream rendering behavior, using the synthetic tests as the regression baseline.
