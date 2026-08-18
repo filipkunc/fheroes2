@@ -1,0 +1,37 @@
+name: Extended Edition Foundation
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+jobs:
+  asset-guard:
+    name: Tracked asset guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v7
+    - name: Reject original game data
+      run: bash script/tools/check_tracked_assets.sh
+
+  synthetic-renderer:
+    name: Synthetic renderer tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install dependencies
+      run: |
+        sudo apt-get -y update
+        sudo apt-get -y install libsdl2-dev libsdl2-mixer-dev ninja-build
+    - name: Configure
+      run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON
+    - name: Build synthetic renderer tests
+      run: cmake --build build --target synthetic_renderer_test
+    - name: Run synthetic renderer tests
+      run: ctest --test-dir build --output-on-failure

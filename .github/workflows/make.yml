@@ -221,6 +221,7 @@ jobs:
         replacesArtifacts: true
   make-psv:
     name: Make (PS Vita)
+    if: ${{ github.repository != 'filipkunc/fheroes2' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
