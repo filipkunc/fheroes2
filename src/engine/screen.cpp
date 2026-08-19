@@ -373,6 +373,9 @@ namespace
         }
 #else
         const int count = SDL_GetNumVideoDisplays();
+        if ( count > 0 ) {
+            displays.reserve( static_cast<size_t>( count ) );
+        }
         for ( int index = 0; index < count; ++index ) {
             displays.emplace_back( static_cast<uint32_t>( index ) );
         }
@@ -387,6 +390,7 @@ namespace
         int count = 0;
         SDL_DisplayMode ** availableModes = SDL_GetFullscreenDisplayModes( displayId, &count );
         if ( availableModes != nullptr ) {
+            modes.reserve( static_cast<size_t>( count ) );
             for ( int index = 0; index < count; ++index ) {
                 if ( availableModes[index] != nullptr ) {
                     modes.emplace_back( *availableModes[index] );
@@ -396,6 +400,9 @@ namespace
         }
 #else
         const int count = SDL_GetNumDisplayModes( static_cast<int>( displayId ) );
+        if ( count > 0 ) {
+            modes.reserve( static_cast<size_t>( count ) );
+        }
         for ( int index = 0; index < count; ++index ) {
             SDL_DisplayMode mode{};
             if ( SDL_GetDisplayMode( static_cast<int>( displayId ), index, &mode ) == 0 ) {

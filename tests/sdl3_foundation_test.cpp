@@ -18,6 +18,8 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#if defined( WITH_SDL3 )
+
 #include <cstdlib>
 #include <iostream>
 
@@ -43,3 +45,5 @@ int main()
               << SDL_VERSIONNUM_MICRO( linkedVersion ) << '\n';
     return EXIT_SUCCESS;
 }
+
+#endif
