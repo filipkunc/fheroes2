@@ -2,9 +2,9 @@ name: Extended Edition Foundation
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [ master, extended-edition ]
   push:
-    branches: [ master ]
+    branches: [ master, extended-edition ]
 
 permissions:
   contents: read
