@@ -37,12 +37,12 @@ int main()
     // Official SDL2-compat releases use the 2.32 version line. This prevents the
     // opt-in job from silently resolving the runner's system SDL2 library instead.
     if ( linkedVersion.major != 2 || linkedVersion.minor < 32 ) {
-        std::cerr << "Expected SDL2-compat 2.32 or newer, got " << static_cast<int>( linkedVersion.major ) << '.'
-                  << static_cast<int>( linkedVersion.minor ) << '.' << static_cast<int>( linkedVersion.patch ) << '\n';
+        std::cerr << "Expected SDL2-compat 2.32 or newer, got " << static_cast<int>( linkedVersion.major ) << '.' << static_cast<int>( linkedVersion.minor ) << '.'
+                  << static_cast<int>( linkedVersion.patch ) << '\n';
         return EXIT_FAILURE;
     }
 
-    std::cout << "SDL3 foundation initialized through SDL2-compat " << static_cast<int>( linkedVersion.major ) << '.'
-              << static_cast<int>( linkedVersion.minor ) << '.' << static_cast<int>( linkedVersion.patch ) << '\n';
+    std::cout << "SDL3 foundation initialized through SDL2-compat " << static_cast<int>( linkedVersion.major ) << '.' << static_cast<int>( linkedVersion.minor ) << '.'
+              << static_cast<int>( linkedVersion.patch ) << '\n';
     return EXIT_SUCCESS;
 }
