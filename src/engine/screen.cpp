@@ -1075,7 +1075,7 @@ namespace
                 return BaseRenderEngine::isFullScreen();
             }
 
-            const SDL_WindowFlags flags = SDL_GetWindowFlags( _window );
+            const SDL_WindowFlags flags = static_cast<SDL_WindowFlags>( SDL_GetWindowFlags( _window ) );
 #if defined( WITH_SDL3 )
             return ( flags & SDL_WINDOW_FULLSCREEN ) != 0;
 #else
