@@ -45,9 +45,9 @@ target_include_directories(
 target_link_libraries(
 	engine
 	smacker
-	${USE_SDL_VERSION}::${USE_SDL_VERSION}
-	${USE_SDL_VERSION}_mixer::${USE_SDL_VERSION}_mixer
-	$<$<BOOL:${ENABLE_IMAGE}>:${USE_SDL_VERSION}_image::${USE_SDL_VERSION}_image>
+	${FHEROES2_SDL_TARGET}
+	${FHEROES2_SDL_MIXER_TARGET}
+	$<$<BOOL:${ENABLE_IMAGE}>:${FHEROES2_SDL_IMAGE_TARGET}>
 	$<$<BOOL:${ENABLE_IMAGE}>:PNG::PNG>
 	Threads::Threads
 	ZLIB::ZLIB

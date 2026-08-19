@@ -46,22 +46,105 @@ cmake_dependent_option(MACOS_APP_BUNDLE "Create a Mac app bundle" OFF "APPLE" OF
 # Should not be available if we are creating a Mac app bundle
 cmake_dependent_option(GET_HOMM2_DEMO "Fetch and install the HoMM II demo data" OFF "NOT MACOS_APP_BUNDLE" OFF)
 
-set(USE_SDL_VERSION SDL2 CACHE STRING "Version of the SDL library used")
+set(USE_SDL_VERSION SDL2 CACHE STRING "SDL runtime used by the Linux CMake build")
 set(FHEROES2_DATA ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME} CACHE STRING "Path to the fheroes2 data directory (relative to CMAKE_INSTALL_PREFIX)")
 
 # For ComboBox in CMake GUI
-set_property(CACHE USE_SDL_VERSION PROPERTY STRINGS SDL2)
+set_property(CACHE USE_SDL_VERSION PROPERTY STRINGS SDL2 SDL3)
 
 #
 # Library & feature detection
 #
-find_package(${USE_SDL_VERSION} REQUIRED)
-find_package(${USE_SDL_VERSION}_mixer REQUIRED)
+if(USE_SDL_VERSION STREQUAL "SDL3")
+	if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+		message(FATAL_ERROR "The SDL3 foundation build is currently supported only on Linux.")
+	endif()
+
+	# Keep the upstream SDL2 source path intact while establishing an SDL3 runtime baseline.
+	# SDL's official compatibility layer exposes the SDL2 API used by fheroes2 and forwards
+	# it to SDL3. Native SDL3 API changes will follow in focused platform slices.
+	include(FetchContent)
+
+	set(SDL_SHARED ON CACHE BOOL "" FORCE)
+	set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+	set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+	set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+	set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+
+	FetchContent_Declare(
+		SDL3
+		GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+		GIT_TAG 147a8ee32dbf9ac02f3794964490687b6bbda1bc # release-3.4.14
+		GIT_SHALLOW TRUE
+		)
+	FetchContent_MakeAvailable(SDL3)
+
+	set(SDL2COMPAT_TESTS OFF CACHE BOOL "" FORCE)
+	set(SDL2COMPAT_INSTALL OFF CACHE BOOL "" FORCE)
+	set(SDL2COMPAT_WERROR OFF CACHE BOOL "" FORCE)
+
+	FetchContent_Declare(
+		SDL2_compat
+		GIT_REPOSITORY https://github.com/libsdl-org/sdl2-compat.git
+		GIT_TAG a53b6ad90ecd2d0ccfe01d5cfd2059793acf8c12 # release-2.32.70
+		GIT_SHALLOW TRUE
+		)
+	FetchContent_MakeAvailable(SDL2_compat)
+
+	# SDL2-compat loads SDL3 dynamically, so make the runtime an explicit build dependency.
+	if(TARGET SDL3::SDL3-shared)
+		add_dependencies(SDL2 SDL3-shared)
+	endif()
+
+	# Keep the existing mixer API for this foundation slice. Building the mixer against
+	# the compatibility target avoids accidentally coupling the SDL3 job to system SDL2.
+	set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+	set(SDL2MIXER_INSTALL OFF CACHE BOOL "" FORCE)
+	set(SDL2MIXER_SAMPLES OFF CACHE BOOL "" FORCE)
+	set(SDL2MIXER_CMD OFF CACHE BOOL "" FORCE)
+	set(SDL2MIXER_DEPS_SHARED OFF CACHE BOOL "" FORCE)
+	set(SDL2MIXER_FLAC ON CACHE BOOL "" FORCE)
+	set(SDL2MIXER_FLAC_DRFLAC ON CACHE BOOL "" FORCE)
+	set(SDL2MIXER_FLAC_LIBFLAC OFF CACHE BOOL "" FORCE)
+	set(SDL2MIXER_MOD OFF CACHE BOOL "" FORCE)
+	set(SDL2MIXER_MP3 ON CACHE BOOL "" FORCE)
+	set(SDL2MIXER_MP3_MINIMP3 ON CACHE BOOL "" FORCE)
+	set(SDL2MIXER_MIDI ON CACHE BOOL "" FORCE)
+	set(SDL2MIXER_MIDI_FLUIDSYNTH OFF CACHE BOOL "" FORCE)
+	set(SDL2MIXER_MIDI_TIMIDITY ON CACHE BOOL "" FORCE)
+	set(SDL2MIXER_OPUS OFF CACHE BOOL "" FORCE)
+	set(SDL2MIXER_VORBIS STB CACHE STRING "" FORCE)
+	set(SDL2MIXER_WAVPACK OFF CACHE BOOL "" FORCE)
+
+	FetchContent_Declare(
+		SDL2_mixer
+		GIT_REPOSITORY https://github.com/libsdl-org/SDL_mixer.git
+		GIT_TAG b208916aed9250fe434360e6c6a95f0697bb7b01 # release-2.8.2
+		GIT_SHALLOW TRUE
+		GIT_SUBMODULES ""
+		)
+	FetchContent_MakeAvailable(SDL2_mixer)
+
+	set(FHEROES2_SDL_TARGET SDL2::SDL2)
+	set(FHEROES2_SDL_MAIN_TARGET SDL2::SDL2main)
+	set(FHEROES2_SDL_MIXER_TARGET SDL2_mixer::SDL2_mixer)
+	message(STATUS "SDL3 foundation enabled: SDL2 API -> SDL2-compat -> SDL3")
+elseif(USE_SDL_VERSION STREQUAL "SDL2")
+	find_package(SDL2 REQUIRED)
+	find_package(SDL2_mixer REQUIRED)
+	set(FHEROES2_SDL_TARGET SDL2::SDL2)
+	set(FHEROES2_SDL_MAIN_TARGET SDL2::SDL2main)
+	set(FHEROES2_SDL_MIXER_TARGET SDL2_mixer::SDL2_mixer)
+else()
+	message(FATAL_ERROR "USE_SDL_VERSION must be SDL2 or SDL3.")
+endif()
+
 find_package(ZLIB REQUIRED)
 find_package(Threads)
 
 if(ENABLE_IMAGE)
-	find_package(${USE_SDL_VERSION}_image REQUIRED)
+	find_package(SDL2_image REQUIRED)
+	set(FHEROES2_SDL_IMAGE_TARGET SDL2_image::SDL2_image)
 	find_package(PNG REQUIRED)
 endif(ENABLE_IMAGE)
 
