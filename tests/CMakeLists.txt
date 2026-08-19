@@ -25,6 +25,7 @@ add_test(NAME synthetic_renderer COMMAND synthetic_renderer_test)
 
 if(USE_SDL_VERSION STREQUAL "SDL3")
 	add_executable(sdl3_foundation_test sdl3_foundation_test.cpp)
+	target_compile_definitions(sdl3_foundation_test PRIVATE WITH_SDL3)
 	target_link_libraries(sdl3_foundation_test PRIVATE ${FHEROES2_SDL_TARGET})
 
 	add_test(NAME sdl3_foundation COMMAND sdl3_foundation_test)

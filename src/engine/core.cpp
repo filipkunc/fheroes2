@@ -34,8 +34,14 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
+#if defined( WITH_SDL3 )
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_init.h>
+#else
 #include <SDL.h>
 #include <SDL_error.h>
+#endif
 
 // Managing compiler warnings for SDL headers
 #if defined( __GNUC__ )
@@ -93,7 +99,11 @@ namespace
         case System::SystemInitializationComponent::Video:
             return SDL_INIT_VIDEO;
         case System::SystemInitializationComponent::GameController:
+#if defined( WITH_SDL3 )
+            return SDL_INIT_GAMEPAD;
+#else
             return SDL_INIT_GAMECONTROLLER;
+#endif
         default:
             // Did you add a new component?
             assert( 0 );
@@ -117,7 +127,11 @@ namespace
     {
         const uint32_t sdlFlags = getSDLInitFlags( components );
 
+#if defined( WITH_SDL3 )
+        if ( !SDL_Init( sdlFlags ) ) {
+#else
         if ( SDL_Init( sdlFlags ) < 0 ) {
+#endif
             ERROR_LOG( SDL_GetError() )
             return false;
         }

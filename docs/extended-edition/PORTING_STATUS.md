@@ -98,29 +98,28 @@ Last updated: 2026-08-19
 
 Completed in the latest session:
 
-* Added an opt-in Linux CMake path with `-DUSE_SDL_VERSION=SDL3`.
-* Pinned SDL 3.4.14, SDL2-compat 2.32.70 and SDL2_mixer 2.8.2 through CMake FetchContent while leaving SDL2 as the unchanged default.
-* Kept the current SDL2 renderer and SDL2_mixer behavior behind SDL's official compatibility layer instead of importing the reference branch's RGBA,
-  physical-resolution or platform-removal changes.
-* Added a Linux CI job that compiles the game and synthetic tests on the SDL3 path.
-* Added a data-free smoke test that initializes the compatibility runtime and rejects accidental linkage to the runner's system SDL2.
+* Replaced the Linux SDL2-compat bridge with direct SDL3 API use while leaving SDL2 as the default build.
+* Ported native SDL3 lifecycle, event, keyboard, mouse, gamepad, touch, cursor, display, fullscreen and window-capture behavior.
+* Preserved the indexed game image and existing palette-to-32-bit screen upload instead of introducing RGBA or physical-resolution rendering.
+* Kept audio explicitly unavailable on the opt-in SDL3 path through a small stub; the default SDL2/SDL2_mixer path is unchanged.
+* Updated the data-free runtime test to require a native SDL3 major version.
 
 Validation:
 
-* The default SDL2 configuration remains the existing CMake default and the existing platform workflows are unchanged.
-* A local default SDL2 configuration built and passed the synthetic renderer test.
-* A local SDL3 configuration built `fheroes2` and passed both the synthetic renderer and SDL3 runtime smoke tests.
-* The tracked-file guard passes and the workflow YAML parses successfully.
-* The change contains only CMake, CI, C++ test and documentation files; it adds no image, audio, map or original game data.
+* A local native SDL3 configuration compiled the complete `fheroes2` executable with warnings treated as errors.
+* The local native SDL3 build passed the synthetic renderer and SDL3 runtime tests.
+* The SDL3 dependency graph no longer contains SDL2-compat or SDL2_mixer.
+* The existing CI job still builds the full game and data-free tests; the normal pull-request matrix verifies the unchanged SDL2 platforms.
+* No image, audio, map or original game-data file is part of this change or its validation.
 
 Findings:
 
-* The preserved branch's native SDL3 port is mixed with renderer, physical-resolution and platform-scope changes, so it is not safe to transplant as a
-  foundation commit.
-* SDL2-compat provides a narrow runtime baseline for reviewing build and dependency behavior, but it is a bridge rather than the final native SDL3 API
-  port.
+* SDL3 can retain the current indexed renderer contract by converting palette indexes into an RGBA32 SDL surface before texture upload.
+* SDL3 display IDs, event types, gamepads, cursor visibility and surface metadata need explicit adaptation; SDL's old-name diagnostics are not a
+  compatibility API.
+* Audio remains the only intentionally stubbed Linux subsystem on the opt-in native SDL3 path.
 
 Best next step:
 
-* Replace the compatibility bridge with conditional native SDL3 platform code for Linux while preserving the current indexed renderer behavior and
-  keeping SDL2 as the default until input, audio, windowing and lifecycle tests pass.
+* Port the Linux SDL3 path from the temporary audio stub to native SDL3_mixer, with a data-free initialization test, while keeping the SDL2 default
+  unchanged.
