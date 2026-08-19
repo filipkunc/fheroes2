@@ -18,6 +18,8 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#if defined( WITH_SDL3 )
+
 #include "audio.h"
 
 void Audio::Init() {}
@@ -61,3 +63,5 @@ bool Music::isPlaying()
 }
 void Music::setMidiSoundFonts( const ListFiles & ) {}
 void Music::setMidiTimidityCfg( const std::string & ) {}
+
+#endif
