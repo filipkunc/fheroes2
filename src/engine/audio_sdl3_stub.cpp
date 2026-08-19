@@ -18,28 +18,46 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include <cstdlib>
-#include <iostream>
+#include "audio.h"
 
-#include <SDL3/SDL.h>
-
-int main()
+void Audio::Init() {}
+void Audio::Quit() {}
+void Audio::Mute() {}
+void Audio::Unmute() {}
+bool Audio::isValid()
 {
-    if ( !SDL_Init( 0 ) ) {
-        std::cerr << "Native SDL3 initialization failed: " << SDL_GetError() << '\n';
-        return EXIT_FAILURE;
-    }
-
-    const int linkedVersion = SDL_GetVersion();
-    SDL_Quit();
-
-    if ( SDL_VERSIONNUM_MAJOR( linkedVersion ) != 3 ) {
-        std::cerr << "Expected a native SDL3 runtime, got version " << SDL_VERSIONNUM_MAJOR( linkedVersion ) << '.' << SDL_VERSIONNUM_MINOR( linkedVersion ) << '.'
-                  << SDL_VERSIONNUM_MICRO( linkedVersion ) << '\n';
-        return EXIT_FAILURE;
-    }
-
-    std::cout << "Native SDL3 runtime initialized: " << SDL_VERSIONNUM_MAJOR( linkedVersion ) << '.' << SDL_VERSIONNUM_MINOR( linkedVersion ) << '.'
-              << SDL_VERSIONNUM_MICRO( linkedVersion ) << '\n';
-    return EXIT_SUCCESS;
+    return false;
 }
+
+void Mixer::SetChannels( const int ) {}
+int Mixer::getChannelCount()
+{
+    return 0;
+}
+int Mixer::Play( const uint8_t *, const uint32_t, const bool, const std::optional<std::pair<int16_t, uint8_t>> )
+{
+    return -1;
+}
+void Mixer::setVolume( const int ) {}
+void Mixer::setPosition( const int, const int16_t, const uint8_t ) {}
+void Mixer::Stop( const int ) {}
+bool Mixer::isPlaying( const int )
+{
+    return false;
+}
+
+bool Music::Play( const uint64_t, const PlaybackMode )
+{
+    return false;
+}
+void Music::Play( const uint64_t, const std::vector<uint8_t> &, const PlaybackMode ) {}
+void Music::Play( const uint64_t, const std::string &, const PlaybackMode ) {}
+void Music::setVolume( const int ) {}
+void Music::SetFadeInMs( const int ) {}
+void Music::Stop() {}
+bool Music::isPlaying()
+{
+    return false;
+}
+void Music::setMidiSoundFonts( const ListFiles & ) {}
+void Music::setMidiTimidityCfg( const std::string & ) {}

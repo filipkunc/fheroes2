@@ -35,7 +35,11 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
+#if defined( WITH_SDL3 )
+#include <SDL3/SDL_main.h> // IWYU pragma: keep
+#else
 #include <SDL_main.h> // IWYU pragma: keep
+#endif
 
 // Managing compiler warnings for SDL headers
 #if defined( __GNUC__ )

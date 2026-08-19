@@ -37,7 +37,7 @@ jobs:
       run: ctest --test-dir build --output-on-failure
 
   sdl3-foundation:
-    name: Linux SDL3 foundation
+    name: Linux native SDL3 platform
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -48,9 +48,9 @@ jobs:
         sudo apt-get -y install \
           libasound2-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
           libxfixes-dev libxi-dev libxss-dev libxtst-dev ninja-build
-    - name: Configure SDL3 foundation
+    - name: Configure native SDL3 platform
       run: cmake -B build-sdl3 -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON -DUSE_SDL_VERSION=SDL3
     - name: Build game and synthetic tests
       run: cmake --build build-sdl3 --target fheroes2 synthetic_renderer_test sdl3_foundation_test
-    - name: Run synthetic and SDL3 configuration tests
+    - name: Run synthetic and native SDL3 tests
       run: ctest --test-dir build-sdl3 --output-on-failure

@@ -20,6 +20,13 @@
 
 file(GLOB_RECURSE LIBENGINE_SOURCES CONFIGURE_DEPENDS *.cpp)
 
+if(USE_SDL_VERSION STREQUAL "SDL3")
+	list(REMOVE_ITEM LIBENGINE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/audio.cpp)
+	list(APPEND LIBENGINE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/audio_sdl3_stub.cpp)
+else()
+	list(REMOVE_ITEM LIBENGINE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/audio_sdl3_stub.cpp)
+endif()
+
 add_compile_options("$<$<COMPILE_LANG_AND_ID:C,AppleClang,Clang,GNU>:${GNU_CC_WARN_OPTS}>")
 add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang,GNU>:${GNU_CXX_WARN_OPTS}>")
 add_compile_options("$<$<OR:$<COMPILE_LANG_AND_ID:C,MSVC>,$<COMPILE_LANG_AND_ID:CXX,MSVC>>:${MSVC_CC_WARN_OPTS}>")
@@ -34,6 +41,7 @@ target_compile_definitions(
 	$<$<CONFIG:Debug>:WITH_DEBUG>
 	$<$<BOOL:${ENABLE_IMAGE}>:WITH_IMAGE>
 	$<$<BOOL:${MACOS_APP_BUNDLE}>:MACOS_APP_BUNDLE>
+	$<$<STREQUAL:${USE_SDL_VERSION},SDL3>:WITH_SDL3>
 	)
 
 target_include_directories(

@@ -37,11 +37,18 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
+#if defined( WITH_SDL3 )
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_pixels.h>
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_surface.h>
+#else
 #include <SDL_error.h>
 #include <SDL_pixels.h>
 #include <SDL_stdinc.h>
 #include <SDL_surface.h>
 #include <SDL_version.h>
+#endif
 
 #if defined( WITH_IMAGE )
 #include <SDL_image.h>
@@ -79,13 +86,21 @@ namespace
         const int32_t width = image.width();
         const int32_t height = image.height();
 
+#if defined( WITH_SDL3 )
+        const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_CreateSurface( width, height, SDL_PIXELFORMAT_INDEX8 ), SDL_DestroySurface );
+#else
         const std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( SDL_CreateRGBSurface( 0, width, height, 8, 0, 0, 0, 0 ), SDL_FreeSurface );
+#endif
         if ( !surface ) {
             ERROR_LOG( "Error while creating a SDL surface for an image to be saved under " << path << ". Error " << SDL_GetError() )
             return false;
         }
 
+#if defined( WITH_SDL3 )
+        assert( SDL_BYTESPERPIXEL( surface->format ) == 1 );
+#else
         assert( surface->format->BitsPerPixel == 8 );
+#endif
 
         std::array<SDL_Color, fheroes2::paletteSize> paletteSDL{};
         for ( size_t i = 0; i < fheroes2::paletteSize; ++i ) {
@@ -98,7 +113,15 @@ namespace
             col.a = 255;
         }
 
+#if defined( WITH_SDL3 )
+        SDL_Palette * surfacePalette = SDL_CreateSurfacePalette( surface.get() );
+        if ( surfacePalette == nullptr || !SDL_SetPaletteColors( surfacePalette, paletteSDL.data(), 0, fheroes2::paletteSize ) ) {
+            ERROR_LOG( "Error while setting the SDL surface palette: " << SDL_GetError() )
+            return false;
+        }
+#else
         SDL_SetPaletteColors( surface->format->palette, paletteSDL.data(), 0, fheroes2::paletteSize );
+#endif
 
         if ( surface->pitch != width ) {
             const uint8_t * imageIn = image.image();
@@ -125,10 +148,18 @@ namespace
             memcpy( path.data() + path.size() - 3, "bmp", 3 );
         }
 
+#if defined( WITH_SDL3 )
+        const bool res = SDL_SaveBMP( surface.get(), System::encLocalToUTF8( path ).c_str() );
+#else
         const int res = SDL_SaveBMP( surface.get(), System::encLocalToUTF8( path ).c_str() );
 #endif
+#endif
 
+#if defined( WITH_SDL3 )
+        return res;
+#else
         return res == 0;
+#endif
     }
 }
 
@@ -163,8 +194,13 @@ namespace fheroes2
             return false;
         }
 
+#if defined( WITH_SDL3 )
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( nullptr, SDL_DestroySurface );
+        std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_DestroySurface );
+#else
         std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> surface( nullptr, SDL_FreeSurface );
         std::unique_ptr<SDL_Surface, void ( * )( SDL_Surface * )> loadedSurface( nullptr, SDL_FreeSurface );
+#endif
 
 #if defined( WITH_IMAGE )
         loadedSurface.reset( IMG_Load( System::encLocalToUTF8( path ).c_str() ) );
@@ -175,23 +211,33 @@ namespace fheroes2
             return false;
         }
 
+#if !defined( WITH_SDL3 )
 #if !SDL_VERSION_ATLEAST( 2, 0, 5 )
 #error SDL_PIXELFORMAT_BGRA32 and other RGBA color variants are only supported since SDL 2.0.5
+#endif
 #endif
 
         // Image loading functions can theoretically return SDL_Surface in any supported color format, so we will convert it to a specific format for subsequent
         // processing
+#if defined( WITH_SDL3 )
+        surface.reset( SDL_ConvertSurface( loadedSurface.get(), SDL_PIXELFORMAT_BGRA32 ) );
+#else
         const std::unique_ptr<SDL_PixelFormat, void ( * )( SDL_PixelFormat * )> pixelFormat( SDL_AllocFormat( SDL_PIXELFORMAT_BGRA32 ), SDL_FreeFormat );
         if ( !pixelFormat ) {
             return false;
         }
 
         surface.reset( SDL_ConvertSurface( loadedSurface.get(), pixelFormat.get(), 0 ) );
+#endif
         if ( !surface ) {
             return false;
         }
 
+#if defined( WITH_SDL3 )
+        assert( !SDL_MUSTLOCK( surface.get() ) && SDL_BYTESPERPIXEL( surface->format ) == 4 );
+#else
         assert( SDL_MUSTLOCK( surface.get() ) == SDL_FALSE && surface->format->BytesPerPixel == 4 );
+#endif
 
         image.resize( surface->w, surface->h );
         image.reset();

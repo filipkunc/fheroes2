@@ -40,6 +40,87 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
+#if defined( WITH_SDL3 )
+#include <SDL3/SDL.h>
+#undef SDL_GameController
+#undef SDL_ControllerAxisEvent
+#undef SDL_ControllerButtonEvent
+
+using SDL_GameController = SDL_Gamepad;
+using SDL_ControllerAxisEvent = SDL_GamepadAxisEvent;
+using SDL_ControllerButtonEvent = SDL_GamepadButtonEvent;
+
+#undef KMOD_CTRL
+#undef KMOD_SHIFT
+#undef KMOD_ALT
+#undef KMOD_CAPS
+#undef KMOD_NUM
+#define KMOD_CTRL SDL_KMOD_CTRL
+#define KMOD_SHIFT SDL_KMOD_SHIFT
+#define KMOD_ALT SDL_KMOD_ALT
+#define KMOD_CAPS SDL_KMOD_CAPS
+#define KMOD_NUM SDL_KMOD_NUM
+
+#undef SDLK_QUOTEDBL
+#undef SDLK_QUOTE
+#undef SDLK_BACKQUOTE
+#define SDLK_QUOTEDBL SDLK_DBLAPOSTROPHE
+#define SDLK_QUOTE SDLK_APOSTROPHE
+#define SDLK_BACKQUOTE SDLK_GRAVE
+
+#undef SDLK_a
+#undef SDLK_b
+#undef SDLK_c
+#undef SDLK_d
+#undef SDLK_e
+#undef SDLK_f
+#undef SDLK_g
+#undef SDLK_h
+#undef SDLK_i
+#undef SDLK_j
+#undef SDLK_k
+#undef SDLK_l
+#undef SDLK_m
+#undef SDLK_n
+#undef SDLK_o
+#undef SDLK_p
+#undef SDLK_q
+#undef SDLK_r
+#undef SDLK_s
+#undef SDLK_t
+#undef SDLK_u
+#undef SDLK_v
+#undef SDLK_w
+#undef SDLK_x
+#undef SDLK_y
+#undef SDLK_z
+#define SDLK_a SDLK_A
+#define SDLK_b SDLK_B
+#define SDLK_c SDLK_C
+#define SDLK_d SDLK_D
+#define SDLK_e SDLK_E
+#define SDLK_f SDLK_F
+#define SDLK_g SDLK_G
+#define SDLK_h SDLK_H
+#define SDLK_i SDLK_I
+#define SDLK_j SDLK_J
+#define SDLK_k SDLK_K
+#define SDLK_l SDLK_L
+#define SDLK_m SDLK_M
+#define SDLK_n SDLK_N
+#define SDLK_o SDLK_O
+#define SDLK_p SDLK_P
+#define SDLK_q SDLK_Q
+#define SDLK_r SDLK_R
+#define SDLK_s SDLK_S
+#define SDLK_t SDLK_T
+#define SDLK_u SDLK_U
+#define SDLK_v SDLK_V
+#define SDLK_w SDLK_W
+#define SDLK_x SDLK_X
+#define SDLK_y SDLK_Y
+#define SDLK_z SDLK_Z
+#else
 #include <SDL_error.h>
 #include <SDL_events.h>
 #include <SDL_gamecontroller.h>
@@ -53,6 +134,7 @@
 #include <SDL_touch.h>
 #include <SDL_version.h>
 #include <SDL_video.h>
+#endif
 
 // Managing compiler warnings for SDL headers
 #if defined( __GNUC__ )
@@ -283,6 +365,55 @@ namespace EventProcessing
     public:
         static void initEvents()
         {
+#if defined( WITH_SDL3 )
+            setEventProcessingState( SDL_EVENT_QUIT, true );
+            setEventProcessingState( SDL_EVENT_LOW_MEMORY, true );
+            setEventProcessingState( SDL_EVENT_WINDOW_FOCUS_GAINED, true );
+            setEventProcessingState( SDL_EVENT_WINDOW_FOCUS_LOST, true );
+            setEventProcessingState( SDL_EVENT_WINDOW_RESIZED, true );
+            setEventProcessingState( SDL_EVENT_WINDOW_CLOSE_REQUESTED, true );
+            setEventProcessingState( SDL_EVENT_KEY_DOWN, true );
+            setEventProcessingState( SDL_EVENT_KEY_UP, true );
+            setEventProcessingState( SDL_EVENT_TEXT_EDITING, false );
+            setEventProcessingState( SDL_EVENT_TEXT_INPUT, false );
+            setEventProcessingState( SDL_EVENT_KEYMAP_CHANGED, false );
+            setEventProcessingState( SDL_EVENT_MOUSE_MOTION, true );
+            setEventProcessingState( SDL_EVENT_MOUSE_BUTTON_DOWN, true );
+            setEventProcessingState( SDL_EVENT_MOUSE_BUTTON_UP, true );
+            setEventProcessingState( SDL_EVENT_MOUSE_WHEEL, true );
+            setEventProcessingState( SDL_EVENT_JOYSTICK_AXIS_MOTION, true );
+            setEventProcessingState( SDL_EVENT_JOYSTICK_BALL_MOTION, true );
+            setEventProcessingState( SDL_EVENT_JOYSTICK_HAT_MOTION, true );
+            setEventProcessingState( SDL_EVENT_JOYSTICK_BUTTON_DOWN, true );
+            setEventProcessingState( SDL_EVENT_JOYSTICK_BUTTON_UP, true );
+            setEventProcessingState( SDL_EVENT_JOYSTICK_ADDED, true );
+            setEventProcessingState( SDL_EVENT_JOYSTICK_REMOVED, true );
+            setEventProcessingState( SDL_EVENT_GAMEPAD_AXIS_MOTION, true );
+            setEventProcessingState( SDL_EVENT_GAMEPAD_BUTTON_DOWN, true );
+            setEventProcessingState( SDL_EVENT_GAMEPAD_BUTTON_UP, true );
+            setEventProcessingState( SDL_EVENT_GAMEPAD_ADDED, true );
+            setEventProcessingState( SDL_EVENT_GAMEPAD_REMOVED, true );
+            setEventProcessingState( SDL_EVENT_GAMEPAD_REMAPPED, true );
+            setEventProcessingState( SDL_EVENT_FINGER_DOWN, true );
+            setEventProcessingState( SDL_EVENT_FINGER_UP, true );
+            setEventProcessingState( SDL_EVENT_FINGER_MOTION, true );
+            setEventProcessingState( SDL_EVENT_CLIPBOARD_UPDATE, false );
+            setEventProcessingState( SDL_EVENT_DROP_FILE, false );
+            setEventProcessingState( SDL_EVENT_DROP_TEXT, false );
+            setEventProcessingState( SDL_EVENT_DROP_BEGIN, false );
+            setEventProcessingState( SDL_EVENT_DROP_COMPLETE, false );
+            setEventProcessingState( SDL_EVENT_RENDER_TARGETS_RESET, true );
+            setEventProcessingState( SDL_EVENT_RENDER_DEVICE_RESET, true );
+            setEventProcessingState( SDL_EVENT_USER, false );
+            setEventProcessingState( SDL_EVENT_AUDIO_DEVICE_ADDED, false );
+            setEventProcessingState( SDL_EVENT_AUDIO_DEVICE_REMOVED, false );
+            setEventProcessingState( SDL_EVENT_SENSOR_UPDATE, false );
+            setEventProcessingState( SDL_EVENT_TERMINATING, false );
+            setEventProcessingState( SDL_EVENT_WILL_ENTER_BACKGROUND, false );
+            setEventProcessingState( SDL_EVENT_DID_ENTER_BACKGROUND, false );
+            setEventProcessingState( SDL_EVENT_WILL_ENTER_FOREGROUND, false );
+            setEventProcessingState( SDL_EVENT_DID_ENTER_FOREGROUND, false );
+#else
             // The list below is based on event types which require SDL >= 2.0.5. Is there a reason why you want to compile with an older SDL version?
 #if !SDL_VERSION_ATLEAST( 2, 0, 5 )
 #error The event types used require at least SDL 2.0.5
@@ -356,6 +487,7 @@ namespace EventProcessing
             // SDL_CONTROLLERSENSORUPDATE is supported from SDL 2.0.14
             // SDL_TEXTEDITING_EXT is supported only from SDL 2.0.22
             // SDL_POLLSENTINEL is supported from SDL 2.0.?
+#endif
         }
 
         static int32_t getCurrentKeyModifiers()
@@ -365,6 +497,21 @@ namespace EventProcessing
 
         static void initTouchpad()
         {
+#if defined( WITH_SDL3 )
+            if ( !SDL_SetHint( SDL_HINT_MOUSE_TOUCH_EVENTS, "0" ) ) {
+                ERROR_LOG( "Failed to set the " SDL_HINT_MOUSE_TOUCH_EVENTS " hint." )
+            }
+            if ( !SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" ) ) {
+                ERROR_LOG( "Failed to set the " SDL_HINT_TOUCH_MOUSE_EVENTS " hint." )
+            }
+
+            int touchDeviceCount = 0;
+            SDL_TouchID * touchDevices = SDL_GetTouchDevices( &touchDeviceCount );
+            SDL_free( touchDevices );
+            if ( touchDeviceCount <= 0 ) {
+                return;
+            }
+#else
 #if SDL_VERSION_ATLEAST( 2, 0, 10 )
             if ( SDL_SetHint( SDL_HINT_MOUSE_TOUCH_EVENTS, "0" ) != SDL_TRUE ) {
                 ERROR_LOG( "Failed to set the " SDL_HINT_MOUSE_TOUCH_EVENTS " hint." )
@@ -379,6 +526,7 @@ namespace EventProcessing
             if ( SDL_GetNumTouchDevices() <= 0 ) {
                 return;
             }
+#endif
 
             // On devices with touchpad/touchscreen the software-rendered mouse cursor is mandatory
             // to properly convert touch events to mouse events and render the cursor especially
@@ -388,6 +536,26 @@ namespace EventProcessing
 
         void initController()
         {
+#if defined( WITH_SDL3 )
+            int joystickNumber = 0;
+            SDL_JoystickID * joysticks = SDL_GetJoysticks( &joystickNumber );
+            if ( joysticks == nullptr ) {
+                ERROR_LOG( "Failed to get the list of joysticks: " << SDL_GetError() )
+                return;
+            }
+
+            for ( int i = 0; i < joystickNumber; ++i ) {
+                if ( SDL_IsGamepad( joysticks[i] ) ) {
+                    _gameController = SDL_OpenGamepad( joysticks[i] );
+                    if ( _gameController != nullptr ) {
+                        fheroes2::cursor().enableSoftwareEmulation( true );
+                        break;
+                    }
+                    ERROR_LOG( "Failed to open a controller with ID " << joysticks[i] << ". Error description: " << SDL_GetError() )
+                }
+            }
+            SDL_free( joysticks );
+#else
             const int joystickNumber = SDL_NumJoysticks();
             if ( joystickNumber < 0 ) {
                 ERROR_LOG( "Failed to get the number of joysticks. The error value: " << joystickNumber << ", description: " << SDL_GetError() )
@@ -407,14 +575,22 @@ namespace EventProcessing
                     ERROR_LOG( "Failed to open a controller with ID " << i << ". Error description: " << SDL_GetError() )
                 }
             }
+#endif
         }
 
         void closeController()
         {
+#if defined( WITH_SDL3 )
+            if ( _gameController != nullptr && SDL_GamepadConnected( _gameController ) ) {
+                SDL_CloseGamepad( _gameController );
+                _gameController = nullptr;
+            }
+#else
             if ( SDL_GameControllerGetAttached( _gameController ) == SDL_TRUE ) {
                 SDL_GameControllerClose( _gameController );
                 _gameController = nullptr;
             }
+#endif
         }
 
         bool isControllerValid() const
@@ -440,6 +616,90 @@ namespace EventProcessing
                 bool processImmediately = true;
 
                 switch ( event.type ) {
+#if defined( WITH_SDL3 )
+                case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                case SDL_EVENT_WINDOW_FOCUS_LOST:
+                case SDL_EVENT_WINDOW_RESIZED:
+                    if ( onWindowEvent( event.window ) ) {
+                        updateDisplay = true;
+                    }
+                    else {
+                        processImmediately = false;
+                    }
+                    break;
+                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                    processImmediately = false;
+                    break;
+                case SDL_EVENT_KEY_DOWN:
+                case SDL_EVENT_KEY_UP:
+                    onKeyboardEvent( eventHandler, event.key );
+                    break;
+                case SDL_EVENT_MOUSE_MOTION:
+                    onMouseMotionEvent( eventHandler, event.motion );
+                    processImmediately = false;
+                    break;
+                case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                case SDL_EVENT_MOUSE_BUTTON_UP:
+                    onMouseButtonEvent( eventHandler, event.button );
+                    break;
+                case SDL_EVENT_MOUSE_WHEEL:
+                    onMouseWheelEvent( eventHandler, event.wheel );
+                    break;
+                case SDL_EVENT_GAMEPAD_REMOVED:
+                    onControllerRemovedEvent( event.gdevice );
+                    break;
+                case SDL_EVENT_GAMEPAD_ADDED:
+                    onControllerAddedEvent( event.gdevice );
+                    break;
+                case SDL_EVENT_JOYSTICK_AXIS_MOTION:
+                case SDL_EVENT_JOYSTICK_BALL_MOTION:
+                case SDL_EVENT_JOYSTICK_HAT_MOTION:
+                case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+                case SDL_EVENT_JOYSTICK_BUTTON_UP:
+                case SDL_EVENT_JOYSTICK_ADDED:
+                case SDL_EVENT_JOYSTICK_REMOVED:
+                case SDL_EVENT_GAMEPAD_REMAPPED:
+                    processImmediately = false;
+                    break;
+                case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+                    onControllerAxisEvent( eventHandler, event.gaxis );
+                    processImmediately = false;
+                    break;
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                    onControllerButtonEvent( eventHandler, event.gbutton );
+                    break;
+                case SDL_EVENT_FINGER_DOWN:
+                case SDL_EVENT_FINGER_UP:
+                case SDL_EVENT_FINGER_MOTION:
+                    onTouchEvent( eventHandler, event.tfinger );
+                    if ( event.type == SDL_EVENT_FINGER_MOTION ) {
+                        processImmediately = false;
+                    }
+                    break;
+                case SDL_EVENT_RENDER_TARGETS_RESET:
+                    updateDisplay = true;
+                    break;
+                case SDL_EVENT_RENDER_DEVICE_RESET:
+                    onRenderDeviceResetEvent();
+                    updateDisplay = true;
+                    break;
+                case SDL_EVENT_TEXT_INPUT:
+                case SDL_EVENT_TEXT_EDITING:
+                    break;
+                case SDL_EVENT_QUIT:
+                    if ( allowExit ) {
+                        return false;
+                    }
+                    if ( onQuitEvent() ) {
+                        throw ::fheroes2::UserRequestedApplicationClosure{};
+                    }
+                    processImmediately = false;
+                    break;
+                case SDL_EVENT_LOW_MEMORY:
+                    DEBUG_LOG( DBG_ENGINE, DBG_WARN, "OS indicates low memory. Release some resources." )
+                    break;
+#else
                 case SDL_WINDOWEVENT:
                     if ( event.window.event == SDL_WINDOWEVENT_CLOSE ) {
                         // This event will be handled by SDL_QUIT event.
@@ -534,6 +794,7 @@ namespace EventProcessing
                     // As of now we have no logic for this so we at least log this event.
                     DEBUG_LOG( DBG_ENGINE, DBG_WARN, "OS indicates low memory. Release some resources." )
                     break;
+#endif
                 default:
                     // If this assertion blows up then we included an event type but we didn't add logic for it.
                     assert( eventTypeStatus.count( event.type ) == 0 );
@@ -576,7 +837,11 @@ namespace EventProcessing
                 assert( 0 );
             }
 
+#if defined( WITH_SDL3 )
+            SDL_SetEventEnabled( eventType, enable );
+#else
             SDL_EventState( eventType, ( enable ? SDL_ENABLE : SDL_IGNORE ) );
+#endif
         }
 
         static int32_t getKeyModifierFromSDL( const int sdlModifier )
@@ -876,28 +1141,52 @@ namespace EventProcessing
         // Returns true if frame rendering is required.
         static bool onWindowEvent( const SDL_WindowEvent & event )
         {
+#if defined( WITH_SDL3 )
+            if ( event.type == SDL_EVENT_WINDOW_FOCUS_LOST ) {
+#else
             if ( event.event == SDL_WINDOWEVENT_FOCUS_LOST ) {
+#endif
                 LocalEvent::StopSounds();
                 return false;
             }
 
+#if defined( WITH_SDL3 )
+            if ( event.type == SDL_EVENT_WINDOW_FOCUS_GAINED ) {
+#else
             if ( event.event == SDL_WINDOWEVENT_FOCUS_GAINED ) {
+#endif
                 LocalEvent::ResumeSounds();
                 return true;
             }
 
+#if defined( WITH_SDL3 )
+            return event.type == SDL_EVENT_WINDOW_RESIZED;
+#else
             return ( event.event == SDL_WINDOWEVENT_RESIZED );
+#endif
         }
 
         static void onMouseMotionEvent( LocalEvent & eventHandler, const SDL_MouseMotionEvent & motion )
         {
+#if defined( WITH_SDL3 )
+            eventHandler.onMouseMotionEvent( { static_cast<int32_t>( motion.x ), static_cast<int32_t>( motion.y ) } );
+#else
             eventHandler.onMouseMotionEvent( { motion.x, motion.y } );
+#endif
         }
 
         static void onMouseButtonEvent( LocalEvent & eventHandler, const SDL_MouseButtonEvent & button )
         {
+#if !defined( WITH_SDL3 )
             // Not sure how it is possible to have something else for a button.
             assert( ( button.state == SDL_PRESSED ) || ( button.state == SDL_RELEASED ) );
+#endif
+
+#if defined( WITH_SDL3 )
+            const bool isPressed = button.down;
+#else
+            const bool isPressed = button.state == SDL_PRESSED;
+#endif
 
             LocalEvent::MouseButtonType buttonType = LocalEvent::MouseButtonType::MOUSE_BUTTON_UNKNOWN;
             switch ( button.button ) {
@@ -913,24 +1202,28 @@ namespace EventProcessing
             case SDL_BUTTON_X1:
                 // We treat the Backward mouse button as a normal keyboard button to allow to use it for hot-key mapping.
                 eventHandler.onKeyboardEvent( fheroes2::Key::KEY_MOUSE_BUTTON_BACKWARD, 0,
-                                              ( button.state == SDL_PRESSED ) ? LocalEvent::KeyboardEventState::KEY_DOWN : LocalEvent::KeyboardEventState::KEY_UP );
+                                              isPressed ? LocalEvent::KeyboardEventState::KEY_DOWN : LocalEvent::KeyboardEventState::KEY_UP );
                 return;
             case SDL_BUTTON_X2:
                 // We treat the Forward mouse button as a normal keyboard button to allow to use it for hot-key mapping.
                 eventHandler.onKeyboardEvent( fheroes2::Key::KEY_MOUSE_BUTTON_FORWARD, 0,
-                                              ( button.state == SDL_PRESSED ) ? LocalEvent::KeyboardEventState::KEY_DOWN : LocalEvent::KeyboardEventState::KEY_UP );
+                                              isPressed ? LocalEvent::KeyboardEventState::KEY_DOWN : LocalEvent::KeyboardEventState::KEY_UP );
                 return;
             default:
                 VERBOSE_LOG( "Unknown mouse button " << static_cast<int>( button.button ) )
                 return;
             }
 
-            eventHandler.onMouseButtonEvent( button.state == SDL_PRESSED, buttonType, { button.x, button.y } );
+            eventHandler.onMouseButtonEvent( isPressed, buttonType, { static_cast<int32_t>( button.x ), static_cast<int32_t>( button.y ) } );
         }
 
         static void onKeyboardEvent( LocalEvent & eventHandler, const SDL_KeyboardEvent & event )
         {
+#if defined( WITH_SDL3 )
+            const fheroes2::Key key = getKeyFromSDL( event.key );
+#else
             const fheroes2::Key key = getKeyFromSDL( event.keysym.sym );
+#endif
             if ( key == fheroes2::Key::NONE ) {
                 // We do not process this key.
                 return;
@@ -938,10 +1231,18 @@ namespace EventProcessing
 
             LocalEvent::KeyboardEventState state = LocalEvent::KeyboardEventState::KEY_UNKNOWN;
             switch ( event.type ) {
+#if defined( WITH_SDL3 )
+            case SDL_EVENT_KEY_DOWN:
+#else
             case SDL_KEYDOWN:
+#endif
                 state = LocalEvent::KeyboardEventState::KEY_DOWN;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_EVENT_KEY_UP:
+#else
             case SDL_KEYUP:
+#endif
                 state = LocalEvent::KeyboardEventState::KEY_UP;
                 break;
             default:
@@ -949,28 +1250,48 @@ namespace EventProcessing
                 break;
             }
 
+#if defined( WITH_SDL3 )
+            eventHandler.onKeyboardEvent( key, getKeyModifierFromSDL( event.mod ), state );
+#else
             eventHandler.onKeyboardEvent( key, getKeyModifierFromSDL( event.keysym.mod ), state );
+#endif
         }
 
         static void onMouseWheelEvent( LocalEvent & eventHandler, const SDL_MouseWheelEvent & wheel )
         {
-            eventHandler.onMouseWheelEvent( { wheel.x, wheel.y } );
+            eventHandler.onMouseWheelEvent( { static_cast<int32_t>( wheel.x ), static_cast<int32_t>( wheel.y ) } );
         }
 
         static void onControllerAxisEvent( LocalEvent & eventHandler, const SDL_ControllerAxisEvent & motion )
         {
             LocalEvent::ControllerAxisType axisType = LocalEvent::ControllerAxisType::CONTROLLER_AXIS_UNKNOWN;
             switch ( motion.axis ) {
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_AXIS_LEFTX:
+#else
             case SDL_CONTROLLER_AXIS_LEFTX:
+#endif
                 axisType = LocalEvent::ControllerAxisType::CONTROLLER_AXIS_LEFT_X;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_AXIS_LEFTY:
+#else
             case SDL_CONTROLLER_AXIS_LEFTY:
+#endif
                 axisType = LocalEvent::ControllerAxisType::CONTROLLER_AXIS_LEFT_Y;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_AXIS_RIGHTX:
+#else
             case SDL_CONTROLLER_AXIS_RIGHTX:
+#endif
                 axisType = LocalEvent::ControllerAxisType::CONTROLLER_AXIS_RIGHT_X;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_AXIS_RIGHTY:
+#else
             case SDL_CONTROLLER_AXIS_RIGHTY:
+#endif
                 axisType = LocalEvent::ControllerAxisType::CONTROLLER_AXIS_RIGHT_Y;
                 break;
             default:
@@ -983,49 +1304,103 @@ namespace EventProcessing
 
         static void onControllerButtonEvent( LocalEvent & eventHandler, const SDL_ControllerButtonEvent & button )
         {
+#if !defined( WITH_SDL3 )
             // Not sure how it is possible to have something else for a button.
             assert( ( button.state == SDL_PRESSED ) || ( button.state == SDL_RELEASED ) );
+#endif
 
             LocalEvent::ControllerButtonType buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_UNKNOWN;
 
             switch ( button.button ) {
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_SOUTH:
+#else
             case SDL_CONTROLLER_BUTTON_A:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_A;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_EAST:
+#else
             case SDL_CONTROLLER_BUTTON_B:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_B;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_WEST:
+#else
             case SDL_CONTROLLER_BUTTON_X:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_X;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_NORTH:
+#else
             case SDL_CONTROLLER_BUTTON_Y:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_Y;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
+#else
             case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_RIGHT_SHOULDER;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
+#else
             case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_LEFT_SHOULDER;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_DPAD_UP:
+#else
             case SDL_CONTROLLER_BUTTON_DPAD_UP:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_DPAD_UP;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
+#else
             case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_DPAD_DOWN;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+#else
             case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_DPAD_RIGHT;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
+#else
             case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_DPAD_LEFT;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_BACK:
+#else
             case SDL_CONTROLLER_BUTTON_BACK:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_BACK;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_START:
+#else
             case SDL_CONTROLLER_BUTTON_START:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_START;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_GAMEPAD_BUTTON_GUIDE:
+#else
             case SDL_CONTROLLER_BUTTON_GUIDE:
+#endif
                 buttonType = LocalEvent::ControllerButtonType::CONTROLLER_BUTTON_GUIDE;
                 break;
             default:
@@ -1070,7 +1445,11 @@ namespace EventProcessing
             }
 #endif
 
+#if defined( WITH_SDL3 )
+            eventHandler.onControllerButtonEvent( button.down, buttonType );
+#else
             eventHandler.onControllerButtonEvent( button.state == SDL_PRESSED, buttonType );
+#endif
         }
 
         static void onTouchEvent( LocalEvent & eventHandler, const SDL_TouchFingerEvent & event )
@@ -1099,13 +1478,25 @@ namespace EventProcessing
             LocalEvent::TouchFingerEventType fingerEventType = LocalEvent::TouchFingerEventType::FINGER_EVENT_UNKNOWN;
 
             switch ( event.type ) {
+#if defined( WITH_SDL3 )
+            case SDL_EVENT_FINGER_DOWN:
+#else
             case SDL_FINGERDOWN:
+#endif
                 fingerEventType = LocalEvent::TouchFingerEventType::FINGER_EVENT_DOWN;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_EVENT_FINGER_UP:
+#else
             case SDL_FINGERUP:
+#endif
                 fingerEventType = LocalEvent::TouchFingerEventType::FINGER_EVENT_UP;
                 break;
+#if defined( WITH_SDL3 )
+            case SDL_EVENT_FINGER_MOTION:
+#else
             case SDL_FINGERMOTION:
+#endif
                 fingerEventType = LocalEvent::TouchFingerEventType::FINGER_EVENT_MOTION;
                 break;
             default:
@@ -1113,7 +1504,11 @@ namespace EventProcessing
                 break;
             }
 
+#if defined( WITH_SDL3 )
+            eventHandler.onTouchFingerEvent( fingerEventType, event.touchID, event.fingerID, { event.x, event.y } );
+#else
             eventHandler.onTouchFingerEvent( fingerEventType, event.touchId, event.fingerId, { event.x, event.y } );
+#endif
         }
 
         static void onRenderDeviceResetEvent()
@@ -1126,29 +1521,49 @@ namespace EventProcessing
             return LocalEvent::Get().processQuitEvent();
         }
 
+#if defined( WITH_SDL3 )
+        void onControllerRemovedEvent( const SDL_GamepadDeviceEvent & event )
+#else
         void onControllerRemovedEvent( const SDL_JoyDeviceEvent & event )
+#endif
         {
             if ( _gameController == nullptr ) {
                 // Nothing to handle.
                 return;
             }
 
+#if defined( WITH_SDL3 )
+            const SDL_Gamepad * removedController = SDL_GetGamepadFromID( event.which );
+#else
             const SDL_GameController * removedController = SDL_GameControllerFromInstanceID( event.which );
+#endif
             if ( removedController == nullptr ) {
                 ERROR_LOG( "Failed to remove a controller with ID " << event.which << ". Error description: " << SDL_GetError() )
                 return;
             }
 
             if ( removedController == _gameController ) {
+#if defined( WITH_SDL3 )
+                SDL_CloseGamepad( _gameController );
+#else
                 SDL_GameControllerClose( _gameController );
+#endif
                 _gameController = nullptr;
             }
         }
 
+#if defined( WITH_SDL3 )
+        void onControllerAddedEvent( const SDL_GamepadDeviceEvent & event )
+#else
         void onControllerAddedEvent( const SDL_JoyDeviceEvent & event )
+#endif
         {
             if ( _gameController == nullptr ) {
+#if defined( WITH_SDL3 )
+                _gameController = SDL_OpenGamepad( event.which );
+#else
                 _gameController = SDL_GameControllerOpen( event.which );
+#endif
                 if ( _gameController != nullptr ) {
                     // We force enable the software-rendered mouse cursor to properly convert controller events to mouse events
                     // and render the cursor especially if no hardware mouse device is present and the hardware cursor is disabled by OS.

@@ -56,7 +56,11 @@
 #pragma GCC diagnostic ignored "-Wswitch-default"
 #endif
 
+#if defined( WITH_SDL3 )
+#include <SDL3/SDL_touch.h>
+#else
 #include <SDL_touch.h>
+#endif
 
 #if defined( ANDROID )
 #include <SDL_error.h>
@@ -273,7 +277,14 @@ bool System::isHandheldDevice()
 
 bool System::isTouchInputAvailable()
 {
+#if defined( WITH_SDL3 )
+    int count = 0;
+    SDL_TouchID * devices = SDL_GetTouchDevices( &count );
+    SDL_free( devices );
+    return count > 0;
+#else
     return SDL_GetNumTouchDevices() > 0;
+#endif
 }
 
 bool System::isVirtualKeyboardSupported()
