@@ -101,14 +101,14 @@ Completed in the latest session:
 * Replaced the Linux SDL2-compat bridge with direct SDL3 API use while leaving SDL2 as the default build.
 * Ported native SDL3 lifecycle, event, keyboard, mouse, gamepad, touch, cursor, display, fullscreen and window-capture behavior.
 * Preserved the indexed game image and existing palette-to-32-bit screen upload instead of introducing RGBA or physical-resolution rendering.
-* Kept audio explicitly unavailable on the opt-in SDL3 path through a small stub; the default SDL2/SDL2_mixer path is unchanged.
-* Updated the data-free runtime test to require a native SDL3 major version.
+* Replaced the temporary SDL3 audio stub with native SDL3_mixer tracks for sound channels and music while leaving the default SDL2/SDL2_mixer path unchanged.
+* Added a data-free initialization test that uses SDL's dummy audio driver and verifies that the engine creates native SDL3_mixer channels.
 
 Validation:
 
 * A local native SDL3 configuration compiled the complete `fheroes2` executable with warnings treated as errors.
-* The local native SDL3 build passed the synthetic renderer and SDL3 runtime tests.
-* The SDL3 dependency graph no longer contains SDL2-compat or SDL2_mixer.
+* The local native SDL3 build passed the synthetic renderer, SDL3 runtime and SDL3_mixer initialization tests.
+* The SDL3 dependency graph contains native SDL3 and SDL3_mixer without SDL2-compat or SDL2_mixer.
 * The existing CI job still builds the full game and data-free tests; the normal pull-request matrix verifies the unchanged SDL2 platforms.
 * No image, audio, map or original game-data file is part of this change or its validation.
 
@@ -117,9 +117,9 @@ Findings:
 * SDL3 can retain the current indexed renderer contract by converting palette indexes into an RGBA32 SDL surface before texture upload.
 * SDL3 display IDs, event types, gamepads, cursor visibility and surface metadata need explicit adaptation; SDL's old-name diagnostics are not a
   compatibility API.
-* Audio remains the only intentionally stubbed Linux subsystem on the opt-in native SDL3 path.
+* SDL3_mixer 3 uses persistent tracks instead of SDL2_mixer's numbered-channel and global-music APIs; the engine now owns that mapping explicitly.
 
 Best next step:
 
-* Port the Linux SDL3 path from the temporary audio stub to native SDL3_mixer, with a data-free initialization test, while keeping the SDL2 default
-  unchanged.
+* Add synthetic in-memory sound playback coverage, then validate Linux input, audio, windowing and lifecycle behavior on real hardware before considering
+  any change to the default SDL runtime.
