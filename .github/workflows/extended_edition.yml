@@ -51,6 +51,6 @@ jobs:
     - name: Configure native SDL3 platform
       run: cmake -B build-sdl3 -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON -DUSE_SDL_VERSION=SDL3
     - name: Build game and synthetic tests
-      run: cmake --build build-sdl3 --target fheroes2 synthetic_renderer_test sdl3_foundation_test
+      run: cmake --build build-sdl3 --target fheroes2 synthetic_renderer_test sdl3_foundation_test sdl3_audio_test
     - name: Run synthetic and native SDL3 tests
       run: ctest --test-dir build-sdl3 --output-on-failure

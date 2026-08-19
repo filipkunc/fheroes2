@@ -20,48 +20,38 @@
 
 #if defined( WITH_SDL3 )
 
+#include <cstdlib>
+#include <iostream>
+
+#include <SDL3/SDL.h>
+
 #include "audio.h"
 
-void Audio::Init() {}
-void Audio::Quit() {}
-void Audio::Mute() {}
-void Audio::Unmute() {}
-bool Audio::isValid()
+int main()
 {
-    return false;
-}
+    if ( !SDL_SetEnvironmentVariable( SDL_GetEnvironment(), "SDL_AUDIODRIVER", "dummy", true ) ) {
+        std::cerr << "Failed to select the dummy SDL3 audio driver: " << SDL_GetError() << '\n';
+        return EXIT_FAILURE;
+    }
 
-void Mixer::SetChannels( const int ) {}
-int Mixer::getChannelCount()
-{
-    return 0;
-}
-int Mixer::Play( const uint8_t *, const uint32_t, const bool, const std::optional<std::pair<int16_t, uint8_t>> )
-{
-    return -1;
-}
-void Mixer::setVolume( const int ) {}
-void Mixer::setPosition( const int, const int16_t, const uint8_t ) {}
-void Mixer::Stop( const int ) {}
-bool Mixer::isPlaying( const int )
-{
-    return false;
-}
+    if ( !SDL_Init( SDL_INIT_AUDIO ) ) {
+        std::cerr << "Native SDL3 audio initialization failed: " << SDL_GetError() << '\n';
+        return EXIT_FAILURE;
+    }
 
-bool Music::Play( const uint64_t, const PlaybackMode )
-{
-    return false;
+    Audio::Init();
+    const bool initialized = Audio::isValid();
+    const int channelCount = Mixer::getChannelCount();
+    Audio::Quit();
+    SDL_Quit();
+
+    if ( !initialized || channelCount <= 0 ) {
+        std::cerr << "Native SDL3_mixer initialization failed or created no channels\n";
+        return EXIT_FAILURE;
+    }
+
+    std::cout << "Native SDL3_mixer initialized with " << channelCount << " channels\n";
+    return EXIT_SUCCESS;
 }
-void Music::Play( const uint64_t, const std::vector<uint8_t> &, const PlaybackMode ) {}
-void Music::Play( const uint64_t, const std::string &, const PlaybackMode ) {}
-void Music::setVolume( const int ) {}
-void Music::SetFadeInMs( const int ) {}
-void Music::Stop() {}
-bool Music::isPlaying()
-{
-    return false;
-}
-void Music::setMidiSoundFonts( const ListFiles & ) {}
-void Music::setMidiTimidityCfg( const std::string & ) {}
 
 #endif

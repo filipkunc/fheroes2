@@ -60,8 +60,7 @@ if(USE_SDL_VERSION STREQUAL "SDL3")
 		message(FATAL_ERROR "The native SDL3 build is currently supported only on Linux.")
 	endif()
 
-	# Build the opt-in Linux path against the native SDL3 API. SDL2 remains the default,
-	# and audio stays disabled on this transitional path until it is ported separately.
+	# Build the opt-in Linux path against the native SDL3 API. SDL2 remains the default.
 	include(FetchContent)
 
 	set(SDL_SHARED ON CACHE BOOL "" FORCE)
@@ -78,10 +77,39 @@ if(USE_SDL_VERSION STREQUAL "SDL3")
 		)
 	FetchContent_MakeAvailable(SDL3)
 
+	# Keep the native SDL3 audio path reproducible without adding system codec dependencies.
+	set(SDLMIXER_INSTALL OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_DEPS_SHARED OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_VENDORED ON CACHE BOOL "" FORCE)
+	set(SDLMIXER_WERROR OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_TESTS OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_EXAMPLES OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_FLAC_LIBFLAC OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_FLAC_DRFLAC ON CACHE BOOL "" FORCE)
+	set(SDLMIXER_GME OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_MOD OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_MP3_DRMP3 ON CACHE BOOL "" FORCE)
+	set(SDLMIXER_MP3_MPG123 OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_MIDI_FLUIDSYNTH OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_MIDI_TIMIDITY ON CACHE BOOL "" FORCE)
+	set(SDLMIXER_OPUS OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_VORBIS_STB ON CACHE BOOL "" FORCE)
+	set(SDLMIXER_VORBIS_VORBISFILE OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_VORBIS_TREMOR OFF CACHE BOOL "" FORCE)
+	set(SDLMIXER_WAVPACK OFF CACHE BOOL "" FORCE)
+
+	FetchContent_Declare(
+		SDL3_mixer
+		GIT_REPOSITORY https://github.com/libsdl-org/SDL_mixer.git
+		GIT_TAG 72a81869b45e249e8e67102db4e98dd2441f05a1 # release-3.2.4
+		GIT_SHALLOW TRUE
+		)
+	FetchContent_MakeAvailable(SDL3_mixer)
+
 	set(FHEROES2_SDL_TARGET SDL3::SDL3)
 	set(FHEROES2_SDL_MAIN_TARGET SDL3::SDL3)
-	set(FHEROES2_SDL_MIXER_TARGET "")
-	message(STATUS "Native SDL3 Linux platform path enabled (audio disabled)")
+	set(FHEROES2_SDL_MIXER_TARGET SDL3_mixer::SDL3_mixer)
+	message(STATUS "Native SDL3 Linux platform and audio paths enabled")
 elseif(USE_SDL_VERSION STREQUAL "SDL2")
 	find_package(SDL2 REQUIRED)
 	find_package(SDL2_mixer REQUIRED)
