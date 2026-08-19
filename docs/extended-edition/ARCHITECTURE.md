@@ -65,8 +65,11 @@ only the smallest accepted runtime representation and any provenance record chos
 ## Branch strategy
 
 * Preserve `FK/Azure-Dragon` as a read-only reference.
-* Build the new edition from a current upstream commit.
-* Use focused topic branches for gameplay, SDL3, RGBA rendering, asset loading and import tools.
-* Merge upstream regularly instead of rebasing the long-lived edition history.
+* Keep `master` as an exact mirror of `ihhub/fheroes2:master`; do not merge Extended Edition work into it.
+* Use `extended-edition` as the long-lived integration branch and the base for all Extended Edition development.
+* Create focused `agent/<topic>` branches from `extended-edition` for gameplay, SDL3, RGBA rendering, asset loading and import tools, then open pull
+  requests back to `extended-edition`.
+* Bring upstream updates into `extended-edition` with a reviewed `master`-to-`extended-edition` pull request after syncing `master`.
+* Merge upstream regularly instead of rebasing or force-updating the long-lived edition history.
 * Keep commits small enough that a regression can be isolated with `git bisect`.
 * Update the migration documents whenever a technical decision changes.

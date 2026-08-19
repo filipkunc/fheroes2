@@ -15,8 +15,8 @@ Status markers:
 * [x] Agree on product direction, primary platforms and upstream strategy.
 * [x] Separate the art application from the game architecture.
 * [x] Define the proprietary-data boundary and synthetic CI approach.
-* [x] Create the clean rebuild branch from upstream commit `495c790e`.
-* [x] Fast-forward the fork's `master` branch to the clean upstream base.
+* [x] Create the clean rebuild from upstream commit `495c790e`.
+* [x] Define `master` as the exact upstream mirror and `extended-edition` as the long-lived integration branch.
 * [x] Establish the initial Linux and Android CI baseline.
 * [x] Add repository safeguards against accidental proprietary asset commits.
 * [x] Add the first synthetic renderer test executable and fixtures.
@@ -94,10 +94,13 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ## Session handoff
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 Completed in the latest session:
 
+* Adopted the permanent branch model: upstream-only `master`, long-lived `extended-edition`, and focused pull requests targeting
+  `extended-edition`.
+* Added `extended-edition` to the pull-request and post-merge CI branch filters.
 * Merged documentation checkpoint PR #1 after 19 Linux, Android and other platform jobs passed.
 * Disabled the PS Vita CI job on this fork because its cached SDK is incomplete; upstream CI remains unchanged.
 * Added a tracked-file guard for original game data and a dedicated fork CI workflow.

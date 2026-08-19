@@ -11,8 +11,13 @@ Read these files before changing code:
 2. [TESTING.md](TESTING.md)
 3. [PORTING_STATUS.md](PORTING_STATUS.md)
 
-Then confirm the current branch and upstream state. Work only on the next unchecked item in `PORTING_STATUS.md`, unless that file is updated first to
-explain a change in direction.
+Then confirm the current branch and upstream state:
+
+* `master` must match `ihhub/fheroes2:master` exactly and is never the target of Extended Edition feature pull requests.
+* `extended-edition` is the long-lived integration branch.
+* Start each focused change from `extended-edition` on an `agent/<topic>` branch and open its pull request against `extended-edition`.
+
+Work only on the next unchecked item in `PORTING_STATUS.md`, unless that file is updated first to explain a change in direction.
 
 At the end of a session, update `PORTING_STATUS.md` with:
 
@@ -35,6 +40,9 @@ This snapshot was recorded on 2026-08-18.
 | Artwork direction | Full-color artwork designed primarily for sharp 2x and 3x output |
 
 The preserved branch is reference material. Do not rewrite or force-update it. Port coherent features into new topic branches instead of rebasing its full history.
+
+Upstream updates first move `master` to the current `ihhub/fheroes2:master`. Merge those updates into `extended-edition` through a dedicated
+`master`-to-`extended-edition` pull request so CI and conflicts remain visible.
 
 ## Agreed scope
 
