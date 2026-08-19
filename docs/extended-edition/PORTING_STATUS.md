@@ -63,7 +63,7 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ### SDL3 platform port
 
-* [ ] Port upstream behavior to SDL3 with minimal renderer changes.
+* [~] Port upstream behavior to SDL3 with minimal renderer changes.
 * [ ] Validate Linux input, audio, windowing and lifecycle behavior.
 * [ ] Validate Android input, audio, packaging and lifecycle behavior.
 * [ ] Remove source-tree writes from shader or Android generation steps.
@@ -98,20 +98,29 @@ Last updated: 2026-08-19
 
 Completed in the latest session:
 
-* Adopted the permanent branch model: upstream-only `master`, long-lived `extended-edition`, and focused pull requests targeting
-  `extended-edition`.
-* Added `extended-edition` to the pull-request and post-merge CI branch filters.
-* Merged documentation checkpoint PR #1 after 19 Linux, Android and other platform jobs passed.
-* Disabled the PS Vita CI job on this fork because its cached SDK is incomplete; upstream CI remains unchanged.
-* Added a tracked-file guard for original game data and a dedicated fork CI workflow.
-* Added generated pixel-buffer tests for painter order, clipping and nearest-neighbor scaling at 1x, 2x and 3x.
+* Added an opt-in Linux CMake path with `-DUSE_SDL_VERSION=SDL3`.
+* Pinned SDL 3.4.14, SDL2-compat 2.32.70 and SDL2_mixer 2.8.2 through CMake FetchContent while leaving SDL2 as the unchanged default.
+* Kept the current SDL2 renderer and SDL2_mixer behavior behind SDL's official compatibility layer instead of importing the reference branch's RGBA,
+  physical-resolution or platform-removal changes.
+* Added a Linux CI job that compiles the game and synthetic tests on the SDL3 path.
+* Added a data-free smoke test that initializes the compatibility runtime and rejects accidental linkage to the runner's system SDL2.
 
 Validation:
 
-* The tracked-file guard passes against the repository and rejects representative mixed-case proprietary filenames.
-* The new commit contains no image, audio, map or original game data files.
-* GitHub Actions configured, built and passed the synthetic renderer CTest target.
+* The default SDL2 configuration remains the existing CMake default and the existing platform workflows are unchanged.
+* A local default SDL2 configuration built and passed the synthetic renderer test.
+* A local SDL3 configuration built `fheroes2` and passed both the synthetic renderer and SDL3 runtime smoke tests.
+* The tracked-file guard passes and the workflow YAML parses successfully.
+* The change contains only CMake, CI, C++ test and documentation files; it adds no image, audio, map or original game data.
+
+Findings:
+
+* The preserved branch's native SDL3 port is mixed with renderer, physical-resolution and platform-scope changes, so it is not safe to transplant as a
+  foundation commit.
+* SDL2-compat provides a narrow runtime baseline for reviewing build and dependency behavior, but it is a bridge rather than the final native SDL3 API
+  port.
 
 Best next step:
 
-* Start the smallest SDL3 port that preserves upstream rendering behavior, using the synthetic tests as the regression baseline.
+* Replace the compatibility bridge with conditional native SDL3 platform code for Linux while preserving the current indexed renderer behavior and
+  keeping SDL2 as the default until input, audio, windowing and lifecycle tests pass.

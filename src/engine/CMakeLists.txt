@@ -1,6 +1,6 @@
 ###########################################################################
 #   fheroes2: https://github.com/ihhub/fheroes2                           #
-#   Copyright (C) 2022 - 2025                                             #
+#   Copyright (C) 2022 - 2026                                             #
 #                                                                         #
 #   This program is free software; you can redistribute it and/or modify  #
 #   it under the terms of the GNU General Public License as published by  #
@@ -45,9 +45,9 @@ target_include_directories(
 target_link_libraries(
 	engine
 	smacker
-	${USE_SDL_VERSION}::${USE_SDL_VERSION}
-	${USE_SDL_VERSION}_mixer::${USE_SDL_VERSION}_mixer
-	$<$<BOOL:${ENABLE_IMAGE}>:${USE_SDL_VERSION}_image::${USE_SDL_VERSION}_image>
+	${FHEROES2_SDL_TARGET}
+	${FHEROES2_SDL_MIXER_TARGET}
+	$<$<BOOL:${ENABLE_IMAGE}>:${FHEROES2_SDL_IMAGE_TARGET}>
 	$<$<BOOL:${ENABLE_IMAGE}>:PNG::PNG>
 	Threads::Threads
 	ZLIB::ZLIB
