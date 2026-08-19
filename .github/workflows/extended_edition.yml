@@ -45,7 +45,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get -y update
-        sudo apt-get -y install libx11-dev ninja-build
+        sudo apt-get -y install libasound2-dev libx11-dev libxext-dev ninja-build
     - name: Configure SDL3 foundation
       run: cmake -B build-sdl3 -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON -DUSE_SDL_VERSION=SDL3
     - name: Build game and synthetic tests
