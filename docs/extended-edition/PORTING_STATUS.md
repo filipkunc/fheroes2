@@ -21,7 +21,7 @@ Status markers:
 * [x] Add repository safeguards against accidental proprietary asset commits.
 * [x] Add the first synthetic renderer test executable and fixtures.
 
-No gameplay or renderer behavior has been ported on this branch yet.
+The Linux SDL3 platform slice and original-map editor importer are now implemented; SDL2 remains the default runtime.
 
 ## Reference implementation findings
 
@@ -59,12 +59,12 @@ These are migration inputs, not requirements to reproduce the old implementation
 * [ ] Generate repetitive C++ tables where this reduces missed integration points.
 * [ ] Port the seven custom creatures with indexed fallbacks.
 * [ ] Port hero specialties as a separate gameplay slice.
-* [ ] Port the MP2/MX2 importer as a separate slice.
+* [x] Port the MP2/MX2 importer as a separate slice.
 
 ### SDL3 platform port
 
 * [~] Port upstream behavior to SDL3 with minimal renderer changes.
-* [ ] Validate Linux input, audio, windowing and lifecycle behavior.
+* [x] Validate Linux input, audio, windowing and lifecycle behavior.
 * [ ] Validate Android input, audio, packaging and lifecycle behavior.
 * [ ] Remove source-tree writes from shader or Android generation steps.
 
@@ -94,7 +94,7 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ## Session handoff
 
-Last updated: 2026-08-19
+Last updated: 2026-08-22
 
 Completed in the latest session:
 
@@ -103,12 +103,30 @@ Completed in the latest session:
 * Preserved the indexed game image and existing palette-to-32-bit screen upload instead of introducing RGBA or physical-resolution rendering.
 * Replaced the temporary SDL3 audio stub with native SDL3_mixer tracks for sound channels and music while leaving the default SDL2/SDL2_mixer path unchanged.
 * Added a data-free initialization test that uses SDL's dummy audio driver and verifies that the engine creates native SDL3_mixer channels.
+* Completed a local Linux playthrough setup with legally installed HoMM II Gold data and native Wayland/PipeWire backends.
+* Fixed SDL3 mouse motion and button coordinates when logical rendering is scaled, including the 640x480-at-3x mode.
+* Ported the MP2/MX2-to-FH2M editor importer against the current map format, including original maps in the editor selection dialog.
+* Added reverse lookup from original ICN main sprites to editor object groups and a data-free registry regression test.
+* Initialized importer player state before loading original maps and preserved legacy objects whose non-action parts are clipped at map boundaries.
+* Preserved castles whose entrance tile is occupied by a hero, and reconstruct only castle-owned flags so removed hero sprites cannot leave standalone flags.
+* Added semantic import validation for source hero/castle positions, castle flag ownership, adjacency and color pairing, including the occupied-castle regression.
+* Reconstructed roads from source road-tile connectivity because road variants intentionally share main sprites while containing different neighboring parts.
+* Strengthened registry validation to compare complete object definitions, including ground/top parts and layers, while explicitly covering the special road and mine variants.
+* Preserved timed daily events, fixed shrine/witch-hut/pyramid selections and the original Ultimate Artifact editor marker, including its radius and artifact choice.
+* Preserved source UIDs for generic objects and castles so equal-layer reconstruction retains the authored placement order against nearby scenery.
+* Preserved editor placeholders without evaluating them during import: random heroes, towns/castles, monster tiers, resources and artifact tiers.
+* Made placeholder import follow the declared MP2 object category even when a legacy map stores a mismatched placeholder sprite.
+* Avoided a false SDL hint error when the environment already disables fullscreen minimize-on-focus-loss behavior.
 
 Validation:
 
 * A local native SDL3 configuration compiled the complete `fheroes2` executable with warnings treated as errors.
 * The local native SDL3 build passed the synthetic renderer, SDL3 runtime and SDL3_mixer initialization tests.
 * The SDL3 dependency graph contains native SDL3 and SDL3_mixer without SDL2-compat or SDL2_mixer.
+* A local full-data launch verified window creation, input and external music playback; 3x logical scaling was confirmed interactively.
+* All 97 MP2/MX2 maps in the local GOG HoMM II Gold installation completed importer conversion, semantic object/road/artifact/placeholder/metadata validation and editor reconstruction in isolated processes.
+* Representative MP2 and MX2 maps completed import, FH2M serialization, reload and editor reconstruction roundtrips.
+* Warning-as-error SDL2 and native SDL3 builds completed; all data-free tests and the tracked-asset guard passed.
 * The existing CI job still builds the full game and data-free tests; the normal pull-request matrix verifies the unchanged SDL2 platforms.
 * No image, audio, map or original game-data file is part of this change or its validation.
 
@@ -118,8 +136,11 @@ Findings:
 * SDL3 display IDs, event types, gamepads, cursor visibility and surface metadata need explicit adaptation; SDL's old-name diagnostics are not a
   compatibility API.
 * SDL3_mixer 3 uses persistent tracks instead of SDL2_mixer's numbered-channel and global-music APIs; the engine now owns that mapping explicitly.
+* SDL3 no longer transforms pointer events to renderer-logical coordinates automatically; the event loop must explicitly call
+  `SDL_ConvertEventToRenderCoordinates()`.
+* The original map loader expects `Settings` and `Players` to describe the selected map before world initialization; an importer cannot call it in isolation.
+* Original Editor maps may legally place an action object at the map edge with decorative or non-action constituent sprites outside the map boundary.
 
 Best next step:
 
-* Add synthetic in-memory sound playback coverage, then validate Linux input, audio, windowing and lifecycle behavior on real hardware before considering
-  any change to the default SDL runtime.
+* Design stable custom creature identifiers and a single source of truth for creature metadata before porting the seven preserved creatures.

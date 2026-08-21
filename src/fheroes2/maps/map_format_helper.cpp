@@ -1018,6 +1018,8 @@ namespace Maps
         for ( const auto & info : sortedObjects ) {
             assert( info.info != nullptr );
             if ( !readTileObject( world.getTile( info.tileIndex ), *info.info ) ) {
+                ERROR_LOG( "Failed to place map object with UID " << info.info->id << ", group " << static_cast<int>( info.info->group ) << ", index "
+                                                                  << info.info->index << " at tile " << info.tileIndex << '.' )
                 return false;
             }
         }

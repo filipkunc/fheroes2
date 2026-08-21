@@ -99,7 +99,7 @@ namespace
             gettext_noop( "Sheltemburg" ),  gettext_noop( "Corackston" ) };
 }
 
-void Castle::LoadFromMP2( const std::vector<uint8_t> & data )
+void Castle::LoadFromMP2( const std::vector<uint8_t> & data, const bool preserveRandomRace )
 {
     assert( data.size() == MP2::MP2_CASTLE_STRUCTURE_SIZE );
 
@@ -365,8 +365,13 @@ void Castle::LoadFromMP2( const std::vector<uint8_t> & data )
         _race = Race::NECR;
         break;
     default: {
-        const int kingdomRace = Players::GetPlayerRace( GetColor() );
-        _race = ( PlayerColor::NONE != GetColor() && ( Race::ALL & kingdomRace ) ? kingdomRace : Race::Rand() );
+        if ( preserveRandomRace ) {
+            _race = Race::RAND;
+        }
+        else {
+            const int kingdomRace = Players::GetPlayerRace( GetColor() );
+            _race = ( PlayerColor::NONE != GetColor() && ( Race::ALL & kingdomRace ) ? kingdomRace : Race::Rand() );
+        }
         break;
     }
     }

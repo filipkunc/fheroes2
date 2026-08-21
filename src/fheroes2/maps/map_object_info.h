@@ -175,6 +175,9 @@ namespace Maps
     // A valid pointer could also point to LayeredObjectPartInfo object.
     const ObjectPartInfo * getObjectPartByIcn( const MP2::ObjectIcnType icnType, const uint32_t icnIndex );
 
+    // Find an editor object by the ICN type and index of its main ground-level part.
+    bool getObjectGroupAndIndexByMainIcn( const MP2::ObjectIcnType icnType, const uint32_t icnIndex, ObjectGroup & group, uint32_t & objectIndex );
+
     MP2::MapObjectType getObjectTypeByIcn( const MP2::ObjectIcnType icnType, const uint32_t icnIndex );
 
     // The function returns tile offsets only for ground level objects located on OBJECT_LAYER and BACKGROUND_LAYER layers.

@@ -762,7 +762,9 @@ MapsFileInfoList Maps::getEditorMapFileInfos()
         return {};
     }
 
-    const ListFiles maps = Settings::FindFiles( "maps", ".fh2m", false );
+    ListFiles maps = Settings::FindFiles( "maps", ".mp2", false );
+    maps.Append( Settings::FindFiles( "maps", ".mx2", false ) );
+    maps.Append( Settings::FindFiles( "maps", ".fh2m", false ) );
     if ( maps.empty() ) {
         // No files exist.
         return {};
@@ -771,12 +773,23 @@ MapsFileInfoList Maps::getEditorMapFileInfos()
     // There could be different file locations but with the same filename.
     std::multimap<std::string, Maps::FileInfo, std::less<>> sortedMaps;
     const auto currentLanguage = fheroes2::getCurrentLanguage();
+    const bool fixSpecialFrenchCharacters
+        = currentLanguage == fheroes2::SupportedLanguage::French && fheroes2::getResourceLanguage() == fheroes2::SupportedLanguage::French;
 
     for ( const std::string & mapFile : maps ) {
         Maps::FileInfo fi;
 
-        if ( !fi.readResurrectionMap( mapFile, true, currentLanguage ) ) {
+        const std::string lowerPath = StringLower( mapFile );
+        const bool isOriginalMap = lowerPath.size() >= 4
+                                   && ( lowerPath.compare( lowerPath.size() - 4, 4, ".mp2" ) == 0
+                                        || lowerPath.compare( lowerPath.size() - 4, 4, ".mx2" ) == 0 );
+        if ( isOriginalMap ? !fi.readMP2Map( mapFile, true ) : !fi.readResurrectionMap( mapFile, true, currentLanguage ) ) {
             continue;
+        }
+
+        if ( isOriginalMap && fixSpecialFrenchCharacters ) {
+            fheroes2::fixFrenchCharactersForMP2Map( fi.name );
+            fheroes2::fixFrenchCharactersForMP2Map( fi.description );
         }
 
         sortedMaps.emplace( StringLower( System::GetFileName( mapFile ) ), std::move( fi ) );
