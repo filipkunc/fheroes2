@@ -1506,7 +1506,14 @@ namespace
 
             // Setting this hint prevents the window to regain focus after losing it in fullscreen mode.
             // It also fixes issues when SDL_UpdateTexture() calls fail because of refocusing.
-            if ( !SDL_SetHint( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0" ) ) {
+#if defined( WITH_SDL3 )
+            const bool isMinimizeOnFocusLossDisabled
+                = SDL_SetHint( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0" ) || !SDL_GetHintBoolean( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, true );
+#else
+            const bool isMinimizeOnFocusLossDisabled = SDL_SetHint( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0" ) == SDL_TRUE
+                                                       || SDL_GetHintBoolean( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, SDL_TRUE ) == SDL_FALSE;
+#endif
+            if ( !isMinimizeOnFocusLossDisabled ) {
                 ERROR_LOG( "Failed to set the " SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS " hint." )
             }
 
