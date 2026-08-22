@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -30,6 +31,7 @@
 #include <vector>
 
 #include "map_format_info.h"
+#include "map_object_info.h"
 
 namespace Maps::Map_Format
 {

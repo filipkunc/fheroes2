@@ -26,7 +26,10 @@
 #include <tuple>
 #include <vector>
 
-#include "map_object_info.h"
+namespace Maps
+{
+    enum class ObjectGroup : uint8_t;
+}
 
 namespace Maps::Map_Format
 {

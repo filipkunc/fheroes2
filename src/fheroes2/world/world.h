@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "army_troop.h"
+#include "artifact.h"
 #include "artifact_ultimate.h"
 #include "castle.h"
 #include "color.h"

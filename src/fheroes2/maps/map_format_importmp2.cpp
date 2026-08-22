@@ -24,14 +24,19 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <list>
 #include <map>
+#include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "artifact.h"
 #include "castle.h"
 #include "color.h"
-#include "direction.h"
+#include "game_language.h"
+#include "game_string.h"
 #include "heroes.h"
 #include "logging.h"
 #include "map_format_helper.h"
