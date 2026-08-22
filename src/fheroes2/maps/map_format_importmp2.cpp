@@ -167,9 +167,9 @@ namespace Maps::Map_Format
         const bool isOriginalMp2 = lowerPath.size() >= 4 && lowerPath.substr( lowerPath.size() - 4 ) == ".mp2";
 
         // Step 2: load the MP2/MX2 file into the World.
-        World & world = World::Get();
+        World & mapWorld = World::Get();
         MP2MapImportInfo importInfo;
-        if ( !world.LoadMapMP2( filePath, isOriginalMp2, &importInfo ) ) {
+        if ( !mapWorld.LoadMapMP2( filePath, isOriginalMp2, &importInfo ) ) {
             return false;
         }
 
@@ -194,7 +194,7 @@ namespace Maps::Map_Format
             const uint32_t tileIndex = static_cast<uint32_t>( fi.victoryConditionParams[0] ) + static_cast<uint32_t>( fi.victoryConditionParams[1] ) * fi.width;
             mapFormat.victoryConditionMetadata.push_back( tileIndex );
 
-            const Castle * castle = world.getCastle( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
+            const Castle * castle = mapWorld.getCastle( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
             mapFormat.victoryConditionMetadata.push_back( castle ? static_cast<uint32_t>( castle->GetColor() ) : 0 );
             break;
         }
@@ -202,7 +202,7 @@ namespace Maps::Map_Format
             const uint32_t tileIndex = static_cast<uint32_t>( fi.victoryConditionParams[0] ) + static_cast<uint32_t>( fi.victoryConditionParams[1] ) * fi.width;
             mapFormat.victoryConditionMetadata.push_back( tileIndex );
 
-            const Heroes * hero = world.GetHeroes( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
+            const Heroes * hero = mapWorld.GetHeroes( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
             mapFormat.victoryConditionMetadata.push_back( hero ? static_cast<uint32_t>( hero->GetColor() ) : 0 );
             break;
         }
@@ -256,7 +256,7 @@ namespace Maps::Map_Format
             const uint32_t tileIndex = static_cast<uint32_t>( fi.lossConditionParams[0] ) + static_cast<uint32_t>( fi.lossConditionParams[1] ) * fi.width;
             mapFormat.lossConditionMetadata.push_back( tileIndex );
 
-            const Castle * castle = world.getCastle( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
+            const Castle * castle = mapWorld.getCastle( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
             mapFormat.lossConditionMetadata.push_back( castle ? static_cast<uint32_t>( castle->GetColor() ) : 0 );
             break;
         }
@@ -264,7 +264,7 @@ namespace Maps::Map_Format
             const uint32_t tileIndex = static_cast<uint32_t>( fi.lossConditionParams[0] ) + static_cast<uint32_t>( fi.lossConditionParams[1] ) * fi.width;
             mapFormat.lossConditionMetadata.push_back( tileIndex );
 
-            const Heroes * hero = world.GetHeroes( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
+            const Heroes * hero = mapWorld.GetHeroes( Maps::GetPoint( static_cast<int32_t>( tileIndex ) ) );
             mapFormat.lossConditionMetadata.push_back( hero ? static_cast<uint32_t>( hero->GetColor() ) : 0 );
             break;
         }
@@ -285,7 +285,7 @@ namespace Maps::Map_Format
         mapFormat.playerRace = fi.races;
 
         // Step 3: terrain + object tiles.
-        const int32_t mapWidth = world.w();
+        const int32_t mapWidth = mapWorld.w();
         mapFormat.width = mapWidth;
 
         const int32_t totalTiles = mapWidth * mapWidth;
@@ -336,9 +336,9 @@ namespace Maps::Map_Format
         }
 
         for ( int32_t tileId = 0; tileId < totalTiles; ++tileId ) {
-            const Maps::Tile & worldTile = world.getTile( tileId );
+            const Maps::Tile & worldTile = mapWorld.getTile( tileId );
             TileInfo & mapTile = mapFormat.tiles[static_cast<size_t>( tileId )];
-            const Castle * castleOnTile = world.getCastle( Maps::GetPoint( tileId ) );
+            const Castle * castleOnTile = mapWorld.getCastle( Maps::GetPoint( tileId ) );
             const Castle * castleAtEntrance = ( castleOnTile != nullptr && castleOnTile->GetIndex() == tileId ) ? castleOnTile : nullptr;
 
             if ( castleAtEntrance != nullptr ) {
@@ -471,7 +471,7 @@ namespace Maps::Map_Format
                 mapTile.objects.push_back( { placeholderIter->second.source.objectUid, placeholderIter->second.group, placeholderIter->second.objectIndex } );
                 heroUidByTileId[tileId] = placeholderIter->second.source.objectUid;
 
-                const Heroes * hero = world.GetHeroes( placeholderIter->second.source.heroId );
+                const Heroes * hero = mapWorld.GetHeroes( placeholderIter->second.source.heroId );
                 if ( hero == nullptr ) {
                     return false;
                 }
@@ -483,7 +483,7 @@ namespace Maps::Map_Format
             else if ( worldTile.getMainObjectType() == MP2::OBJ_HERO ) {
                 validationInfo.heroPositions.push_back( tileId );
 
-                const Heroes * hero = world.GetHeroes( Maps::GetPoint( tileId ) );
+                const Heroes * hero = mapWorld.GetHeroes( Maps::GetPoint( tileId ) );
                 if ( hero != nullptr ) {
                     const int colorIdx = Color::GetIndex( hero->GetColor() );
                     int raceIdx = 6; // default: RAND/unknown
@@ -588,7 +588,7 @@ namespace Maps::Map_Format
 
             if ( roadObjectIndex != 512 ) {
                 for ( const int32_t nearbyTileId : Maps::getAroundIndexes( roadTileId, mapWidth, mapWidth, 1 ) ) {
-                    if ( world.getTile( nearbyTileId ).isRoad() ) {
+                    if ( mapWorld.getTile( nearbyTileId ).isRoad() ) {
                         roadObjectIndex |= static_cast<uint32_t>( Maps::GetDirection( roadTileId, nearbyTileId ) );
                     }
                 }
@@ -611,7 +611,7 @@ namespace Maps::Map_Format
             }
             const uint32_t uid = castleUidIt->second;
 
-            const Castle * castle = world.getCastle( Maps::GetPoint( tileId ) );
+            const Castle * castle = mapWorld.getCastle( Maps::GetPoint( tileId ) );
             if ( castle == nullptr || castle->GetIndex() != tileId ) {
                 return false;
             }
@@ -633,7 +633,7 @@ namespace Maps::Map_Format
 
         // Step 5: per-tile metadata (heroes, signs, events, sphinxes, capturable objects).
         for ( int32_t tileId = 0; tileId < totalTiles; ++tileId ) {
-            const Maps::Tile & tile = world.getTile( tileId );
+            const Maps::Tile & tile = mapWorld.getTile( tileId );
             const MP2::MapObjectType objType = tile.getMainObjectType();
             const auto placeholderIter = placeholderByTileId.find( tileId );
 
@@ -659,7 +659,7 @@ namespace Maps::Map_Format
                 // LoadMapMP2() stripped the MINIHERO sprite).
                 const auto it = heroUidByTileId.find( tileId );
                 if ( it != heroUidByTileId.end() ) {
-                    const Heroes * hero = world.GetHeroes( Maps::GetPoint( tileId ) );
+                    const Heroes * hero = mapWorld.GetHeroes( Maps::GetPoint( tileId ) );
                     if ( hero != nullptr ) {
                         HeroMetadata & metadata = mapFormat.heroMetadata[it->second];
                         metadata = hero->getHeroMetadata();
@@ -672,7 +672,7 @@ namespace Maps::Map_Format
             }
             case MP2::OBJ_JAIL: {
                 // Jail heroes keep their tile sprite intact, so uid is valid.
-                const Heroes * hero = world.GetHeroes( Maps::GetPoint( tileId ) );
+                const Heroes * hero = mapWorld.GetHeroes( Maps::GetPoint( tileId ) );
                 if ( hero != nullptr ) {
                     mapFormat.heroMetadata[uid] = hero->getHeroMetadata();
                 }
@@ -760,7 +760,7 @@ namespace Maps::Map_Format
 
             case MP2::OBJ_SIGN:
             case MP2::OBJ_BOTTLE: {
-                const auto * sign = dynamic_cast<const MapSign *>( world.GetMapObject( static_cast<uint32_t>( tileId ) ) );
+                const auto * sign = dynamic_cast<const MapSign *>( mapWorld.GetMapObject( static_cast<uint32_t>( tileId ) ) );
                 if ( sign != nullptr ) {
                     mapFormat.signMetadata[uid].message = sign->message.text;
                 }
@@ -768,7 +768,7 @@ namespace Maps::Map_Format
             }
 
             case MP2::OBJ_EVENT: {
-                const auto * ev = dynamic_cast<const MapEvent *>( world.GetMapObject( static_cast<uint32_t>( tileId ) ) );
+                const auto * ev = dynamic_cast<const MapEvent *>( mapWorld.GetMapObject( static_cast<uint32_t>( tileId ) ) );
                 if ( ev != nullptr ) {
                     mapFormat.adventureMapEventMetadata[uid] = convertMapEvent( *ev );
                 }
@@ -776,7 +776,7 @@ namespace Maps::Map_Format
             }
 
             case MP2::OBJ_SPHINX: {
-                const auto * sp = dynamic_cast<const MapSphinx *>( world.GetMapObject( static_cast<uint32_t>( tileId ) ) );
+                const auto * sp = dynamic_cast<const MapSphinx *>( mapWorld.GetMapObject( static_cast<uint32_t>( tileId ) ) );
                 if ( sp != nullptr && sp->valid ) {
                     mapFormat.sphinxMetadata[uid] = convertSphinx( *sp );
                 }
@@ -795,7 +795,7 @@ namespace Maps::Map_Format
             default:
                 // Capturable objects (mines, lighthouses, sawmills, etc.) – preserve owner color if non-neutral.
                 if ( Maps::isCapturableObject( objType ) ) {
-                    const PlayerColor ownerColor = world.GetCapturedObject( tileId ).GetColor();
+                    const PlayerColor ownerColor = mapWorld.GetCapturedObject( tileId ).GetColor();
                     if ( ownerColor != PlayerColor::NONE ) {
                         mapFormat.capturableObjectsMetadata[uid].ownerColor = ownerColor;
                     }
@@ -805,15 +805,15 @@ namespace Maps::Map_Format
         }
 
         // Step 6: daily events and rumors.
-        for ( const EventDate & event : world.getDailyEvents() ) {
+        for ( const EventDate & event : mapWorld.getDailyEvents() ) {
             mapFormat.dailyEvents.emplace_back( convertDailyEvent( event ) );
         }
-        validationInfo.dailyEventCount = world.getDailyEvents().size();
+        validationInfo.dailyEventCount = mapWorld.getDailyEvents().size();
 
-        for ( const std::string & rumor : world.getCustomRumors() ) {
+        for ( const std::string & rumor : mapWorld.getCustomRumors() ) {
             mapFormat.rumors.push_back( rumor );
         }
-        validationInfo.rumorCount = world.getCustomRumors().size();
+        validationInfo.rumorCount = mapWorld.getCustomRumors().size();
 
         std::string validationError;
         if ( !validateImportedMapObjectPlacement( mapFormat, validationInfo, &validationError ) ) {
