@@ -161,6 +161,9 @@ int main()
         return fail( "The synthetic town metadata was not imported exactly." );
     }
 
+    castleMetadata.defenderMonsterType = { Monster::AZURE_DRAGON, Monster::BLOOD_DRAGON, Monster::THOR, Monster::AVENGER, Monster::SUCCUBUS };
+    castleMetadata.defenderMonsterCount = { 1, 2, 3, 4, 5 };
+
     std::vector<uint8_t> defaultCastleBlock( MP2::MP2_CASTLE_STRUCTURE_SIZE );
     defaultCastleBlock[39] = 1;
     CastleMetadata defaultCastleMetadata;
@@ -202,6 +205,9 @@ int main()
          || heroMetadata.patrolRadius != 7 ) {
         return fail( "The synthetic random hero metadata was not imported exactly." );
     }
+
+    heroMetadata.armyMonsterType = { Monster::DACHSHUND, Monster::MAID, 0, 0, 0 };
+    heroMetadata.armyMonsterCount = { 6, 7, 0, 0, 0 };
 
     std::vector<uint8_t> signBlock( MP2::MP2_SIGN_STRUCTURE_MIN_SIZE );
     signBlock[0] = 1;
@@ -313,6 +319,11 @@ int main()
          || reopened.signMetadata.at( 2001 ).message != imported.signMetadata.at( 2001 ).message
          || reopened.signMetadata.at( 2002 ).message != imported.signMetadata.at( 2002 ).message ) {
         return fail( "Imported MP2 object metadata changed during FH2M round-trip." );
+    }
+    if ( reopened.castleMetadata.at( 1002 ).defenderMonsterType
+             != std::array<int32_t, 5>{ Monster::AZURE_DRAGON, Monster::BLOOD_DRAGON, Monster::THOR, Monster::AVENGER, Monster::SUCCUBUS }
+         || reopened.heroMetadata.at( 1001 ).armyMonsterType != std::array<int32_t, 5>{ Monster::DACHSHUND, Monster::MAID, 0, 0, 0 } ) {
+        return fail( "Stable custom creature IDs changed during FH2M round-trip." );
     }
 
     return EXIT_SUCCESS;

@@ -39,6 +39,8 @@
 
 uint32_t Monster::GetMissileICN( uint32_t monsterID )
 {
+    monsterID = static_cast<uint32_t>( fheroes2::getCustomMonsterFallbackId( static_cast<int32_t>( monsterID ) ) );
+
     switch ( monsterID ) {
     case Monster::ARCHER:
     case Monster::RANGER:
@@ -824,7 +826,8 @@ const char * Monster::getRandomRaceMonstersName( const uint32_t building )
 
 int32_t Monster::ICNMonh() const
 {
-    return id >= PEASANT && id <= WATER_ELEMENT ? ICN::MONH0000 + id - PEASANT : ICN::UNKNOWN;
+    const int32_t spriteMonsterId = fheroes2::getCustomMonsterFallbackId( id );
+    return spriteMonsterId >= PEASANT && spriteMonsterId <= WATER_ELEMENT ? ICN::MONH0000 + spriteMonsterId - PEASANT : ICN::UNKNOWN;
 }
 
 Funds Monster::GetUpgradeCost() const

@@ -54,10 +54,10 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ### Custom game model
 
-* [ ] Design stable custom creature identifiers and save compatibility.
-* [ ] Define one source of truth for creature metadata.
-* [ ] Generate repetitive C++ tables where this reduces missed integration points.
-* [ ] Port the seven custom creatures with indexed fallbacks.
+* [x] Design stable custom creature identifiers and save compatibility.
+* [x] Define one source of truth for creature metadata.
+* [x] Avoid parallel custom-creature tables by constructing runtime metadata directly from the registry.
+* [~] Port the seven custom creatures with indexed fallbacks.
 * [ ] Port hero specialties as a separate gameplay slice.
 * [x] Port the MP2/MX2 importer as a separate slice.
 
@@ -98,6 +98,11 @@ Last updated: 2026-08-22
 
 Completed in the latest session:
 
+* Reserved stable Extended Edition creature IDs at `0x00010000` through `0x00010006` without changing upstream creature or random-placeholder IDs.
+* Added one declarative registry for Azure Dragon, Blood Dragon, Thor, Avenger, Succubus, Dachshund and Maid, including original stats, abilities,
+  costs, sounds and indexed fallback resources.
+* Kept the ambiguous `FK/Azure-Dragon` IDs available only through an explicit legacy lookup so normal random placeholders are never reinterpreted.
+* Added a data-free registry and signed-32-bit serialization round-trip test.
 * Replaced the Linux SDL2-compat bridge with direct SDL3 API use while leaving SDL2 as the default build.
 * Ported native SDL3 lifecycle, event, keyboard, mouse, gamepad, touch, cursor, display, fullscreen and window-capture behavior.
 * Preserved the indexed game image and existing palette-to-32-bit screen upload instead of introducing RGBA or physical-resolution rendering.
@@ -121,6 +126,8 @@ Completed in the latest session:
 
 Validation:
 
+* The custom-creature registry test validates stable and legacy IDs, unique keys, representative source metadata, fallback mappings, placeholder
+  isolation and exact serialization round trips.
 * A local native SDL3 configuration compiled the complete `fheroes2` executable with warnings treated as errors.
 * The local native SDL3 build passed the synthetic renderer, SDL3 runtime and SDL3_mixer initialization tests.
 * The SDL3 dependency graph contains native SDL3 and SDL3_mixer without SDL2-compat or SDL2_mixer.
@@ -145,4 +152,4 @@ Findings:
 
 Best next step:
 
-* Design stable custom creature identifiers and a single source of truth for creature metadata before porting the seven preserved creatures.
+* Connect the registry creatures to castle upgrade and dwelling progression, editor selection and random-creature pools as a focused gameplay slice.

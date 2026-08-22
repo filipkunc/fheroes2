@@ -280,9 +280,23 @@ int Battle::Unit::GetMorale() const
 
     int armyTroopMorale = ArmyTroop::GetMorale();
 
-    // enemy Bone dragons affect morale
-    if ( isAffectedByMorale() && arena->getEnemyForce( GetArmyColor() ).HasMonster( Monster::BONE_DRAGON ) && armyTroopMorale > Morale::TREASON ) {
-        --armyTroopMorale;
+    // Apply the strongest enemy morale penalty once. This preserves the Bone Dragon rule while allowing
+    // other creatures to declare the same behavior in metadata without hardcoded IDs.
+    if ( isAffectedByMorale() && armyTroopMorale > Morale::TREASON ) {
+        uint32_t moralePenalty = 0;
+        for ( const Unit * unit : arena->getEnemyForce( GetArmyColor() ) ) {
+            if ( unit == nullptr || !unit->isValid() ) {
+                continue;
+            }
+
+            const std::vector<fheroes2::MonsterAbility> & abilities = fheroes2::getMonsterData( unit->GetID() ).battleStats.abilities;
+            const auto abilityIter = std::find( abilities.cbegin(), abilities.cend(), fheroes2::MonsterAbilityType::MORAL_DECREMENT );
+            if ( abilityIter != abilities.cend() ) {
+                moralePenalty = std::max( moralePenalty, abilityIter->value );
+            }
+        }
+
+        armyTroopMorale = std::max( static_cast<int>( Morale::TREASON ), armyTroopMorale - static_cast<int>( moralePenalty ) );
     }
 
     return armyTroopMorale;
@@ -387,7 +401,12 @@ bool Battle::Unit::isIdling() const
 void Battle::Unit::NewTurn()
 {
     if ( isRegenerating() ) {
-        _hitPoints = ArmyTroop::GetHitPoints();
+        const std::vector<fheroes2::MonsterAbility> & abilities = fheroes2::getMonsterData( GetID() ).battleStats.abilities;
+        const auto abilityIter = std::find( abilities.cbegin(), abilities.cend(), fheroes2::MonsterAbilityType::HP_REGENERATION );
+        assert( abilityIter != abilities.cend() );
+
+        const uint32_t maxHitPoints = ArmyTroop::GetHitPoints();
+        _hitPoints = abilityIter->value > 0 ? std::min( maxHitPoints, _hitPoints + abilityIter->value ) : maxHitPoints;
     }
 
     ResetModes( TR_RETALIATED );
@@ -565,6 +584,7 @@ uint32_t Battle::Unit::CalculateDamageUnit( const Unit & enemy, double dmg ) con
 
     // If multiple options are suitable at the same time, the damage should be doubled only once
     if ( ( isAbilityPresent( fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_UNDEAD ) && enemy.isAbilityPresent( fheroes2::MonsterAbilityType::UNDEAD ) )
+         || ( isAbilityPresent( fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_DRAGONS ) && enemy.isAbilityPresent( fheroes2::MonsterAbilityType::DRAGON ) )
          || ( isAbilityPresent( fheroes2::MonsterAbilityType::EARTH_CREATURE )
               && enemy.isWeaknessPresent( fheroes2::MonsterWeaknessType::DOUBLE_DAMAGE_FROM_EARTH_CREATURES ) )
          || ( isAbilityPresent( fheroes2::MonsterAbilityType::AIR_CREATURE )
@@ -1108,6 +1128,7 @@ double Battle::Unit::evaluateThreatForUnit( const Unit & defender ) const
             case Spell::BLIND:
             case Spell::PARALYZE:
             case Spell::PETRIFY:
+            case Spell::HYPNOTIZE:
                 // Creature's built-in magic resistance (not 100% immunity but resistance, as, for example, with Dwarves) never works against the built-in magic of
                 // another creature (for example, Unicorn's Blind ability). Only the probability of triggering the built-in magic matters.
                 if ( defender.AllowApplySpell( static_cast<int32_t>( abilityIter->value ), nullptr ) ) {
@@ -1513,13 +1534,13 @@ uint32_t Battle::Unit::GetMagicResist( const Spell & spell, const HeroBase * app
         }
         break;
 
-    case Spell::HYPNOTIZE:
-        assert( applyingHero != nullptr );
-
-        if ( fheroes2::getHypnotizeMonsterHPPoints( spell, applyingHero->GetPower(), applyingHero ) < _hitPoints ) {
+    case Spell::HYPNOTIZE: {
+        const uint32_t spellPower = applyingHero != nullptr ? applyingHero->GetPower() : fheroes2::spellPowerForMonsterHypnotize;
+        if ( fheroes2::getHypnotizeMonsterHPPoints( spell, spellPower, applyingHero ) < _hitPoints ) {
             return 100;
         }
         break;
+    }
 
     default:
         break;
