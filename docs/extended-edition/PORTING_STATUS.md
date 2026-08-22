@@ -111,7 +111,8 @@ Completed in the latest session:
 * Preserved castles whose entrance tile is occupied by a hero, and reconstruct only castle-owned flags so removed hero sprites cannot leave standalone flags.
 * Added semantic import validation for source hero/castle positions, castle flag ownership, adjacency and color pairing, including the occupied-castle regression.
 * Reconstructed roads from source road-tile connectivity because road variants intentionally share main sprites while containing different neighboring parts.
-* Strengthened registry validation to compare complete object definitions, including ground/top parts and layers, while explicitly covering the special road and mine variants.
+* Strengthened registry validation to compare complete object definitions, including ground/top parts and layers,
+  while explicitly covering the special road and mine variants.
 * Preserved timed daily events, fixed shrine/witch-hut/pyramid selections and the original Ultimate Artifact editor marker, including its radius and artifact choice.
 * Preserved source UIDs for generic objects and castles so equal-layer reconstruction retains the authored placement order against nearby scenery.
 * Preserved editor placeholders without evaluating them during import: random heroes, towns/castles, monster tiers, resources and artifact tiers.
@@ -124,7 +125,8 @@ Validation:
 * The local native SDL3 build passed the synthetic renderer, SDL3 runtime and SDL3_mixer initialization tests.
 * The SDL3 dependency graph contains native SDL3 and SDL3_mixer without SDL2-compat or SDL2_mixer.
 * A local full-data launch verified window creation, input and external music playback; 3x logical scaling was confirmed interactively.
-* All 97 MP2/MX2 maps in the local GOG HoMM II Gold installation completed importer conversion, semantic object/road/artifact/placeholder/metadata validation and editor reconstruction in isolated processes.
+* All 97 MP2/MX2 maps in the local GOG HoMM II Gold installation completed importer conversion,
+  semantic object/road/artifact/placeholder/metadata validation and editor reconstruction in isolated processes.
 * Representative MP2 and MX2 maps completed import, FH2M serialization, reload and editor reconstruction roundtrips.
 * Warning-as-error SDL2 and native SDL3 builds completed; all data-free tests and the tracked-asset guard passed.
 * The existing CI job still builds the full game and data-free tests; the normal pull-request matrix verifies the unchanged SDL2 platforms.
