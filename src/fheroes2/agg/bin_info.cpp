@@ -58,7 +58,8 @@ namespace
                 return mapIterator->second;
             }
 
-            Bin_Info::MonsterAnimInfo info( monsterID, AGG::getDataFromAggFile( GetFilename( monsterID ), false ) );
+            const int animationMonsterId = fheroes2::getCustomMonsterFallbackId( monsterID );
+            Bin_Info::MonsterAnimInfo info( animationMonsterId, AGG::getDataFromAggFile( GetFilename( monsterID ), false ) );
             if ( info.isValid() ) {
                 _animMap[monsterID] = info;
                 return info;

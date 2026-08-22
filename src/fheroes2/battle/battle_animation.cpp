@@ -93,7 +93,7 @@ double AnimationSequence::movementProgress() const
 AnimationReference::AnimationReference( const int monsterID )
     : _monsterID( monsterID )
 {
-    if ( monsterID < Monster::PEASANT || monsterID > Monster::WATER_ELEMENT ) {
+    if ( !Monster( monsterID ).isValid() ) {
         return;
     }
 

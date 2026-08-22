@@ -123,14 +123,27 @@ public:
         WATER_ELEMENT,
 
         // Editor-related monsters.
-        RANDOM_MONSTER,
+        // These explicit values are persisted in FH2M metadata and must not move when upstream adds creatures.
+        RANDOM_MONSTER = 67,
         RANDOM_MONSTER_LEVEL_1,
         RANDOM_MONSTER_LEVEL_2,
         RANDOM_MONSTER_LEVEL_3,
         RANDOM_MONSTER_LEVEL_4,
 
-        // IMPORTANT! Put all new monsters just above this line.
-        MONSTER_COUNT
+        // IMPORTANT! Put all new upstream monsters just above this line.
+        MONSTER_COUNT,
+
+        // Extended Edition creatures use a separate stable ID namespace. Keep these IDs explicit and outside
+        // the contiguous upstream range so that adding upstream monsters does not invalidate maps or saves.
+        CUSTOM_MONSTER_ID_BEGIN = 0x00010000,
+        AZURE_DRAGON = CUSTOM_MONSTER_ID_BEGIN,
+        BLOOD_DRAGON = 0x00010001,
+        THOR = 0x00010002,
+        AVENGER = 0x00010003,
+        SUCCUBUS = 0x00010004,
+        DACHSHUND = 0x00010005,
+        MAID = 0x00010006,
+        CUSTOM_MONSTER_ID_END = MAID
     };
 
     Monster( const int m = UNKNOWN )
@@ -221,7 +234,7 @@ public:
 
     bool isValid() const
     {
-        return id != UNKNOWN && id < MONSTER_COUNT && !isRandomMonster();
+        return ( id != UNKNOWN && id < MONSTER_COUNT && !isRandomMonster() ) || fheroes2::isCustomMonsterId( id );
     }
 
     bool isRandomMonster() const
@@ -300,7 +313,8 @@ public:
 
     uint32_t GetSpriteIndex() const
     {
-        return UNKNOWN < id ? id - 1 : 0;
+        const int32_t spriteMonsterId = fheroes2::getCustomMonsterFallbackId( id );
+        return UNKNOWN < spriteMonsterId ? spriteMonsterId - 1 : 0;
     }
 
     Funds GetCost() const

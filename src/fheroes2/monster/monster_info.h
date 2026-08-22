@@ -31,6 +31,7 @@ namespace fheroes2
 {
     // Spell power value, based on which the effect of the monsters' built-in spells is calculated
     inline constexpr int spellPowerForBuiltinMonsterSpells{ 3 };
+    inline constexpr int spellPowerForMonsterHypnotize{ 20 };
 
     enum class MonsterAbilityType : int
     {
@@ -68,7 +69,8 @@ namespace fheroes2
         AREA_SHOT,
         MORAL_DECREMENT,
         ENEMY_HALVING,
-        SOUL_EATER
+        SOUL_EATER,
+        DOUBLE_DAMAGE_TO_DRAGONS
     };
 
     enum class MonsterWeaknessType : int
@@ -223,6 +225,23 @@ namespace fheroes2
 
         MonsterGeneralStats generalStats;
     };
+
+    struct CustomMonsterDefinition
+    {
+        int32_t id;
+        int32_t legacyFkId;
+        const char * stableKey;
+        int32_t fallbackMonsterId;
+        // Base strength is a derived runtime cache populated together with the upstream creature data.
+        mutable MonsterData data;
+    };
+
+    // The returned registry is the single source of truth for Extended Edition creature metadata.
+    const std::vector<CustomMonsterDefinition> & getCustomMonsterDefinitions();
+    const CustomMonsterDefinition * findCustomMonsterDefinition( int32_t monsterId );
+    const CustomMonsterDefinition * findCustomMonsterDefinitionByLegacyFkId( int32_t legacyMonsterId );
+    bool isCustomMonsterId( int32_t monsterId );
+    int32_t getCustomMonsterFallbackId( int32_t monsterId );
 
     const MonsterData & getMonsterData( const int monsterId );
 

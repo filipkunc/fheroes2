@@ -67,6 +67,10 @@ namespace
             damagePotential *= 1.15; // 15% of all Monsters are Undead, deals double damage.
         }
 
+        if ( fheroes2::isAbilityPresent( abilities, fheroes2::MonsterAbilityType::DOUBLE_DAMAGE_TO_DRAGONS ) ) {
+            damagePotential *= 1.1; // Roughly 10% of all monsters are Dragons, deals double damage.
+        }
+
         if ( fheroes2::isAbilityPresent( abilities, fheroes2::MonsterAbilityType::TWO_CELL_MELEE_ATTACK ) ) {
             damagePotential *= 1.2;
         }
@@ -108,6 +112,7 @@ namespace
             case Spell::PARALYZE:
             case Spell::BLIND:
             case Spell::PETRIFY:
+            case Spell::HYPNOTIZE:
                 monsterSpecial += abilityIter->percentage / 100.0;
                 break;
             case Spell::DISPEL:
@@ -565,6 +570,10 @@ namespace
             data.battleStats.monsterBaseStrength = getMonsterBaseStrength( data );
         }
 
+        for ( const fheroes2::CustomMonsterDefinition & definition : fheroes2::getCustomMonsterDefinitions() ) {
+            definition.data.battleStats.monsterBaseStrength = getMonsterBaseStrength( definition.data );
+        }
+
         // TODO: verify that no duplicates of abilities and weaknesses exist.
     }
 
@@ -600,12 +609,13 @@ namespace fheroes2
             populateMonsterData();
         }
 
-        assert( monsterId >= 0 && static_cast<size_t>( monsterId ) < monsterData.size() );
-        if ( monsterId < 0 || static_cast<size_t>( monsterId ) >= monsterData.size() ) {
-            return monsterData.front();
+        if ( monsterId >= 0 && static_cast<size_t>( monsterId ) < monsterData.size() ) {
+            return monsterData[monsterId];
         }
 
-        return monsterData[monsterId];
+        const CustomMonsterDefinition * definition = findCustomMonsterDefinition( monsterId );
+        assert( definition != nullptr );
+        return definition != nullptr ? definition->data : monsterData.front();
     }
 
     std::string getMonsterAbilityDescription( const MonsterAbility & ability, const bool ignoreBasicAbilities )
@@ -621,6 +631,8 @@ namespace fheroes2
             return _( "Double strike" );
         case MonsterAbilityType::DOUBLE_DAMAGE_TO_UNDEAD:
             return _( "Double damage to Undead" );
+        case MonsterAbilityType::DOUBLE_DAMAGE_TO_DRAGONS:
+            return _( "Double damage to Dragons" );
         case MonsterAbilityType::MAGIC_RESISTANCE:
             return std::to_string( ability.percentage ) + _( "% magic resistance" );
         case MonsterAbilityType::MIND_SPELL_IMMUNITY:
