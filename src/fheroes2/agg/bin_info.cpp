@@ -1,6 +1,6 @@
 /***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
- *   Copyright (C) 2020 - 2025                                             *
+ *   Copyright (C) 2020 - 2026                                             *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -58,7 +58,8 @@ namespace
                 return mapIterator->second;
             }
 
-            Bin_Info::MonsterAnimInfo info( monsterID, AGG::getDataFromAggFile( GetFilename( monsterID ), false ) );
+            const int animationMonsterId = fheroes2::getCustomMonsterFallbackId( monsterID );
+            Bin_Info::MonsterAnimInfo info( animationMonsterId, AGG::getDataFromAggFile( GetFilename( monsterID ), false ) );
             if ( info.isValid() ) {
                 _animMap[monsterID] = info;
                 return info;

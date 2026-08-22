@@ -1,6 +1,6 @@
 /***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
- *   Copyright (C) 2020 - 2025                                             *
+ *   Copyright (C) 2020 - 2026                                             *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -93,7 +93,7 @@ double AnimationSequence::movementProgress() const
 AnimationReference::AnimationReference( const int monsterID )
     : _monsterID( monsterID )
 {
-    if ( monsterID < Monster::PEASANT || monsterID > Monster::WATER_ELEMENT ) {
+    if ( !Monster( monsterID ).isValid() ) {
         return;
     }
 

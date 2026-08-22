@@ -49,6 +49,11 @@ should define each custom creature once in a declarative manifest or table and g
 Stable identifiers and save compatibility require an explicit design before creature IDs are added. Indexed fallbacks may remain useful even when
 high-resolution RGBA art is preferred.
 
+Extended Edition creature IDs occupy the reserved signed-32-bit range beginning at `0x00010000`. Upstream IDs, including random monster placeholders
+67 through 71, retain their original values. Custom metadata lives in a per-creature registry keyed by the stable ID; runtime array indexes and enum
+insertion order are not persistence contracts. The registry also records the conflicting IDs used by `FK/Azure-Dragon`, but those values may only be
+interpreted by an explicit legacy-FK migration because they overlap upstream placeholders and cannot be detected safely in ordinary saves or FH2M maps.
+
 Hero specialties and the MP2/MX2 importer are valuable but separate gameplay slices. They should not be bundled into renderer commits.
 
 ## Asset ownership boundary

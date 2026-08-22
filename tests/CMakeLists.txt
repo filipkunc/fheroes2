@@ -87,6 +87,16 @@ target_link_libraries(map_format_import_metadata_roundtrip_test PRIVATE engine)
 
 add_test(NAME map_format_import_metadata_roundtrip COMMAND map_format_import_metadata_roundtrip_test)
 
+add_executable(
+	custom_monster_registry_test
+	custom_monster_registry_test.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/monster/custom_monster_info.cpp
+	)
+target_include_directories(custom_monster_registry_test PRIVATE ${FHEROES2_TEST_INCLUDE_DIRS})
+target_link_libraries(custom_monster_registry_test PRIVATE engine)
+
+add_test(NAME custom_monster_registry COMMAND custom_monster_registry_test)
+
 if(USE_SDL_VERSION STREQUAL "SDL3")
 	add_executable(sdl3_foundation_test sdl3_foundation_test.cpp)
 	target_compile_definitions(sdl3_foundation_test PRIVATE WITH_SDL3)
