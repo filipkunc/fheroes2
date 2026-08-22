@@ -603,6 +603,21 @@ namespace EventProcessing
             SDL_Delay( milliseconds );
         }
 
+#if defined( WITH_SDL3 )
+        static void convertMouseEventCoordinates( SDL_Event & event )
+        {
+            if ( event.type != SDL_EVENT_MOUSE_MOTION && event.type != SDL_EVENT_MOUSE_BUTTON_DOWN && event.type != SDL_EVENT_MOUSE_BUTTON_UP ) {
+                return;
+            }
+
+            SDL_Window * window = SDL_GetWindowFromEvent( &event );
+            SDL_Renderer * renderer = window != nullptr ? SDL_GetRenderer( window ) : nullptr;
+            if ( renderer != nullptr && !SDL_ConvertEventToRenderCoordinates( renderer, &event ) ) {
+                ERROR_LOG( "Failed to convert mouse event coordinates: " << SDL_GetError() )
+            }
+        }
+#endif
+
         bool handleEvents( LocalEvent & eventHandler, const bool allowExit, bool & updateDisplay )
         {
             updateDisplay = false;
@@ -610,6 +625,11 @@ namespace EventProcessing
             SDL_Event event;
 
             while ( SDL_PollEvent( &event ) ) {
+#if defined( WITH_SDL3 )
+                // Unlike SDL2, SDL3 does not automatically map mouse events to the renderer's logical presentation coordinates.
+                convertMouseEventCoordinates( event );
+#endif
+
                 // Most SDL events should be processed sequentially one event at a time, but for some
                 // event types, the processing of intermediate events may be skipped in order to gain
                 // overall event processing speed.

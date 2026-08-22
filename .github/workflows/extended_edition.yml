@@ -31,9 +31,9 @@ jobs:
         sudo apt-get -y install libsdl2-dev libsdl2-mixer-dev ninja-build
     - name: Configure
       run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON
-    - name: Build synthetic renderer tests
-      run: cmake --build build --target synthetic_renderer_test
-    - name: Run synthetic renderer tests
+    - name: Build data-free tests
+      run: cmake --build build --target synthetic_renderer_test map_object_import_lookup_test map_format_import_validation_test
+    - name: Run data-free tests
       run: ctest --test-dir build --output-on-failure
 
   sdl3-foundation:
@@ -50,7 +50,7 @@ jobs:
           libxfixes-dev libxi-dev libxss-dev libxtst-dev ninja-build
     - name: Configure native SDL3 platform
       run: cmake -B build-sdl3 -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON -DUSE_SDL_VERSION=SDL3
-    - name: Build game and synthetic tests
-      run: cmake --build build-sdl3 --target fheroes2 synthetic_renderer_test sdl3_foundation_test sdl3_audio_test
+    - name: Build game and data-free tests
+      run: cmake --build build-sdl3 --target fheroes2 synthetic_renderer_test map_object_import_lookup_test map_format_import_validation_test sdl3_foundation_test sdl3_audio_test
     - name: Run synthetic and native SDL3 tests
       run: ctest --test-dir build-sdl3 --output-on-failure

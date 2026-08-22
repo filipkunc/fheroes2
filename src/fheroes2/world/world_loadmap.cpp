@@ -138,8 +138,12 @@ namespace
     }
 }
 
-bool World::LoadMapMP2( const std::string & filename, const bool isOriginalMp2File )
+bool World::LoadMapMP2( const std::string & filename, const bool isOriginalMp2File, MP2MapImportInfo * importInfo )
 {
+    if ( importInfo != nullptr ) {
+        *importInfo = {};
+    }
+
     Reset();
     Defaults();
 
@@ -307,6 +311,101 @@ bool World::LoadMapMP2( const std::string & filename, const bool isOriginalMp2Fi
         }
 
         tile.sortObjectParts();
+
+        if ( importInfo != nullptr ) {
+            const MP2::MapObjectType objectType = tile.getMainObjectType();
+            bool isPlaceholder = false;
+            switch ( objectType ) {
+            case MP2::OBJ_RANDOM_ARTIFACT:
+            case MP2::OBJ_RANDOM_ARTIFACT_TREASURE:
+            case MP2::OBJ_RANDOM_ARTIFACT_MINOR:
+            case MP2::OBJ_RANDOM_ARTIFACT_MAJOR:
+            case MP2::OBJ_RANDOM_ULTIMATE_ARTIFACT:
+            case MP2::OBJ_RANDOM_RESOURCE:
+            case MP2::OBJ_RANDOM_MONSTER:
+            case MP2::OBJ_RANDOM_MONSTER_WEAK:
+            case MP2::OBJ_RANDOM_MONSTER_MEDIUM:
+            case MP2::OBJ_RANDOM_MONSTER_STRONG:
+            case MP2::OBJ_RANDOM_MONSTER_VERY_STRONG:
+            case MP2::OBJ_RANDOM_TOWN:
+            case MP2::OBJ_RANDOM_CASTLE:
+                isPlaceholder = true;
+                break;
+            case MP2::OBJ_HERO: {
+                const auto isRandomHeroPart = []( const Maps::ObjectPart & part ) {
+                    return part.icnType == MP2::OBJ_ICN_TYPE_MINIHERO && Maps::getColorRaceFromHeroSprite( part.icnIndex ).second == Race::RAND;
+                };
+                isPlaceholder = isRandomHeroPart( tile.getMainObjectPart() )
+                                || std::any_of( tile.getGroundObjectParts().cbegin(), tile.getGroundObjectParts().cend(), isRandomHeroPart )
+                                || std::any_of( tile.getTopObjectParts().cbegin(), tile.getTopObjectParts().cend(), isRandomHeroPart );
+                break;
+            }
+            default:
+                break;
+            }
+
+            if ( isPlaceholder ) {
+                const auto isPlaceholderRoot = [objectType]( const Maps::ObjectPart & part ) {
+                    Maps::ObjectGroup group;
+                    uint32_t objectIndex = 0;
+                    if ( !Maps::getObjectGroupAndIndexByMainIcn( part.icnType, part.icnIndex, group, objectIndex ) ) {
+                        return false;
+                    }
+
+                    const Maps::ObjectInfo & objectInfo = Maps::getObjectInfo( group, static_cast<int32_t>( objectIndex ) );
+                    if ( objectType == MP2::OBJ_HERO ) {
+                        return group == Maps::ObjectGroup::KINGDOM_HEROES && Race::IndexToRace( static_cast<int>( objectInfo.metadata[1] ) ) == Race::RAND;
+                    }
+
+                    const auto isRandomArtifact = []( const MP2::MapObjectType type ) {
+                        return type == MP2::OBJ_RANDOM_ARTIFACT || type == MP2::OBJ_RANDOM_ARTIFACT_TREASURE || type == MP2::OBJ_RANDOM_ARTIFACT_MINOR
+                               || type == MP2::OBJ_RANDOM_ARTIFACT_MAJOR || type == MP2::OBJ_RANDOM_ULTIMATE_ARTIFACT;
+                    };
+                    const auto isRandomMonster = []( const MP2::MapObjectType type ) {
+                        return type == MP2::OBJ_RANDOM_MONSTER || type == MP2::OBJ_RANDOM_MONSTER_WEAK || type == MP2::OBJ_RANDOM_MONSTER_MEDIUM
+                               || type == MP2::OBJ_RANDOM_MONSTER_STRONG || type == MP2::OBJ_RANDOM_MONSTER_VERY_STRONG;
+                    };
+                    const auto isRandomTown = []( const MP2::MapObjectType type ) { return type == MP2::OBJ_RANDOM_TOWN || type == MP2::OBJ_RANDOM_CASTLE; };
+
+                    if ( isRandomArtifact( objectType ) ) {
+                        return isRandomArtifact( objectInfo.objectType );
+                    }
+                    if ( isRandomMonster( objectType ) ) {
+                        return isRandomMonster( objectInfo.objectType );
+                    }
+                    if ( isRandomTown( objectType ) ) {
+                        return isRandomTown( objectInfo.objectType );
+                    }
+
+                    return objectInfo.objectType == objectType;
+                };
+
+                const Maps::ObjectPart * placeholderRoot = nullptr;
+                if ( isPlaceholderRoot( tile.getMainObjectPart() ) ) {
+                    placeholderRoot = &tile.getMainObjectPart();
+                }
+                else {
+                    const auto groundIter = std::find_if( tile.getGroundObjectParts().cbegin(), tile.getGroundObjectParts().cend(), isPlaceholderRoot );
+                    if ( groundIter != tile.getGroundObjectParts().cend() ) {
+                        placeholderRoot = &( *groundIter );
+                    }
+                    else {
+                        const auto topIter = std::find_if( tile.getTopObjectParts().cbegin(), tile.getTopObjectParts().cend(), isPlaceholderRoot );
+                        if ( topIter != tile.getTopObjectParts().cend() ) {
+                            placeholderRoot = &( *topIter );
+                        }
+                    }
+                }
+
+                if ( placeholderRoot == nullptr ) {
+                    ERROR_LOG( "Failed to find the original placeholder object root for type " << static_cast<uint32_t>( objectType ) << " at tile " << i << '.' )
+                    return false;
+                }
+
+                importInfo->placeholderObjects.push_back(
+                    { i, placeholderRoot->_uid, objectType, static_cast<uint8_t>( placeholderRoot->icnType ), placeholderRoot->icnIndex } );
+            }
+        }
 
         if ( MP2::doesObjectNeedExtendedMetadata( tile.getMainObjectType() ) ) {
             vec_object.push_back( i );
@@ -513,9 +612,11 @@ bool World::LoadMapMP2( const std::string & filename, const bool isOriginalMp2Fi
                     // Random castle's entrance tile is marked as OBJ_RNDCASTLE or OBJ_RNDTOWN instead of OBJ_CASTLE.
                     Castle * castle = getCastle( Maps::GetPoint( objectTileId ) );
                     if ( castle ) {
-                        castle->LoadFromMP2( pblock );
-                        Maps::UpdateCastleSprite( castle->GetCenter(), castle->GetRace(), castle->isCastle(), true );
-                        Maps::ReplaceRandomCastleObjectId( castle->GetCenter() );
+                        castle->LoadFromMP2( pblock, importInfo != nullptr );
+                        if ( importInfo == nullptr ) {
+                            Maps::UpdateCastleSprite( castle->GetCenter(), castle->GetRace(), castle->isCastle(), true );
+                            Maps::ReplaceRandomCastleObjectId( castle->GetCenter() );
+                        }
                         map_captureobj.SetColor( tile.GetIndex(), castle->GetColor() );
                     }
                     else {
@@ -611,6 +712,14 @@ bool World::LoadMapMP2( const std::string & filename, const bool isOriginalMp2Fi
 
                         if ( hero ) {
                             hero->LoadFromMP2( objectTileId, colorRace.first, colorRace.second, false, pblock );
+                            if ( importInfo != nullptr ) {
+                                const auto placeholderIter
+                                    = std::find_if( importInfo->placeholderObjects.begin(), importInfo->placeholderObjects.end(),
+                                                    [objectTileId]( const auto & info ) { return info.position == objectTileId && info.objectType == MP2::OBJ_HERO; } );
+                                if ( placeholderIter != importInfo->placeholderObjects.end() ) {
+                                    placeholderIter->heroId = hero->GetID();
+                                }
+                            }
                         }
                         else {
                             DEBUG_LOG( DBG_GAME, DBG_WARN, "MP2 file format: no free heroes are available from race " << Race::String( colorRace.second ) )
@@ -700,7 +809,7 @@ bool World::LoadMapMP2( const std::string & filename, const bool isOriginalMp2Fi
 
     updateArtifactStats();
 
-    if ( !ProcessNewMP2Map( filename, checkPoLObjects ) ) {
+    if ( !ProcessNewMP2Map( filename, checkPoLObjects, importInfo ) ) {
         return false;
     }
 
@@ -1403,12 +1512,19 @@ bool World::loadResurrectionMap( const std::string & filename )
     return true;
 }
 
-bool World::ProcessNewMP2Map( const std::string & filename, const bool checkPoLObjects )
+bool World::ProcessNewMP2Map( const std::string & filename, const bool checkPoLObjects, MP2MapImportInfo * importInfo )
 {
+    std::set<int32_t> placeholderPositions;
+    if ( importInfo != nullptr ) {
+        for ( const MP2PlaceholderObjectInfo & placeholder : importInfo->placeholderObjects ) {
+            placeholderPositions.emplace( placeholder.position );
+        }
+    }
+
     for ( Maps::Tile & tile : vec_tiles ) {
         Maps::Tile::fixMP2MapTileObjectType( tile );
 
-        if ( !updateTileMetadata( tile, tile.getMainObjectType(), checkPoLObjects ) ) {
+        if ( !updateTileMetadata( tile, tile.getMainObjectType(), checkPoLObjects, placeholderPositions.count( tile.GetIndex() ) != 0 ) ) {
             ERROR_LOG( "Failed to load The Price of Loyalty map '" << filename << "' which is not supported by this version of the game." )
             // You are trying to load a PoL map named as a MP2 file.
             return false;
@@ -1445,7 +1561,7 @@ bool World::ProcessNewMP2Map( const std::string & filename, const bool checkPoLO
     }
 
     // Set up Ultimate Artifact.
-    setUltimateArtifact();
+    setUltimateArtifact( importInfo != nullptr ? &importInfo->ultimateArtifact : nullptr, importInfo != nullptr );
 
     PostLoad( true, false );
 
@@ -1485,8 +1601,14 @@ bool World::_processNewResurrectionMap( const std::string & filename )
     return true;
 }
 
-bool World::updateTileMetadata( Maps::Tile & tile, const MP2::MapObjectType objectType, const bool checkPoLObjects )
+// The function recursively handles an object type that was transformed while its metadata was initialized.
+// NOLINTNEXTLINE(misc-no-recursion)
+bool World::updateTileMetadata( Maps::Tile & tile, const MP2::MapObjectType objectType, const bool checkPoLObjects, const bool preservePlaceholder )
 {
+    if ( preservePlaceholder ) {
+        return true;
+    }
+
     switch ( objectType ) {
     case MP2::OBJ_ARTIFACT:
         setInitialObjectInfo( tile );
@@ -1605,7 +1727,7 @@ bool World::updateTileMetadata( Maps::Tile & tile, const MP2::MapObjectType obje
 
         const MP2::MapObjectType updatedObjectType = tile.getMainObjectType( false );
         if ( updatedObjectType != objectType ) {
-            return updateTileMetadata( tile, updatedObjectType, checkPoLObjects );
+            return updateTileMetadata( tile, updatedObjectType, checkPoLObjects, false );
         }
 
         break;
@@ -1620,7 +1742,7 @@ bool World::updateTileMetadata( Maps::Tile & tile, const MP2::MapObjectType obje
     return true;
 }
 
-void World::setUltimateArtifact()
+void World::setUltimateArtifact( MP2UltimateArtifactInfo * originalPlacement, const bool preserveOriginalPlacement )
 {
     int32_t tileId = -1;
     int32_t radius = 0;
@@ -1646,6 +1768,15 @@ void World::setUltimateArtifact()
 
         // Remove the predefined Ultimate Artifact object.
         const uint32_t uid = existingUltimateArtIter->getMainObjectPart()._uid;
+        if ( originalPlacement != nullptr ) {
+            originalPlacement->position = tileId;
+            originalPlacement->radius = radius;
+            originalPlacement->artifactId = artifact.GetID();
+            originalPlacement->objectUid = uid;
+        }
+        if ( preserveOriginalPlacement ) {
+            return;
+        }
         existingUltimateArtIter->removeObjectPartsByUID( uid );
 
         // Also, remove the shadow of the Artifact.
@@ -1653,6 +1784,10 @@ void World::setUltimateArtifact()
             const int32_t neighborTileIndex = Maps::GetDirectionIndex( tileId, Direction::LEFT );
             vec_tiles[neighborTileIndex].removeObjectPartsByUID( uid );
         }
+    }
+
+    if ( preserveOriginalPlacement ) {
+        return;
     }
 
     const auto checkTileForSuitabilityForUltArt = [this]( const int32_t idx ) {

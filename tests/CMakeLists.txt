@@ -23,6 +23,56 @@ target_link_libraries(synthetic_renderer_test PRIVATE engine)
 
 add_test(NAME synthetic_renderer COMMAND synthetic_renderer_test)
 
+set(
+	FHEROES2_TEST_INCLUDE_DIRS
+	${PROJECT_SOURCE_DIR}/src/engine
+	${PROJECT_SOURCE_DIR}/src/fheroes2/agg
+	${PROJECT_SOURCE_DIR}/src/fheroes2/ai
+	${PROJECT_SOURCE_DIR}/src/fheroes2/army
+	${PROJECT_SOURCE_DIR}/src/fheroes2/audio
+	${PROJECT_SOURCE_DIR}/src/fheroes2/battle
+	${PROJECT_SOURCE_DIR}/src/fheroes2/campaign
+	${PROJECT_SOURCE_DIR}/src/fheroes2/castle
+	${PROJECT_SOURCE_DIR}/src/fheroes2/dialog
+	${PROJECT_SOURCE_DIR}/src/fheroes2/editor
+	${PROJECT_SOURCE_DIR}/src/fheroes2/game
+	${PROJECT_SOURCE_DIR}/src/fheroes2/gui
+	${PROJECT_SOURCE_DIR}/src/fheroes2/h2d
+	${PROJECT_SOURCE_DIR}/src/fheroes2/heroes
+	${PROJECT_SOURCE_DIR}/src/fheroes2/image
+	${PROJECT_SOURCE_DIR}/src/fheroes2/kingdom
+	${PROJECT_SOURCE_DIR}/src/fheroes2/maps
+	${PROJECT_SOURCE_DIR}/src/fheroes2/monster
+	${PROJECT_SOURCE_DIR}/src/fheroes2/resource
+	${PROJECT_SOURCE_DIR}/src/fheroes2/spell
+	${PROJECT_SOURCE_DIR}/src/fheroes2/system
+	${PROJECT_SOURCE_DIR}/src/fheroes2/world
+	)
+
+add_executable(
+	map_object_import_lookup_test
+	map_object_import_lookup_test.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_object_info.cpp
+	)
+# Keep this standalone registry test independent of the full game runtime. Its checks do not rely on assert().
+target_compile_definitions(map_object_import_lookup_test PRIVATE NDEBUG)
+target_include_directories(
+	map_object_import_lookup_test
+	PRIVATE
+	${FHEROES2_TEST_INCLUDE_DIRS}
+	)
+
+add_test(NAME map_object_import_lookup COMMAND map_object_import_lookup_test)
+
+add_executable(
+	map_format_import_validation_test
+	map_format_import_validation_test.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_format_importmp2_validation.cpp
+	)
+target_include_directories(map_format_import_validation_test PRIVATE ${FHEROES2_TEST_INCLUDE_DIRS})
+
+add_test(NAME map_format_import_validation COMMAND map_format_import_validation_test)
+
 if(USE_SDL_VERSION STREQUAL "SDL3")
 	add_executable(sdl3_foundation_test sdl3_foundation_test.cpp)
 	target_compile_definitions(sdl3_foundation_test PRIVATE WITH_SDL3)

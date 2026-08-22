@@ -63,6 +63,7 @@
 #include "interface_radar.h"
 #include "localevent.h"
 #include "map_format_helper.h"
+#include "map_format_importmp2.h"
 #include "maps.h"
 #include "maps_fileinfo.h"
 #include "maps_tiles.h"
@@ -3172,13 +3173,23 @@ namespace Interface
 
     bool EditorInterface::loadMap( const std::string & filePath )
     {
-        if ( !Maps::Map_Format::loadMap( filePath, _mapFormat ) ) {
-            fheroes2::showStandardTextMessage( _( "Error" ), "Failed to load the map.", Dialog::OK );
+        const std::string lowerPath = StringLower( filePath );
+        const bool isOriginalMap
+            = lowerPath.size() >= 4 && ( lowerPath.compare( lowerPath.size() - 4, 4, ".mp2" ) == 0 || lowerPath.compare( lowerPath.size() - 4, 4, ".mx2" ) == 0 );
+
+        if ( isOriginalMap ) {
+            if ( !Maps::Map_Format::importMP2Map( filePath, _mapFormat ) ) {
+                fheroes2::showStandardTextMessage( _( "Error" ), _( "Failed to import the original map." ), Dialog::OK );
+                return false;
+            }
+        }
+        else if ( !Maps::Map_Format::loadMap( filePath, _mapFormat ) ) {
+            fheroes2::showStandardTextMessage( _( "Error" ), _( "Failed to load the map." ), Dialog::OK );
             return false;
         }
 
         if ( !Maps::readMapInEditor( _mapFormat ) ) {
-            fheroes2::showStandardTextMessage( _( "Error" ), "Failed to read the map.", Dialog::OK );
+            fheroes2::showStandardTextMessage( _( "Error" ), _( "Failed to read the map." ), Dialog::OK );
             return false;
         }
 

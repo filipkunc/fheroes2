@@ -203,8 +203,8 @@ namespace
         const bool isActionObject = MP2::isOffGameActionObject( info.objectType );
         if ( isActionObject ) {
             for ( const auto & partInfo : info.groundLevelParts ) {
-                if ( partInfo.layerType == Maps::SHADOW_LAYER || partInfo.layerType == Maps::TERRAIN_LAYER ) {
-                    // Shadows and terrain objects do not affect on passability so it is fine to ignore them not being rendered.
+                if ( partInfo.layerType == Maps::SHADOW_LAYER || partInfo.layerType == Maps::TERRAIN_LAYER || partInfo.objectType != info.objectType ) {
+                    // Decorative and non-action parts can be clipped at the map boundary. The original Editor allowed such placement.
                     continue;
                 }
 
@@ -217,6 +217,11 @@ namespace
             }
 
             for ( const auto & partInfo : info.topLevelParts ) {
+                if ( partInfo.objectType != info.objectType ) {
+                    // Decorative and non-action parts can be clipped at the map boundary. The original Editor allowed such placement.
+                    continue;
+                }
+
                 const fheroes2::Point pos = mainTilePos + partInfo.tileOffset;
                 if ( !Maps::isValidAbsPoint( pos.x, pos.y ) ) {
                     // This shouldn't happen as the object must be verified before placement.
@@ -232,7 +237,8 @@ namespace
             const fheroes2::Point pos = mainTilePos + partInfo.tileOffset;
             if ( !Maps::isValidAbsPoint( pos.x, pos.y ) ) {
                 // Make sure that the above condition about object placement is correct.
-                assert( !isActionObject || ( partInfo.layerType == Maps::SHADOW_LAYER ) || ( partInfo.layerType == Maps::TERRAIN_LAYER ) );
+                assert( !isActionObject || ( partInfo.layerType == Maps::SHADOW_LAYER ) || ( partInfo.layerType == Maps::TERRAIN_LAYER )
+                        || partInfo.objectType != info.objectType );
 
                 // Ignore this tile since it is out of the map.
                 continue;
@@ -315,7 +321,7 @@ namespace
             const fheroes2::Point pos = mainTilePos + partInfo.tileOffset;
             if ( !Maps::isValidAbsPoint( pos.x, pos.y ) ) {
                 // If this assertion blows up then the object verification before was incorrect.
-                assert( !isActionObject );
+                assert( !isActionObject || partInfo.objectType != info.objectType );
 
                 continue;
             }

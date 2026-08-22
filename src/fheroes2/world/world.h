@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "army_troop.h"
+#include "artifact.h"
 #include "artifact_ultimate.h"
 #include "castle.h"
 #include "color.h"
@@ -194,6 +195,30 @@ IStreamBase & operator>>( IStreamBase & stream, EventDate & obj );
 
 using EventsDate = std::list<EventDate>;
 
+struct MP2UltimateArtifactInfo
+{
+    int32_t position{ -1 };
+    int32_t radius{ 0 };
+    int32_t artifactId{ Artifact::UNKNOWN };
+    uint32_t objectUid{ 0 };
+};
+
+struct MP2PlaceholderObjectInfo
+{
+    int32_t position{ -1 };
+    uint32_t objectUid{ 0 };
+    MP2::MapObjectType objectType{};
+    uint8_t objectIcnType{ 0 };
+    uint8_t objectIcnIndex{ 0 };
+    int32_t heroId{ -1 };
+};
+
+struct MP2MapImportInfo
+{
+    MP2UltimateArtifactInfo ultimateArtifact;
+    std::vector<MP2PlaceholderObjectInfo> placeholderObjects;
+};
+
 class World final
 {
 public:
@@ -208,7 +233,7 @@ public:
     World & operator=( const World & other ) = delete;
     World & operator=( World && other ) = delete;
 
-    bool LoadMapMP2( const std::string & filename, const bool isOriginalMp2File );
+    bool LoadMapMP2( const std::string & filename, const bool isOriginalMp2File, MP2MapImportInfo * importInfo = nullptr );
 
     bool loadResurrectionMap( const std::string & filename );
 
@@ -512,6 +537,16 @@ public:
 
     void updatePassabilities();
 
+    const std::vector<std::string> & getCustomRumors() const
+    {
+        return _customRumors;
+    }
+
+    const EventsDate & getDailyEvents() const
+    {
+        return vec_eventsday;
+    }
+
     const std::vector<int32_t> & getAllEyeOfMagiPositions() const
     {
         return _allEyeOfMagi;
@@ -528,17 +563,17 @@ private:
     void Reset();
     void _monthOfMonstersAction( const Monster & mons );
 
-    bool ProcessNewMP2Map( const std::string & filename, const bool checkPoLObjects );
+    bool ProcessNewMP2Map( const std::string & filename, const bool checkPoLObjects, MP2MapImportInfo * importInfo );
 
     bool _processNewResurrectionMap( const std::string & filename );
 
     void PostLoad( const bool setTilePassabilities, const bool updateUidCounterToMaximum );
 
-    bool updateTileMetadata( Maps::Tile & tile, const MP2::MapObjectType objectType, const bool checkPoLObjects );
+    bool updateTileMetadata( Maps::Tile & tile, const MP2::MapObjectType objectType, const bool checkPoLObjects, const bool preservePlaceholder = false );
 
     bool isValidCastleEntrance( const fheroes2::Point & tilePosition ) const;
 
-    void setUltimateArtifact();
+    void setUltimateArtifact( MP2UltimateArtifactInfo * originalPlacement = nullptr, const bool preserveOriginalPlacement = false );
 
     void tryAddDebugHero();
 
