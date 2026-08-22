@@ -585,6 +585,14 @@ bool World::LoadMapMP2( const std::string & filename, const bool isOriginalMp2Fi
             const Maps::Tile & tile = vec_tiles[objectTileId];
             const MP2::MapObjectType objectType = tile.getMainObjectType();
 
+            if ( importInfo != nullptr ) {
+                const auto [dummy, isInserted] = importInfo->objectMetadata.emplace( objectTileId, pblock );
+                if ( !isInserted ) {
+                    ERROR_LOG( "Multiple MP2 metadata blocks refer to tile " << objectTileId << '.' )
+                    return false;
+                }
+            }
+
             switch ( objectType ) {
             case MP2::OBJ_CASTLE:
                 if ( MP2::MP2_CASTLE_STRUCTURE_SIZE != pblock.size() ) {

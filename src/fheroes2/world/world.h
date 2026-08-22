@@ -217,6 +217,8 @@ struct MP2MapImportInfo
 {
     MP2UltimateArtifactInfo ultimateArtifact;
     std::vector<MP2PlaceholderObjectInfo> placeholderObjects;
+    // Original extended metadata blocks keyed by the object entrance tile.
+    std::map<int32_t, std::vector<uint8_t>> objectMetadata;
 };
 
 class World final

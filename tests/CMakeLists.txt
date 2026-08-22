@@ -73,6 +73,20 @@ target_include_directories(map_format_import_validation_test PRIVATE ${FHEROES2_
 
 add_test(NAME map_format_import_validation COMMAND map_format_import_validation_test)
 
+add_executable(
+	map_format_import_metadata_roundtrip_test
+	map_format_import_metadata_roundtrip_test.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_format_importmp2_metadata.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_format_info.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_object_info.cpp
+	)
+# Keep this standalone registry test independent of the full game runtime. Its checks do not rely on assert().
+target_compile_definitions(map_format_import_metadata_roundtrip_test PRIVATE NDEBUG)
+target_include_directories(map_format_import_metadata_roundtrip_test PRIVATE ${FHEROES2_TEST_INCLUDE_DIRS})
+target_link_libraries(map_format_import_metadata_roundtrip_test PRIVATE engine)
+
+add_test(NAME map_format_import_metadata_roundtrip COMMAND map_format_import_metadata_roundtrip_test)
+
 if(USE_SDL_VERSION STREQUAL "SDL3")
 	add_executable(sdl3_foundation_test sdl3_foundation_test.cpp)
 	target_compile_definitions(sdl3_foundation_test PRIVATE WITH_SDL3)
