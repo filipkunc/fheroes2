@@ -24,6 +24,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <list>
 #include <map>
 #include <ostream>
@@ -36,16 +37,15 @@
 #include "castle.h"
 #include "color.h"
 #include "game_language.h"
-#include "game_string.h"
 #include "heroes.h"
 #include "logging.h"
 #include "map_format_helper.h"
+#include "map_format_importmp2_metadata.h"
 #include "map_format_importmp2_validation.h"
 #include "map_format_info.h"
 #include "map_object_info.h"
 #include "maps.h"
 #include "maps_fileinfo.h"
-#include "maps_objects.h"
 #include "maps_tiles.h"
 #include "maps_tiles_helper.h"
 #include "mp2.h"
@@ -53,69 +53,12 @@
 #include "race.h"
 #include "resource.h"
 #include "settings.h"
-#include "skill.h"
 #include "tools.h"
 #include "world.h"
 #include "world_object_uid.h"
 
 namespace
 {
-    // All BuildingType values that can be stored in CastleMetadata.builtBuildings.
-    constexpr std::array<uint32_t, 32> knownBuildingTypes
-        = { BUILD_THIEVESGUILD, BUILD_TAVERN,      BUILD_SHIPYARD,    BUILD_WELL,        BUILD_STATUE,      BUILD_LEFTTURRET,  BUILD_RIGHTTURRET, BUILD_MARKETPLACE,
-            BUILD_WEL2,         BUILD_MOAT,        BUILD_SPEC,        BUILD_CASTLE,      BUILD_CAPTAIN,     BUILD_SHRINE,      BUILD_MAGEGUILD1,  BUILD_MAGEGUILD2,
-            BUILD_MAGEGUILD3,   BUILD_MAGEGUILD4,  BUILD_MAGEGUILD5,  BUILD_TENT,        DWELLING_MONSTER1, DWELLING_MONSTER2, DWELLING_MONSTER3, DWELLING_MONSTER4,
-            DWELLING_MONSTER5,  DWELLING_MONSTER6, DWELLING_UPGRADE2, DWELLING_UPGRADE3, DWELLING_UPGRADE4, DWELLING_UPGRADE5, DWELLING_UPGRADE6, DWELLING_UPGRADE7 };
-
-    Maps::Map_Format::AdventureMapEventMetadata convertMapEvent( const MapEvent & ev )
-    {
-        Maps::Map_Format::AdventureMapEventMetadata meta;
-
-        meta.message = ev.message;
-        meta.humanPlayerColors = ev.colors;
-        meta.computerPlayerColors = ev.isComputerPlayerAllowed ? Color::allPlayerColors() : 0;
-        meta.isRecurringEvent = !ev.isSingleTimeEvent;
-
-        meta.artifact = ev.artifact.GetID();
-
-        meta.resources.wood = ev.resources.wood;
-        meta.resources.mercury = ev.resources.mercury;
-        meta.resources.ore = ev.resources.ore;
-        meta.resources.sulfur = ev.resources.sulfur;
-        meta.resources.crystal = ev.resources.crystal;
-        meta.resources.gems = ev.resources.gems;
-        meta.resources.gold = ev.resources.gold;
-
-        meta.experience = ev.experience;
-
-        meta.secondarySkill = static_cast<uint8_t>( ev.secondarySkill.Skill() );
-        meta.secondarySkillLevel = static_cast<uint8_t>( ev.secondarySkill.Level() );
-
-        return meta;
-    }
-
-    Maps::Map_Format::SphinxMetadata convertSphinx( const MapSphinx & sp )
-    {
-        Maps::Map_Format::SphinxMetadata meta;
-
-        meta.riddle = sp.riddle;
-        for ( const std::string & answer : sp.answers ) {
-            meta.answers.push_back( answer );
-        }
-
-        meta.artifact = sp.artifact.GetID();
-
-        meta.resources.wood = sp.resources.wood;
-        meta.resources.mercury = sp.resources.mercury;
-        meta.resources.ore = sp.resources.ore;
-        meta.resources.sulfur = sp.resources.sulfur;
-        meta.resources.crystal = sp.resources.crystal;
-        meta.resources.gems = sp.resources.gems;
-        meta.resources.gold = sp.resources.gold;
-
-        return meta;
-    }
-
     Maps::Map_Format::DailyEvent convertDailyEvent( const EventDate & event )
     {
         Maps::Map_Format::DailyEvent result;
@@ -127,6 +70,44 @@ namespace
         result.resources = event.resource;
 
         return result;
+    }
+
+    void preserveDerivedHeroMetadata( const Heroes & hero, const bool hasCustomArmy, Maps::Map_Format::HeroMetadata & metadata )
+    {
+        const bool hasEmptyCustomArmy = hasCustomArmy && std::none_of( metadata.armyMonsterType.cbegin(), metadata.armyMonsterType.cend(), []( const int32_t monsterId ) {
+                                            return monsterId > 0;
+                                        } );
+        const bool needsArtifactMetadata = std::find( metadata.artifact.cbegin(), metadata.artifact.cend(), Artifact::SPELL_SCROLL ) != metadata.artifact.cend();
+        const bool needsSpells = std::find( metadata.artifact.cbegin(), metadata.artifact.cend(), Artifact::MAGIC_BOOK ) != metadata.artifact.cend();
+        if ( !hasEmptyCustomArmy && !needsArtifactMetadata && !needsSpells ) {
+            return;
+        }
+
+        const Maps::Map_Format::HeroMetadata runtimeMetadata = hero.getHeroMetadata();
+        if ( hasEmptyCustomArmy ) {
+            metadata.armyMonsterType = runtimeMetadata.armyMonsterType;
+            metadata.armyMonsterCount = runtimeMetadata.armyMonsterCount;
+        }
+        if ( needsArtifactMetadata ) {
+            auto runtimeArtifact = runtimeMetadata.artifact.cbegin();
+            for ( size_t i = 0; i < metadata.artifact.size(); ++i ) {
+                if ( metadata.artifact[i] != Artifact::SPELL_SCROLL ) {
+                    continue;
+                }
+
+                runtimeArtifact = std::find( runtimeArtifact, runtimeMetadata.artifact.cend(), Artifact::SPELL_SCROLL );
+                if ( runtimeArtifact == runtimeMetadata.artifact.cend() ) {
+                    break;
+                }
+
+                const size_t runtimeIndex = static_cast<size_t>( std::distance( runtimeMetadata.artifact.cbegin(), runtimeArtifact ) );
+                metadata.artifactMetadata[i] = runtimeMetadata.artifactMetadata[runtimeIndex];
+                ++runtimeArtifact;
+            }
+        }
+        if ( needsSpells ) {
+            metadata.availableSpells = runtimeMetadata.availableSpells;
+        }
     }
 
     bool getUniqueEditorObjectByType( const MP2::MapObjectType objectType, Maps::ObjectGroup & group, uint32_t & objectIndex )
@@ -480,10 +461,6 @@ namespace Maps::Map_Format
                 if ( hero == nullptr ) {
                     return false;
                 }
-
-                HeroMetadata & metadata = mapFormat.heroMetadata[placeholderIter->second.source.objectUid];
-                metadata = hero->getHeroMetadata();
-                metadata.race = Race::RAND;
             }
             else if ( worldTile.getMainObjectType() == MP2::OBJ_HERO ) {
                 validationInfo.heroPositions.push_back( tileId );
@@ -621,22 +598,30 @@ namespace Maps::Map_Format
                 return false;
             }
 
-            CastleMetadata meta;
-            meta.customName = castle->GetName();
-
-            Maps::saveCastleArmy( castle->GetArmy(), meta );
-
-            meta.customBuildings = true;
-            for ( const uint32_t building : knownBuildingTypes ) {
-                if ( castle->isBuild( building ) ) {
-                    meta.builtBuildings.push_back( building );
-                }
+            const auto metadataIter = importInfo.objectMetadata.find( tileId );
+            if ( metadataIter == importInfo.objectMetadata.end() ) {
+                return false;
             }
 
-            mapFormat.castleMetadata[uid] = std::move( meta );
+            CastleMetadata metadata;
+            if ( !readMP2CastleMetadata( metadataIter->second, metadata ) ) {
+                return false;
+            }
+
+            mapFormat.castleMetadata[uid] = std::move( metadata );
         }
 
         // Step 5: per-tile metadata (heroes, signs, events, sphinxes, capturable objects).
+        const auto getImportedObjectUid = [&mapFormat]( const int32_t tileId, const MP2::MapObjectType objectType ) {
+            for ( const TileObjectInfo & object : mapFormat.tiles[static_cast<size_t>( tileId )].objects ) {
+                if ( Maps::getObjectInfo( object.group, static_cast<int32_t>( object.index ) ).objectType == objectType ) {
+                    return object.id;
+                }
+            }
+
+            return uint32_t{ 0 };
+        };
+
         for ( int32_t tileId = 0; tileId < totalTiles; ++tileId ) {
             const Maps::Tile & tile = mapWorld.getTile( tileId );
             const MP2::MapObjectType objType = tile.getMainObjectType();
@@ -660,27 +645,40 @@ namespace Maps::Map_Format
 
             switch ( objType ) {
             case MP2::OBJ_HERO: {
-                // Use the UID we generated in Step 3 (the tile's _mainObjectPart._uid is 0 after
-                // LoadMapMP2() stripped the MINIHERO sprite).
                 const auto it = heroUidByTileId.find( tileId );
                 if ( it != heroUidByTileId.end() ) {
                     const Heroes * hero = mapWorld.GetHeroes( Maps::GetPoint( tileId ) );
-                    if ( hero != nullptr ) {
-                        HeroMetadata & metadata = mapFormat.heroMetadata[it->second];
-                        metadata = hero->getHeroMetadata();
-                        if ( placeholderIter != placeholderByTileId.end() && placeholderIter->second.source.objectType == MP2::OBJ_HERO ) {
-                            metadata.race = Race::RAND;
-                        }
+                    const auto metadataIter = importInfo.objectMetadata.find( tileId );
+                    if ( hero == nullptr || metadataIter == importInfo.objectMetadata.end() ) {
+                        return false;
                     }
+
+                    const uint8_t race = static_cast<uint8_t>(
+                        placeholderIter != placeholderByTileId.end() && placeholderIter->second.source.objectType == MP2::OBJ_HERO ? Race::RAND : hero->GetRace() );
+                    HeroMetadata & metadata = mapFormat.heroMetadata[it->second];
+                    if ( !readMP2HeroMetadata( metadataIter->second, race, metadata ) ) {
+                        return false;
+                    }
+                    preserveDerivedHeroMetadata( *hero, metadataIter->second[1] != 0, metadata );
                 }
                 break;
             }
             case MP2::OBJ_JAIL: {
-                // Jail heroes keep their tile sprite intact, so uid is valid.
+                const uint32_t objectUid = getImportedObjectUid( tileId, MP2::OBJ_JAIL );
+                const auto metadataIter = importInfo.objectMetadata.find( tileId );
                 const Heroes * hero = mapWorld.GetHeroes( Maps::GetPoint( tileId ) );
-                if ( hero != nullptr ) {
-                    mapFormat.heroMetadata[uid] = hero->getHeroMetadata();
+                if ( objectUid == 0 || hero == nullptr || metadataIter == importInfo.objectMetadata.end()
+                     || metadataIter->second.size() != MP2::MP2_HEROES_STRUCTURE_SIZE ) {
+                    return false;
                 }
+
+                const uint8_t race
+                    = metadataIter->second[60] <= 5 ? static_cast<uint8_t>( Race::IndexToRace( metadataIter->second[60] ) ) : static_cast<uint8_t>( Race::KNGT );
+                HeroMetadata & metadata = mapFormat.heroMetadata[objectUid];
+                if ( !readMP2HeroMetadata( metadataIter->second, race, metadata ) ) {
+                    return false;
+                }
+                preserveDerivedHeroMetadata( *hero, metadataIter->second[1] != 0, metadata );
                 break;
             }
 
@@ -765,25 +763,31 @@ namespace Maps::Map_Format
 
             case MP2::OBJ_SIGN:
             case MP2::OBJ_BOTTLE: {
-                const auto * sign = dynamic_cast<const MapSign *>( mapWorld.GetMapObject( static_cast<uint32_t>( tileId ) ) );
-                if ( sign != nullptr ) {
-                    mapFormat.signMetadata[uid].message = sign->message.text;
+                const uint32_t objectUid = getImportedObjectUid( tileId, objType );
+                const auto metadataIter = importInfo.objectMetadata.find( tileId );
+                if ( objectUid == 0 || metadataIter == importInfo.objectMetadata.end()
+                     || !readMP2SignMetadata( metadataIter->second, mapFormat.signMetadata[objectUid] ) ) {
+                    return false;
                 }
                 break;
             }
 
             case MP2::OBJ_EVENT: {
-                const auto * ev = dynamic_cast<const MapEvent *>( mapWorld.GetMapObject( static_cast<uint32_t>( tileId ) ) );
-                if ( ev != nullptr ) {
-                    mapFormat.adventureMapEventMetadata[uid] = convertMapEvent( *ev );
+                const uint32_t objectUid = getImportedObjectUid( tileId, objType );
+                const auto metadataIter = importInfo.objectMetadata.find( tileId );
+                if ( objectUid == 0 || metadataIter == importInfo.objectMetadata.end()
+                     || !readMP2AdventureMapEventMetadata( metadataIter->second, mapFormat.adventureMapEventMetadata[objectUid] ) ) {
+                    return false;
                 }
                 break;
             }
 
             case MP2::OBJ_SPHINX: {
-                const auto * sp = dynamic_cast<const MapSphinx *>( mapWorld.GetMapObject( static_cast<uint32_t>( tileId ) ) );
-                if ( sp != nullptr && sp->valid ) {
-                    mapFormat.sphinxMetadata[uid] = convertSphinx( *sp );
+                const uint32_t objectUid = getImportedObjectUid( tileId, objType );
+                const auto metadataIter = importInfo.objectMetadata.find( tileId );
+                if ( objectUid == 0 || metadataIter == importInfo.objectMetadata.end()
+                     || !readMP2SphinxMetadata( metadataIter->second, mapFormat.sphinxMetadata[objectUid] ) ) {
+                    return false;
                 }
                 break;
             }
