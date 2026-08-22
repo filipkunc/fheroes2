@@ -780,9 +780,8 @@ MapsFileInfoList Maps::getEditorMapFileInfos()
         Maps::FileInfo fi;
 
         const std::string lowerPath = StringLower( mapFile );
-        const bool isOriginalMap = lowerPath.size() >= 4
-                                   && ( lowerPath.compare( lowerPath.size() - 4, 4, ".mp2" ) == 0
-                                        || lowerPath.compare( lowerPath.size() - 4, 4, ".mx2" ) == 0 );
+        const bool isOriginalMap
+            = lowerPath.size() >= 4 && ( lowerPath.compare( lowerPath.size() - 4, 4, ".mp2" ) == 0 || lowerPath.compare( lowerPath.size() - 4, 4, ".mx2" ) == 0 );
         if ( isOriginalMap ? !fi.readMP2Map( mapFile, true ) : !fi.readResurrectionMap( mapFile, true, currentLanguage ) ) {
             continue;
         }

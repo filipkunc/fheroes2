@@ -1601,6 +1601,8 @@ bool World::_processNewResurrectionMap( const std::string & filename )
     return true;
 }
 
+// The function recursively handles an object type that was transformed while its metadata was initialized.
+// NOLINTNEXTLINE(misc-no-recursion)
 bool World::updateTileMetadata( Maps::Tile & tile, const MP2::MapObjectType objectType, const bool checkPoLObjects, const bool preservePlaceholder )
 {
     if ( preservePlaceholder ) {

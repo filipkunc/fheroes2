@@ -118,7 +118,11 @@ namespace Maps::Map_Format
             return fail( "imported " + std::to_string( castlePositions.size() ) + " of " + std::to_string( expected.castlePositions.size() ) + " source castles" );
         }
 
-        for ( const auto & [position, group, objectIndex] : expected.placeholderObjects ) {
+        for ( const auto & placeholder : expected.placeholderObjects ) {
+            const int32_t position = std::get<0>( placeholder );
+            const ObjectGroup group = std::get<1>( placeholder );
+            const uint32_t objectIndex = std::get<2>( placeholder );
+
             if ( position < 0 || static_cast<size_t>( position ) >= map.tiles.size() ) {
                 return fail( "placeholder position is outside the map" );
             }

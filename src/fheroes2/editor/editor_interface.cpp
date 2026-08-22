@@ -3174,9 +3174,8 @@ namespace Interface
     bool EditorInterface::loadMap( const std::string & filePath )
     {
         const std::string lowerPath = StringLower( filePath );
-        const bool isOriginalMap = lowerPath.size() >= 4
-                                   && ( lowerPath.compare( lowerPath.size() - 4, 4, ".mp2" ) == 0
-                                        || lowerPath.compare( lowerPath.size() - 4, 4, ".mx2" ) == 0 );
+        const bool isOriginalMap
+            = lowerPath.size() >= 4 && ( lowerPath.compare( lowerPath.size() - 4, 4, ".mp2" ) == 0 || lowerPath.compare( lowerPath.size() - 4, 4, ".mx2" ) == 0 );
 
         if ( isOriginalMap ) {
             if ( !Maps::Map_Format::importMP2Map( filePath, _mapFormat ) ) {

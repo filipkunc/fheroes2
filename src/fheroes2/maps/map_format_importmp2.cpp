@@ -21,6 +21,7 @@
 #include "map_format_importmp2.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -55,7 +56,7 @@
 namespace
 {
     // All BuildingType values that can be stored in CastleMetadata.builtBuildings.
-    constexpr uint32_t knownBuildingTypes[]
+    constexpr std::array<uint32_t, 32> knownBuildingTypes
         = { BUILD_THIEVESGUILD, BUILD_TAVERN,      BUILD_SHIPYARD,    BUILD_WELL,        BUILD_STATUE,      BUILD_LEFTTURRET,  BUILD_RIGHTTURRET, BUILD_MARKETPLACE,
             BUILD_WEL2,         BUILD_MOAT,        BUILD_SPEC,        BUILD_CASTLE,      BUILD_CAPTAIN,     BUILD_SHRINE,      BUILD_MAGEGUILD1,  BUILD_MAGEGUILD2,
             BUILD_MAGEGUILD3,   BUILD_MAGEGUILD4,  BUILD_MAGEGUILD5,  BUILD_TENT,        DWELLING_MONSTER1, DWELLING_MONSTER2, DWELLING_MONSTER3, DWELLING_MONSTER4,
