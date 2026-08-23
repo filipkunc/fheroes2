@@ -1,6 +1,6 @@
 /***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
- *   Copyright (C) 2019 - 2025                                             *
+ *   Copyright (C) 2019 - 2026                                             *
  *                                                                         *
  *   Free Heroes2 Engine: http://sourceforge.net/projects/fheroes2         *
  *   Copyright (C) 2009 by Andrey Afletdinov <fheroes2@gmail.com>          *
@@ -65,7 +65,7 @@ void StringReplace( std::string & dst, const char * pred, const T value )
 }
 
 // Returns the number of bits that are set in the number passed as an argument
-constexpr int CountBits( uint32_t val )
+constexpr int CountBits( uint64_t val )
 {
     int res = 0;
 
@@ -77,6 +77,8 @@ constexpr int CountBits( uint32_t val )
 
     return res;
 }
+
+static_assert( CountBits( uint64_t{ 1 } << 40 ) == 1 && CountBits( ( uint64_t{ 1 } << 40 ) | 1 ) == 2 );
 
 namespace fheroes2
 {
