@@ -117,14 +117,14 @@ namespace Maps::Map_Format
             addBuilding( dwellings, 0x0080, DWELLING_MONSTER5, metadata.builtBuildings );
             addBuilding( dwellings, 0x0100, DWELLING_MONSTER6, metadata.builtBuildings );
 
-            const std::array<std::pair<uint16_t, uint32_t>, 5> upgrades{ { { static_cast<uint16_t>( 0x0200 ), DWELLING_UPGRADE2 },
+            const std::array<std::pair<uint16_t, uint64_t>, 5> upgrades{ { { static_cast<uint16_t>( 0x0200 ), DWELLING_UPGRADE2 },
                                                                            { static_cast<uint16_t>( 0x0400 ), DWELLING_UPGRADE3 },
                                                                            { static_cast<uint16_t>( 0x0800 ), DWELLING_UPGRADE4 },
                                                                            { static_cast<uint16_t>( 0x1000 ), DWELLING_UPGRADE5 },
                                                                            { static_cast<uint16_t>( 0x2000 ), DWELLING_UPGRADE6 } } };
             for ( size_t i = 0; i < upgrades.size(); ++i ) {
                 if ( ( dwellings & upgrades[i].first ) != 0 ) {
-                    const uint32_t baseDwelling = DWELLING_MONSTER2 << i;
+                    const uint64_t baseDwelling = DWELLING_MONSTER2 << i;
                     if ( std::find( metadata.builtBuildings.cbegin(), metadata.builtBuildings.cend(), baseDwelling ) == metadata.builtBuildings.cend() ) {
                         metadata.builtBuildings.push_back( baseDwelling );
                     }

@@ -1254,7 +1254,7 @@ BuildingStatus Castle::CheckBuyBuilding( const uint64_t build ) const
     }
 
     if ( build >= BUILD_MAGEGUILD2 && build <= BUILD_MAGEGUILD5 ) {
-        const uint32_t prevMageGuild = build >> 1;
+        const uint64_t prevMageGuild = build >> 1;
 
         if ( !( _constructedBuildings & prevMageGuild ) ) {
             return BuildingStatus::BUILD_DISABLE;
