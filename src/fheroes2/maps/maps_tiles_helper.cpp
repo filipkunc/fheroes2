@@ -187,9 +187,11 @@ namespace
         using IcnIndexType = decltype( tile.getMainObjectPart().icnIndex );
         static_assert( std::is_same_v<IcnIndexType, uint8_t> );
 
-        assert( mons.GetID() > std::numeric_limits<IcnIndexType>::min() && mons.GetID() <= std::numeric_limits<IcnIndexType>::max() );
+        const uint32_t monsterSpriteIndex = mons.GetSpriteIndex();
+        assert( monsterSpriteIndex >= std::numeric_limits<IcnIndexType>::min() && monsterSpriteIndex <= std::numeric_limits<IcnIndexType>::max() );
 
-        tile.getMainObjectPart().icnIndex = static_cast<IcnIndexType>( mons.GetID() - 1 ); // ICN::MONS32 starts from PEASANT
+        tile.getMainObjectPart().icnIndex = static_cast<IcnIndexType>( monsterSpriteIndex );
+        tile.metadata()[1] = fheroes2::isCustomMonsterId( mons.GetID() ) ? static_cast<uint32_t>( mons.GetID() ) : static_cast<uint32_t>( Monster::UNKNOWN );
     }
 
     bool placeObjectOnTile( const Maps::Tile & tile, const Maps::ObjectInfo & info )
@@ -561,6 +563,9 @@ namespace Maps
         case MP2::OBJ_BARROW_MOUNDS:
             return { Monster::GHOST };
         case MP2::OBJ_MONSTER:
+            if ( fheroes2::isCustomMonsterId( static_cast<int32_t>( tile.metadata()[1] ) ) ) {
+                return { static_cast<int32_t>( tile.metadata()[1] ) };
+            }
             return { tile.getMainObjectPart().icnIndex + 1 };
         default:
             break;
@@ -1604,7 +1609,6 @@ namespace Maps
         case MP2::OBJ_MONSTER: {
             const int32_t monsterId
                 = tile.metadata()[1] != Monster::UNKNOWN ? static_cast<int32_t>( tile.metadata()[1] ) : static_cast<int32_t>( tile.getMainObjectPart().icnIndex ) + 1;
-            tile.metadata()[1] = Monster::UNKNOWN;
             const Monster mons = Monster( monsterId ); // ICN::MONS32 starts from Peasant when no explicit FH2M metadata exists.
             setMonsterOnTile( tile, mons, tile.metadata()[0] );
             break;
@@ -1758,6 +1762,7 @@ namespace Maps
         assert( monsSpriteIndex >= std::numeric_limits<IcnIndexType>::min() && monsSpriteIndex <= std::numeric_limits<IcnIndexType>::max() );
 
         mainObjectPart.icnIndex = static_cast<IcnIndexType>( monsSpriteIndex );
+        tile.metadata()[1] = fheroes2::isCustomMonsterId( mons.GetID() ) ? static_cast<uint32_t>( mons.GetID() ) : static_cast<uint32_t>( Monster::UNKNOWN );
 
         const bool setDefinedCount = ( count > 0 );
 

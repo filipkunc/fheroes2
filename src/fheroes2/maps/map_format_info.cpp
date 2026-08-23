@@ -460,6 +460,17 @@ namespace
         }
     }
 
+    void addMissingMonsterMetadata( Maps::Map_Format::MapFormat & map )
+    {
+        for ( const Maps::Map_Format::TileInfo & tileInfo : map.tiles ) {
+            for ( const Maps::Map_Format::TileObjectInfo & objectInfo : tileInfo.objects ) {
+                if ( objectInfo.group == Maps::ObjectGroup::MONSTERS ) {
+                    map.monsterMetadata.try_emplace( objectInfo.id );
+                }
+            }
+        }
+    }
+
     bool saveToStream( OStreamBase & stream, const Maps::Map_Format::BaseMapFormat & map )
     {
         stream << currentSupportedVersion << map.isCampaign << map.difficulty << map.availablePlayerColors << map.humanPlayerColors << map.computerPlayerColors
@@ -605,6 +616,10 @@ namespace
 
         convertFromV11ToV12( map );
         convertFromV12ToV13( map );
+
+        // Some maps made by older Extended Edition editors omitted default monster metadata entirely.
+        // Missing metadata has the same meaning as a default-constructed entry, so restore it before runtime and editor code validates the map.
+        addMissingMonsterMetadata( map );
 
         return !stream.fail();
     }

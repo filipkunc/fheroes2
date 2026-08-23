@@ -304,6 +304,7 @@ int main()
     imported.tiles[4].objects.push_back( { 4001, sphinx.first, sphinx.second } );
     imported.tiles[5].objects.push_back( { 4002, sphinx.first, sphinx.second } );
     imported.tiles[6].objects.push_back( { 5001, customMonster.first, customMonster.second } );
+    imported.tiles[7].objects.push_back( { 5002, customMonster.first, customMonster.second } );
     imported.castleMetadata.emplace( 1002, castleMetadata );
     imported.castleMetadata.emplace( 1003, defaultCastleMetadata );
     imported.heroMetadata.emplace( 1001, heroMetadata );
@@ -347,6 +348,10 @@ int main()
                 != Monster::AZURE_DRAGON
          || reopened.monsterMetadata.at( 5001 ).count != 12 ) {
         return fail( "Stable custom creature or dwelling IDs changed during FH2M round-trip." );
+    }
+    if ( reopened.monsterMetadata.at( 1005 ).count != 0 || !reopened.monsterMetadata.at( 1005 ).selected.empty() || reopened.monsterMetadata.at( 5002 ).count != 0
+         || !reopened.monsterMetadata.at( 5002 ).selected.empty() ) {
+        return fail( "Missing default monster metadata was not restored during FH2M loading." );
     }
 
     return EXIT_SUCCESS;
