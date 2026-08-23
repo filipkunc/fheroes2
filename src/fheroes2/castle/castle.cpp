@@ -1924,7 +1924,8 @@ int Castle::GetICNBuilding( const uint64_t buildingType, const int race )
     }
 
     DEBUG_LOG( DBG_GAME, DBG_WARN,
-               "return unknown" << ", race: " << Race::String( race ) << ", build: " << Castle::GetStringBuilding( buildingType, race ) << ", " << buildingType )
+               "return unknown"
+                   << ", race: " << Race::String( race ) << ", build: " << Castle::GetStringBuilding( buildingType, race ) << ", " << buildingType )
 
     return ICN::UNKNOWN;
 }
