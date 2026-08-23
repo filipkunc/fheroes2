@@ -41,7 +41,6 @@ namespace
         int32_t fallbackMonsterId;
         int32_t upgradeFromMonsterId;
         uint64_t dwellingId;
-        uint32_t randomUnitLevel;
         Cost upgradeCost;
         uint32_t attack;
         uint32_t defense;
@@ -49,13 +48,13 @@ namespace
     };
 
     constexpr std::array<ExpectedDefinition, 7> expectedDefinitions{ {
-        { Monster::AZURE_DRAGON, 67, "azure_dragon", Monster::BLACK_DRAGON, Monster::BLACK_DRAGON, DWELLING_UPGRADE8, 4, {}, 16, 16, 400 },
-        { Monster::BLOOD_DRAGON, 68, "blood_dragon", Monster::BONE_DRAGON, Monster::BONE_DRAGON, DWELLING_UPGRADE9, 4, { 2000, 0, 1, 0, 0, 0, 0 }, 13, 11, 200 },
-        { Monster::THOR, 69, "thor", Monster::TITAN, Monster::TITAN, DWELLING_UPGRADE10, 4, { 2000, 0, 0, 0, 0, 0, 1 }, 16, 16, 300 },
-        { Monster::AVENGER, 70, "avenger", Monster::CRUSADER, Monster::CRUSADER, DWELLING_UPGRADE11, 4, { 500, 0, 0, 0, 0, 0, 0 }, 15, 15, 100 },
-        { Monster::SUCCUBUS, 71, "succubus", Monster::GARGOYLE, Monster::CYCLOPS, DWELLING_UPGRADE12, 4, { 1750, 0, 0, 0, 0, 0, 0 }, 13, 12, 250 },
-        { Monster::DACHSHUND, 72, "dachshund", Monster::WOLF, Monster::WOLF, DWELLING_UPGRADE13, 2, {}, 6, 6, 50 },
-        { Monster::MAID, 73, "maid", Monster::PEASANT, Monster::PEASANT, DWELLING_UPGRADE14, 1, {}, 2, 2, 5 },
+        { Monster::AZURE_DRAGON, 67, "azure_dragon", Monster::BLACK_DRAGON, Monster::BLACK_DRAGON, DWELLING_UPGRADE8, {}, 16, 16, 400 },
+        { Monster::BLOOD_DRAGON, 68, "blood_dragon", Monster::BONE_DRAGON, Monster::BONE_DRAGON, DWELLING_UPGRADE9, { 2000, 0, 1, 0, 0, 0, 0 }, 13, 11, 200 },
+        { Monster::THOR, 69, "thor", Monster::TITAN, Monster::TITAN, DWELLING_UPGRADE10, { 2000, 0, 0, 0, 0, 0, 1 }, 16, 16, 300 },
+        { Monster::AVENGER, 70, "avenger", Monster::CRUSADER, Monster::CRUSADER, DWELLING_UPGRADE11, { 500, 0, 0, 0, 0, 0, 0 }, 15, 15, 100 },
+        { Monster::SUCCUBUS, 71, "succubus", Monster::GARGOYLE, Monster::CYCLOPS, DWELLING_UPGRADE12, { 1750, 0, 0, 0, 0, 0, 0 }, 13, 12, 250 },
+        { Monster::DACHSHUND, 72, "dachshund", Monster::WOLF, Monster::WOLF, DWELLING_UPGRADE13, {}, 6, 6, 50 },
+        { Monster::MAID, 73, "maid", Monster::PEASANT, Monster::PEASANT, DWELLING_UPGRADE14, {}, 2, 2, 5 },
     } };
 
     bool areSameCosts( const Cost & left, const Cost & right )
@@ -91,9 +90,9 @@ int main()
 
         if ( definition.id != expected.id || definition.legacyFkId != expected.legacyFkId || definition.stableKey != std::string( expected.stableKey )
              || definition.fallbackMonsterId != expected.fallbackMonsterId || definition.upgradeFromMonsterId != expected.upgradeFromMonsterId
-             || definition.dwellingId != expected.dwellingId || definition.randomUnitLevel != expected.randomUnitLevel
-             || !areSameCosts( definition.upgradeCost, expected.upgradeCost ) || definition.data.battleStats.attack != expected.attack
-             || definition.data.battleStats.defense != expected.defense || definition.data.battleStats.hp != expected.hitPoints ) {
+             || definition.dwellingId != expected.dwellingId || !areSameCosts( definition.upgradeCost, expected.upgradeCost )
+             || definition.data.battleStats.attack != expected.attack || definition.data.battleStats.defense != expected.defense
+             || definition.data.battleStats.hp != expected.hitPoints ) {
             std::cerr << "Custom creature metadata mismatch at registry index " << i << ".\n";
             return 1;
         }
@@ -113,7 +112,7 @@ int main()
             return 1;
         }
 
-        if ( definition.randomUnitLevel < 1 || definition.randomUnitLevel > 4 || definition.dwellingId <= UINT32_MAX ) {
+        if ( definition.dwellingId <= UINT32_MAX ) {
             std::cerr << "Custom creature gameplay metadata is outside its supported range.\n";
             return 1;
         }

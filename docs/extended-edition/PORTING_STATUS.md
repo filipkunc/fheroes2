@@ -100,10 +100,10 @@ Completed in the latest session:
 
 * Connected all seven registry creatures to their preserved upgrade predecessors, race-specific castle dwellings, weekly growth, recruitment,
   construction requirements and prices, AI construction and reinforcement priorities, and castle/editor building progression.
-* Added the custom creatures to runtime and editor random-monster pools and to direct monster selection while keeping existing random-placeholder
-  IDs and editor object indices stable.
-* Extended building masks and serialization to 64 bits, bumped the FH2M format to version 14, retained loading for older 32-bit FH2M castle metadata
-  and save files, and round-tripped high-bit custom dwelling IDs.
+* Added the custom creatures to direct monster selection while keeping them out of generic random-monster pools and preserving existing
+  random-placeholder IDs and editor object indices.
+* Extended building masks and serialization to 64 bits, bumped the FH2M format to version 14, retained loading for both upstream 32-bit and FK
+  Extended Edition 64-bit version 13 castle metadata and older save files, and round-tripped high-bit custom dwelling IDs.
 * Reused existing indexed creature, portrait and castle art as deterministic fallbacks; dedicated RGBA artwork remains a separate runtime-assets slice.
 * Reserved stable Extended Edition creature IDs at `0x00010000` through `0x00010006` without changing upstream creature or random-placeholder IDs.
 * Added one declarative registry for Azure Dragon, Blood Dragon, Thor, Avenger, Succubus, Dachshund and Maid, including original stats, abilities,
@@ -135,7 +135,7 @@ Validation:
 
 * Warning-as-error SDL2 and native SDL3 builds completed with the full `fheroes2` executable.
 * All five SDL2 data-free tests and all seven SDL3 data-free tests passed, including custom registry, editor-object lookup and FH2M metadata round trips.
-* The registry test now covers unique upgrade predecessors and dwellings, random tiers, fixed upgrade prices and exact 64-bit dwelling serialization.
+* The registry test now covers unique upgrade predecessors and dwellings, fixed upgrade prices and exact 64-bit dwelling serialization.
 * The editor-object test verifies that all custom creatures are selectable and that the five existing random-monster object indices did not move.
 * Code-format, copyright-header, whitespace and tracked-asset checks passed; no proprietary or generated game-data asset was added.
 * The custom-creature registry test validates stable and legacy IDs, unique keys, representative source metadata, fallback mappings, placeholder

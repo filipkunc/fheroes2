@@ -234,7 +234,6 @@ namespace fheroes2
         int32_t fallbackMonsterId;
         int32_t upgradeFromMonsterId;
         uint64_t dwellingId;
-        uint32_t randomUnitLevel;
         // A zero cost means that the usual difference-based upgrade price applies.
         Cost upgradeCost;
         // Base strength is a derived runtime cache populated together with the upstream creature data.

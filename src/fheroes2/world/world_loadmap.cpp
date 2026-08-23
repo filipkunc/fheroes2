@@ -58,6 +58,7 @@
 #include "maps_tiles.h"
 #include "maps_tiles_helper.h"
 #include "math_base.h"
+#include "monster_info.h"
 #include "mp2.h"
 #include "mp2_helper.h"
 #include "players.h"
@@ -1032,7 +1033,8 @@ bool World::loadResurrectionMap( const std::string & filename )
 
                     // Verify that the input data is correct.
                     if ( monsterObjects[object.index].objectType == MP2::OBJ_RANDOM_MONSTER ) {
-                        selected.erase( std::remove_if( selected.begin(), selected.end(), []( const int value ) { return !Monster{ value }.isValid(); } ),
+                        selected.erase( std::remove_if( selected.begin(), selected.end(),
+                                                        []( const int value ) { return !Monster{ value }.isValid() || fheroes2::isCustomMonsterId( value ); } ),
                                         selected.end() );
                     }
                     else {

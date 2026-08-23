@@ -30,6 +30,8 @@
 
 #include "artifact.h"
 #include "direction.h"
+#include "monster.h"
+#include "monster_info.h"
 #include "mp2.h"
 #include "rand.h"
 #include "serialize.h"
@@ -109,9 +111,10 @@ namespace
     // Change the version when there is a need to expand map format functionality.
     constexpr uint16_t currentSupportedVersion{ 14 };
 
-    void loadCastleMetadata( IStreamBase & stream, std::map<uint32_t, Maps::Map_Format::CastleMetadata> & castleMetadata, const uint16_t mapVersion )
+    void loadCastleMetadata( IStreamBase & stream, std::map<uint32_t, Maps::Map_Format::CastleMetadata> & castleMetadata, const uint16_t mapVersion,
+                             const bool use64BitBuildingIds )
     {
-        if ( mapVersion >= 14 ) {
+        if ( mapVersion >= 14 || use64BitBuildingIds ) {
             stream >> castleMetadata;
             return;
         }
@@ -131,6 +134,77 @@ namespace
             metadata.builtBuildings.assign( builtBuildings.cbegin(), builtBuildings.cend() );
             metadata.bannedBuildings.assign( bannedBuildings.cbegin(), bannedBuildings.cend() );
             castleMetadata.emplace( objectId, std::move( metadata ) );
+        }
+    }
+
+    bool hasCompleteRequiredObjectMetadata( const Maps::Map_Format::MapFormat & map )
+    {
+        for ( const Maps::Map_Format::TileInfo & tileInfo : map.tiles ) {
+            for ( const Maps::Map_Format::TileObjectInfo & objectInfo : tileInfo.objects ) {
+                if ( objectInfo.group == Maps::ObjectGroup::MONSTERS && map.monsterMetadata.find( objectInfo.id ) == map.monsterMetadata.end() ) {
+                    return false;
+                }
+
+                if ( objectInfo.group == Maps::ObjectGroup::ADVENTURE_ARTIFACTS && map.artifactMetadata.find( objectInfo.id ) == map.artifactMetadata.end() ) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    int32_t convertLegacyFkMonsterId( const int32_t monsterId )
+    {
+        const fheroes2::CustomMonsterDefinition * definition = fheroes2::findCustomMonsterDefinitionByLegacyFkId( monsterId );
+        return definition != nullptr ? definition->id : monsterId;
+    }
+
+    void convertLegacyFkV13MonsterData( Maps::Map_Format::MapFormat & map )
+    {
+        static_assert( Monster::WATER_ELEMENT == 66 && Monster::RANDOM_MONSTER == 67 && Monster::RANDOM_MONSTER_LEVEL_4 == 71,
+                       "Monster object indices are part of the legacy FK map compatibility contract." );
+
+        const uint32_t standardMonsterCount = Monster::WATER_ELEMENT;
+        const uint32_t customMonsterCount = static_cast<uint32_t>( fheroes2::getCustomMonsterDefinitions().size() );
+        const uint32_t randomMonsterCount = Monster::RANDOM_MONSTER_LEVEL_4 - Monster::RANDOM_MONSTER + 1;
+
+        // The FK v13 editor placed custom creatures before random monster placeholders. The current registry keeps
+        // upstream random placeholders at their original indices and appends custom creatures after them.
+        for ( Maps::Map_Format::TileInfo & tileInfo : map.tiles ) {
+            for ( Maps::Map_Format::TileObjectInfo & objectInfo : tileInfo.objects ) {
+                if ( objectInfo.group != Maps::ObjectGroup::MONSTERS ) {
+                    continue;
+                }
+
+                if ( objectInfo.index >= standardMonsterCount && objectInfo.index < standardMonsterCount + customMonsterCount ) {
+                    objectInfo.index += randomMonsterCount;
+                }
+                else if ( objectInfo.index >= standardMonsterCount + customMonsterCount
+                          && objectInfo.index < standardMonsterCount + customMonsterCount + randomMonsterCount ) {
+                    objectInfo.index -= customMonsterCount;
+                }
+            }
+        }
+
+        for ( auto & [objectId, metadata] : map.castleMetadata ) {
+            (void)objectId;
+            std::transform( metadata.defenderMonsterType.begin(), metadata.defenderMonsterType.end(), metadata.defenderMonsterType.begin(), convertLegacyFkMonsterId );
+        }
+
+        for ( auto & [objectId, metadata] : map.heroMetadata ) {
+            (void)objectId;
+            std::transform( metadata.armyMonsterType.begin(), metadata.armyMonsterType.end(), metadata.armyMonsterType.begin(), convertLegacyFkMonsterId );
+        }
+
+        for ( auto & [objectId, metadata] : map.adventureMapEventMetadata ) {
+            (void)objectId;
+            metadata.monsterType = convertLegacyFkMonsterId( metadata.monsterType );
+        }
+
+        for ( auto & [objectId, metadata] : map.monsterMetadata ) {
+            (void)objectId;
+            std::transform( metadata.selected.begin(), metadata.selected.end(), metadata.selected.begin(), convertLegacyFkMonsterId );
         }
     }
 
@@ -555,81 +629,114 @@ namespace
             return false;
         }
 
-        RWStreamBuf decompressed;
-        decompressed.setBigendian( true );
-
-        {
-            std::vector<uint8_t> temp = stream.getRaw( 0 );
-            if ( temp.empty() ) {
-                // This is a corrupted file.
-                map = {};
-                return false;
-            }
-
-            const std::vector<uint8_t> decompressedData = Compression::unzipData( temp.data(), temp.size() );
-            if ( decompressedData.empty() ) {
-                // This is a corrupted file.
-                map = {};
-                return false;
-            }
-
-            // Let's try to free up some memory
-            temp = std::vector<uint8_t>{};
-
-            decompressed.putRaw( decompressedData.data(), decompressedData.size() );
-        }
-
-        decompressed >> map.additionalInfo >> map.tiles;
-
-        if ( map.tiles.size() != static_cast<size_t>( map.width ) * map.width ) {
+        std::vector<uint8_t> compressedData = stream.getRaw( 0 );
+        if ( compressedData.empty() ) {
+            // This is a corrupted file.
             map = {};
             return false;
         }
 
-        decompressed >> map.dailyEvents >> map.rumors;
-
-        std::map<uint32_t, Maps::Map_Format::StandardObjectMetadata> standardMetadata;
-        if ( map.version < 10 ) {
-            decompressed >> standardMetadata;
+        const std::vector<uint8_t> decompressedData = Compression::unzipData( compressedData.data(), compressedData.size() );
+        if ( decompressedData.empty() ) {
+            // This is a corrupted file.
+            map = {};
+            return false;
         }
 
-        loadCastleMetadata( decompressed, map.castleMetadata, map.version );
-        decompressed >> map.heroMetadata >> map.sphinxMetadata >> map.signMetadata >> map.adventureMapEventMetadata >> map.selectionObjectMetadata;
+        const Maps::Map_Format::BaseMapFormat baseMap = static_cast<const Maps::Map_Format::BaseMapFormat &>( map );
+        const auto parseMapData = [&baseMap, &decompressedData]( Maps::Map_Format::MapFormat & parsedMap, const bool use64BitBuildingIds ) {
+            static_cast<Maps::Map_Format::BaseMapFormat &>( parsedMap ) = baseMap;
 
-        static_assert( minimumSupportedVersion <= 8, "Remove this check." );
-        if ( map.version > 8 ) {
-            decompressed >> map.capturableObjectsMetadata;
+            ROStreamBuf decompressed( decompressedData );
+            decompressed.setBigendian( true );
+            decompressed >> parsedMap.additionalInfo >> parsedMap.tiles;
+
+            if ( parsedMap.tiles.size() != static_cast<size_t>( parsedMap.width ) * parsedMap.width ) {
+                return false;
+            }
+
+            decompressed >> parsedMap.dailyEvents >> parsedMap.rumors;
+
+            std::map<uint32_t, Maps::Map_Format::StandardObjectMetadata> standardMetadata;
+            if ( parsedMap.version < 10 ) {
+                decompressed >> standardMetadata;
+            }
+
+            loadCastleMetadata( decompressed, parsedMap.castleMetadata, parsedMap.version, use64BitBuildingIds );
+            if ( decompressed.fail() ) {
+                return false;
+            }
+
+            decompressed >> parsedMap.heroMetadata >> parsedMap.sphinxMetadata >> parsedMap.signMetadata >> parsedMap.adventureMapEventMetadata
+                >> parsedMap.selectionObjectMetadata;
+            if ( decompressed.fail() ) {
+                return false;
+            }
+
+            static_assert( minimumSupportedVersion <= 8, "Remove this check." );
+            if ( parsedMap.version > 8 ) {
+                decompressed >> parsedMap.capturableObjectsMetadata;
+            }
+            if ( decompressed.fail() ) {
+                return false;
+            }
+
+            convertFromV2ToV3( parsedMap );
+            convertFromV3ToV4( parsedMap );
+            convertFromV4ToV5( parsedMap );
+            convertFromV5ToV6( parsedMap );
+            convertFromV6ToV7( parsedMap );
+            convertFromV7ToV8( parsedMap );
+
+            if ( parsedMap.version > 9 ) {
+                decompressed >> parsedMap.monsterMetadata >> parsedMap.artifactMetadata >> parsedMap.resourceMetadata;
+            }
+            else {
+                convertFromV9ToV10( parsedMap, std::move( standardMetadata ) );
+            }
+            if ( decompressed.fail() ) {
+                return false;
+            }
+
+            if ( parsedMap.version < 11 ) {
+                parsedMap.translationInfo = {};
+            }
+            else {
+                decompressed >> parsedMap.translationInfo;
+            }
+
+            convertFromV11ToV12( parsedMap );
+            convertFromV12ToV13( parsedMap );
+
+            return !decompressed.fail() && decompressed.size() == 0;
+        };
+
+        Maps::Map_Format::MapFormat standardMap;
+        const bool isStandardMapParsed = parseMapData( standardMap, false );
+
+        // The FK Extended Edition used version 13 while already storing 64-bit castle building IDs. Retry this exact
+        // legacy layout when the upstream v13 interpretation is invalid or loses required object metadata.
+        if ( map.version == 13 && ( !isStandardMapParsed || !hasCompleteRequiredObjectMetadata( standardMap ) ) ) {
+            Maps::Map_Format::MapFormat legacyFkMap;
+            if ( parseMapData( legacyFkMap, true ) && hasCompleteRequiredObjectMetadata( legacyFkMap ) ) {
+                convertLegacyFkV13MonsterData( legacyFkMap );
+                map = std::move( legacyFkMap );
+                return true;
+            }
         }
 
-        convertFromV2ToV3( map );
-        convertFromV3ToV4( map );
-        convertFromV4ToV5( map );
-        convertFromV5ToV6( map );
-        convertFromV6ToV7( map );
-        convertFromV7ToV8( map );
-
-        if ( map.version > 9 ) {
-            decompressed >> map.monsterMetadata >> map.artifactMetadata >> map.resourceMetadata;
-        }
-        else {
-            convertFromV9ToV10( map, std::move( standardMetadata ) );
+        if ( !isStandardMapParsed ) {
+            map = {};
+            return false;
         }
 
-        if ( map.version < 11 ) {
-            map.translationInfo = {};
-        }
-        else {
-            decompressed >> map.translationInfo;
-        }
+        map = std::move( standardMap );
 
-        convertFromV11ToV12( map );
-        convertFromV12ToV13( map );
-
-        // Some maps made by older Extended Edition editors omitted default monster and artifact metadata entirely.
-        // Missing metadata has the same meaning as a default-constructed entry, so restore it before runtime and editor code validates the map.
+        // Some maps made by older editors omitted default monster and artifact metadata entirely. Missing metadata has
+        // the same meaning as a default-constructed entry, so restore it before runtime and editor code validates the map.
         addMissingDefaultObjectMetadata( map );
 
-        return !stream.fail();
+        return true;
     }
 }
 

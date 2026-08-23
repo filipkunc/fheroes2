@@ -593,25 +593,17 @@ Monster Monster::FromDwelling( int race, uint64_t dwelling )
 
 Monster Monster::Rand( const LevelType type )
 {
-    static std::vector<Monster> allMonsters;
+    if ( type == LevelType::LEVEL_ANY ) {
+        return Monster( Rand::Get( PEASANT, WATER_ELEMENT ) );
+    }
+
     static std::vector<Monster> monstersVec[static_cast<int>( LevelType::LEVEL_4 )];
-    if ( allMonsters.empty() ) {
+    if ( monstersVec[0].empty() ) {
         for ( uint32_t i = PEASANT; i <= WATER_ELEMENT; ++i ) {
             const Monster monster( i );
-            allMonsters.push_back( monster );
             if ( monster.GetRandomUnitLevel() > LevelType::LEVEL_ANY )
                 monstersVec[static_cast<int>( monster.GetRandomUnitLevel() ) - 1].push_back( monster );
         }
-
-        for ( const fheroes2::CustomMonsterDefinition & definition : fheroes2::getCustomMonsterDefinitions() ) {
-            const Monster monster( definition.id );
-            allMonsters.push_back( monster );
-            monstersVec[definition.randomUnitLevel - 1].push_back( monster );
-        }
-    }
-
-    if ( type == LevelType::LEVEL_ANY ) {
-        return Rand::Get( allMonsters );
     }
 
     return Rand::Get( monstersVec[static_cast<int>( type ) - 1] );
@@ -619,10 +611,6 @@ Monster Monster::Rand( const LevelType type )
 
 Monster::LevelType Monster::GetRandomUnitLevel() const
 {
-    if ( const fheroes2::CustomMonsterDefinition * definition = fheroes2::findCustomMonsterDefinition( id ) ) {
-        return static_cast<LevelType>( definition->randomUnitLevel );
-    }
-
     switch ( id ) {
     case PEASANT:
     case ARCHER:

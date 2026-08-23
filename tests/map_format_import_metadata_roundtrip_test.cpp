@@ -358,5 +358,66 @@ int main()
         return fail( "Missing default artifact metadata was not restored during FH2M loading." );
     }
 
+    // The original FK Extended Edition wrote 64-bit castle building IDs in format version 13 and placed its seven
+    // creatures before the five upstream random-monster placeholders. Recreate that layout by saving a current map
+    // (whose compressed payload also uses 64-bit building IDs) and changing only its header version to 13.
+    MapFormat legacyFk;
+    legacyFk.width = 36;
+    legacyFk.name = "Synthetic FK v13 compatibility";
+    legacyFk.tiles.resize( static_cast<size_t>( legacyFk.width ) * legacyFk.width );
+
+    constexpr uint32_t legacyAzureDragonObjectIndex = 66;
+    constexpr uint32_t legacyRandomMonsterObjectIndex = 73;
+    legacyFk.tiles[0].objects.push_back( { 6001, Maps::ObjectGroup::MONSTERS, legacyAzureDragonObjectIndex } );
+    legacyFk.tiles[1].objects.push_back( { 6002, Maps::ObjectGroup::MONSTERS, legacyRandomMonsterObjectIndex } );
+    legacyFk.monsterMetadata[6001].count = 9;
+    legacyFk.monsterMetadata[6002].selected = { 72 }; // Legacy Dachshund ID.
+
+    CastleMetadata legacyCastle;
+    legacyCastle.customBuildings = true;
+    legacyCastle.builtBuildings = { DWELLING_UPGRADE8 };
+    legacyCastle.defenderMonsterType = { 67, 68, 69, 70, 71 }; // Legacy Azure Dragon through Succubus IDs.
+    legacyFk.castleMetadata.emplace( 7001, legacyCastle );
+
+    HeroMetadata legacyHero;
+    legacyHero.armyMonsterType = { 72, 73, 0, 0, 0 }; // Legacy Dachshund and Maid IDs.
+    legacyFk.heroMetadata.emplace( 7002, legacyHero );
+
+    AdventureMapEventMetadata legacyEvent;
+    legacyEvent.monsterType = 69; // Legacy Thor ID.
+    legacyFk.adventureMapEventMetadata.emplace( 7003, legacyEvent );
+
+    RWStreamBuf legacyFkV13Output;
+    legacyFkV13Output.setBigendian( true );
+    if ( !saveMap( legacyFkV13Output, legacyFk ) ) {
+        return fail( "Failed to serialize the synthetic FK v13 fixture." );
+    }
+
+    std::vector<uint8_t> legacyFkV13Data = legacyFkV13Output.getRaw( 0 );
+    if ( legacyFkV13Data.size() < 2 ) {
+        return fail( "The synthetic FK v13 fixture has an invalid header." );
+    }
+    legacyFkV13Data[0] = 0;
+    legacyFkV13Data[1] = 13;
+
+    ROStreamBuf legacyFkV13Input( std::move( legacyFkV13Data ) );
+    legacyFkV13Input.setBigendian( true );
+    MapFormat convertedLegacyFk;
+    if ( !loadMap( legacyFkV13Input, convertedLegacyFk ) ) {
+        return fail( "Failed to load the synthetic FK v13 fixture." );
+    }
+
+    const auto randomMonsterAny = findObject( MP2::OBJ_RANDOM_MONSTER );
+    if ( convertedLegacyFk.version != 13 || convertedLegacyFk.castleMetadata.at( 7001 ).builtBuildings != std::vector<uint64_t>{ DWELLING_UPGRADE8 }
+         || convertedLegacyFk.castleMetadata.at( 7001 ).defenderMonsterType
+                != std::array<int32_t, 5>{ Monster::AZURE_DRAGON, Monster::BLOOD_DRAGON, Monster::THOR, Monster::AVENGER, Monster::SUCCUBUS }
+         || convertedLegacyFk.heroMetadata.at( 7002 ).armyMonsterType != std::array<int32_t, 5>{ Monster::DACHSHUND, Monster::MAID, 0, 0, 0 }
+         || convertedLegacyFk.adventureMapEventMetadata.at( 7003 ).monsterType != Monster::THOR
+         || convertedLegacyFk.monsterMetadata.at( 6002 ).selected != std::vector<int32_t>{ Monster::DACHSHUND }
+         || convertedLegacyFk.tiles[0].objects.front().index != customMonster.second || randomMonsterAny.first == Maps::ObjectGroup::NONE
+         || convertedLegacyFk.tiles[1].objects.front().index != randomMonsterAny.second ) {
+        return fail( "Legacy FK v13 custom creature IDs, object indices or 64-bit dwelling IDs were not converted." );
+    }
+
     return EXIT_SUCCESS;
 }
