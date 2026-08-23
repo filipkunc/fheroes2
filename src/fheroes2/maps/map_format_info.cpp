@@ -460,12 +460,20 @@ namespace
         }
     }
 
-    void addMissingMonsterMetadata( Maps::Map_Format::MapFormat & map )
+    void addMissingDefaultObjectMetadata( Maps::Map_Format::MapFormat & map )
     {
+        const std::vector<Maps::ObjectInfo> & artifactObjects = Maps::getObjectsByGroup( Maps::ObjectGroup::ADVENTURE_ARTIFACTS );
+
         for ( const Maps::Map_Format::TileInfo & tileInfo : map.tiles ) {
             for ( const Maps::Map_Format::TileObjectInfo & objectInfo : tileInfo.objects ) {
                 if ( objectInfo.group == Maps::ObjectGroup::MONSTERS ) {
                     map.monsterMetadata.try_emplace( objectInfo.id );
+                }
+                else if ( objectInfo.group == Maps::ObjectGroup::ADVENTURE_ARTIFACTS && objectInfo.index < artifactObjects.size() ) {
+                    const Maps::ObjectInfo & artifactObject = artifactObjects[objectInfo.index];
+                    if ( artifactObject.objectType != MP2::OBJ_ARTIFACT || artifactObject.metadata[0] != Artifact::SPELL_SCROLL ) {
+                        map.artifactMetadata.try_emplace( objectInfo.id );
+                    }
                 }
             }
         }
@@ -617,9 +625,9 @@ namespace
         convertFromV11ToV12( map );
         convertFromV12ToV13( map );
 
-        // Some maps made by older Extended Edition editors omitted default monster metadata entirely.
+        // Some maps made by older Extended Edition editors omitted default monster and artifact metadata entirely.
         // Missing metadata has the same meaning as a default-constructed entry, so restore it before runtime and editor code validates the map.
-        addMissingMonsterMetadata( map );
+        addMissingDefaultObjectMetadata( map );
 
         return !stream.fail();
     }

@@ -353,6 +353,10 @@ int main()
          || !reopened.monsterMetadata.at( 5002 ).selected.empty() ) {
         return fail( "Missing default monster metadata was not restored during FH2M loading." );
     }
+    if ( reopened.artifactMetadata.at( 1004 ).radius != 0 || reopened.artifactMetadata.at( 1004 ).captureCondition != 0
+         || !reopened.artifactMetadata.at( 1004 ).selected.empty() ) {
+        return fail( "Missing default artifact metadata was not restored during FH2M loading." );
+    }
 
     return EXIT_SUCCESS;
 }
