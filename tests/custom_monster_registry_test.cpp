@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 
+#include "castle.h"
 #include "monster.h"
 #include "monster_info.h"
 #include "serialize.h"
@@ -38,20 +39,30 @@ namespace
         int32_t legacyFkId;
         const char * stableKey;
         int32_t fallbackMonsterId;
+        int32_t upgradeFromMonsterId;
+        uint64_t dwellingId;
+        uint32_t randomUnitLevel;
+        Cost upgradeCost;
         uint32_t attack;
         uint32_t defense;
         uint32_t hitPoints;
     };
 
     constexpr std::array<ExpectedDefinition, 7> expectedDefinitions{ {
-        { Monster::AZURE_DRAGON, 67, "azure_dragon", Monster::BLACK_DRAGON, 16, 16, 400 },
-        { Monster::BLOOD_DRAGON, 68, "blood_dragon", Monster::BONE_DRAGON, 13, 11, 200 },
-        { Monster::THOR, 69, "thor", Monster::TITAN, 16, 16, 300 },
-        { Monster::AVENGER, 70, "avenger", Monster::CRUSADER, 15, 15, 100 },
-        { Monster::SUCCUBUS, 71, "succubus", Monster::GARGOYLE, 13, 12, 250 },
-        { Monster::DACHSHUND, 72, "dachshund", Monster::WOLF, 6, 6, 50 },
-        { Monster::MAID, 73, "maid", Monster::PEASANT, 2, 2, 5 },
+        { Monster::AZURE_DRAGON, 67, "azure_dragon", Monster::BLACK_DRAGON, Monster::BLACK_DRAGON, DWELLING_UPGRADE8, 4, {}, 16, 16, 400 },
+        { Monster::BLOOD_DRAGON, 68, "blood_dragon", Monster::BONE_DRAGON, Monster::BONE_DRAGON, DWELLING_UPGRADE9, 4, { 2000, 0, 1, 0, 0, 0, 0 }, 13, 11, 200 },
+        { Monster::THOR, 69, "thor", Monster::TITAN, Monster::TITAN, DWELLING_UPGRADE10, 4, { 2000, 0, 0, 0, 0, 0, 1 }, 16, 16, 300 },
+        { Monster::AVENGER, 70, "avenger", Monster::CRUSADER, Monster::CRUSADER, DWELLING_UPGRADE11, 4, { 500, 0, 0, 0, 0, 0, 0 }, 15, 15, 100 },
+        { Monster::SUCCUBUS, 71, "succubus", Monster::GARGOYLE, Monster::CYCLOPS, DWELLING_UPGRADE12, 4, { 1750, 0, 0, 0, 0, 0, 0 }, 13, 12, 250 },
+        { Monster::DACHSHUND, 72, "dachshund", Monster::WOLF, Monster::WOLF, DWELLING_UPGRADE13, 2, {}, 6, 6, 50 },
+        { Monster::MAID, 73, "maid", Monster::PEASANT, Monster::PEASANT, DWELLING_UPGRADE14, 1, {}, 2, 2, 5 },
     } };
+
+    bool areSameCosts( const Cost & left, const Cost & right )
+    {
+        return left.gold == right.gold && left.wood == right.wood && left.mercury == right.mercury && left.ore == right.ore && left.sulfur == right.sulfur
+               && left.crystal == right.crystal && left.gems == right.gems;
+    }
 }
 
 int main()
@@ -69,6 +80,8 @@ int main()
 
     std::set<int32_t> ids;
     std::set<int32_t> legacyIds;
+    std::set<int32_t> upgradeBaseIds;
+    std::set<uint64_t> dwellingIds;
     std::set<std::string> stableKeys;
     std::vector<int32_t> serializedIds;
 
@@ -77,21 +90,31 @@ int main()
         const ExpectedDefinition & expected = expectedDefinitions[i];
 
         if ( definition.id != expected.id || definition.legacyFkId != expected.legacyFkId || definition.stableKey != std::string( expected.stableKey )
-             || definition.fallbackMonsterId != expected.fallbackMonsterId || definition.data.battleStats.attack != expected.attack
+             || definition.fallbackMonsterId != expected.fallbackMonsterId || definition.upgradeFromMonsterId != expected.upgradeFromMonsterId
+             || definition.dwellingId != expected.dwellingId || definition.randomUnitLevel != expected.randomUnitLevel
+             || !areSameCosts( definition.upgradeCost, expected.upgradeCost ) || definition.data.battleStats.attack != expected.attack
              || definition.data.battleStats.defense != expected.defense || definition.data.battleStats.hp != expected.hitPoints ) {
             std::cerr << "Custom creature metadata mismatch at registry index " << i << ".\n";
             return 1;
         }
 
-        if ( !ids.emplace( definition.id ).second || !legacyIds.emplace( definition.legacyFkId ).second || !stableKeys.emplace( definition.stableKey ).second ) {
-            std::cerr << "Custom creature identifiers and keys must be unique.\n";
+        if ( !ids.emplace( definition.id ).second || !legacyIds.emplace( definition.legacyFkId ).second
+             || !upgradeBaseIds.emplace( definition.upgradeFromMonsterId ).second || !dwellingIds.emplace( definition.dwellingId ).second
+             || !stableKeys.emplace( definition.stableKey ).second ) {
+            std::cerr << "Custom creature identifiers, upgrade bases, dwellings and keys must be unique.\n";
             return 1;
         }
 
         if ( !fheroes2::isCustomMonsterId( definition.id ) || fheroes2::getCustomMonsterFallbackId( definition.id ) != definition.fallbackMonsterId
              || fheroes2::findCustomMonsterDefinition( definition.id ) != &definition
+             || fheroes2::findCustomMonsterDefinitionByUpgradeBase( definition.upgradeFromMonsterId ) != &definition
              || fheroes2::findCustomMonsterDefinitionByLegacyFkId( definition.legacyFkId ) != &definition ) {
             std::cerr << "Custom creature lookup mismatch.\n";
+            return 1;
+        }
+
+        if ( definition.randomUnitLevel < 1 || definition.randomUnitLevel > 4 || definition.dwellingId <= UINT32_MAX ) {
+            std::cerr << "Custom creature gameplay metadata is outside its supported range.\n";
             return 1;
         }
 
@@ -116,6 +139,18 @@ int main()
     stream >> restoredIds;
     if ( stream.fail() || restoredIds != serializedIds ) {
         std::cerr << "Custom creature IDs failed their serialization round trip.\n";
+        return 1;
+    }
+
+    const std::vector<uint64_t> serializedDwellings( dwellingIds.cbegin(), dwellingIds.cend() );
+    RWStreamBuf dwellingStream;
+    dwellingStream << serializedDwellings;
+    dwellingStream.seek( 0 );
+
+    std::vector<uint64_t> restoredDwellings;
+    dwellingStream >> restoredDwellings;
+    if ( dwellingStream.fail() || restoredDwellings != serializedDwellings ) {
+        std::cerr << "64-bit custom dwelling IDs failed their serialization round trip.\n";
         return 1;
     }
 

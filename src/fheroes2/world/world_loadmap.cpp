@@ -1015,6 +1015,10 @@ bool World::loadResurrectionMap( const std::string & filename )
                 tileData[0] = static_cast<uint32_t>( objectInfo.count );
 
                 switch ( monsterObjects[object.index].objectType ) {
+                case MP2::OBJ_MONSTER:
+                    // Indexed fallback art is not a stable custom creature identifier. Preserve the editor registry metadata until tile initialization.
+                    tileData[1] = monsterObjects[object.index].metadata[0];
+                    break;
                 case MP2::OBJ_RANDOM_MONSTER:
                 case MP2::OBJ_RANDOM_MONSTER_MEDIUM:
                 case MP2::OBJ_RANDOM_MONSTER_STRONG:

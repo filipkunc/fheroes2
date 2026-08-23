@@ -1602,7 +1602,10 @@ namespace Maps
             break;
 
         case MP2::OBJ_MONSTER: {
-            const Monster mons = Monster( tile.getMainObjectPart().icnIndex + 1 ); // ICN::MONS32 start from PEASANT
+            const int32_t monsterId
+                = tile.metadata()[1] != Monster::UNKNOWN ? static_cast<int32_t>( tile.metadata()[1] ) : static_cast<int32_t>( tile.getMainObjectPart().icnIndex ) + 1;
+            tile.metadata()[1] = Monster::UNKNOWN;
+            const Monster mons = Monster( monsterId ); // ICN::MONS32 starts from Peasant when no explicit FH2M metadata exists.
             setMonsterOnTile( tile, mons, tile.metadata()[0] );
             break;
         }

@@ -153,7 +153,7 @@ public:
     }
 
     explicit Monster( const Spell & sp );
-    Monster( const int race, const uint32_t dw );
+    Monster( const int race, const uint64_t dw );
 
     Monster( const Monster & ) = default;
     Monster( Monster && ) = default;
@@ -230,7 +230,7 @@ public:
     const char * GetName() const;
     const char * GetMultiName() const;
     const char * GetPluralName( uint32_t ) const;
-    static const char * getRandomRaceMonstersName( const uint32_t building );
+    static const char * getRandomRaceMonstersName( const uint64_t building );
 
     bool isValid() const
     {
@@ -322,7 +322,7 @@ public:
         return Funds( fheroes2::getMonsterData( id ).generalStats.cost );
     }
 
-    uint32_t GetDwelling() const;
+    uint64_t GetDwelling() const;
 
     int GetMonsterSprite() const
     {
@@ -339,7 +339,7 @@ protected:
     // Returns the cost of an upgrade if a monster has an upgrade. Otherwise returns no resources.
     Funds GetUpgradeCost() const;
 
-    static Monster FromDwelling( int race, uint32_t dw );
+    static Monster FromDwelling( int race, uint64_t dw );
 
     int32_t id;
 };

@@ -109,7 +109,7 @@ Monster::Monster( const Spell & sp )
     }
 }
 
-Monster::Monster( const int race, const uint32_t dw )
+Monster::Monster( const int race, const uint64_t dw )
     : id( UNKNOWN )
 {
     id = FromDwelling( race, dw ).id;
@@ -233,6 +233,10 @@ bool Monster::isWeaknessPresent( const fheroes2::MonsterWeaknessType weaknessTyp
 
 Monster Monster::GetDowngrade() const
 {
+    if ( const fheroes2::CustomMonsterDefinition * definition = fheroes2::findCustomMonsterDefinition( id ) ) {
+        return Monster( definition->upgradeFromMonsterId );
+    }
+
     switch ( id ) {
     case RANGER:
         return Monster( ARCHER );
@@ -286,6 +290,10 @@ Monster Monster::GetDowngrade() const
 
 Monster Monster::GetUpgrade() const
 {
+    if ( const fheroes2::CustomMonsterDefinition * definition = fheroes2::findCustomMonsterDefinitionByUpgradeBase( id ) ) {
+        return Monster( definition->id );
+    }
+
     switch ( id ) {
     case ARCHER:
         return Monster( RANGER );
@@ -337,8 +345,16 @@ Monster Monster::GetUpgrade() const
     return Monster( id );
 }
 
-Monster Monster::FromDwelling( int race, uint32_t dwelling )
+Monster Monster::FromDwelling( int race, uint64_t dwelling )
 {
+    const auto customIter = std::find_if( fheroes2::getCustomMonsterDefinitions().cbegin(), fheroes2::getCustomMonsterDefinitions().cend(),
+                                          [race, dwelling]( const fheroes2::CustomMonsterDefinition & definition ) {
+                                              return definition.data.generalStats.race == static_cast<uint32_t>( race ) && definition.dwellingId == dwelling;
+                                          } );
+    if ( customIter != fheroes2::getCustomMonsterDefinitions().cend() ) {
+        return Monster( customIter->id );
+    }
+
     switch ( dwelling ) {
     case DWELLING_MONSTER1:
         switch ( race ) {
@@ -577,21 +593,36 @@ Monster Monster::FromDwelling( int race, uint32_t dwelling )
 
 Monster Monster::Rand( const LevelType type )
 {
-    if ( type == LevelType::LEVEL_ANY )
-        return Monster( Rand::Get( PEASANT, WATER_ELEMENT ) );
+    static std::vector<Monster> allMonsters;
     static std::vector<Monster> monstersVec[static_cast<int>( LevelType::LEVEL_4 )];
-    if ( monstersVec[0].empty() ) {
+    if ( allMonsters.empty() ) {
         for ( uint32_t i = PEASANT; i <= WATER_ELEMENT; ++i ) {
             const Monster monster( i );
+            allMonsters.push_back( monster );
             if ( monster.GetRandomUnitLevel() > LevelType::LEVEL_ANY )
                 monstersVec[static_cast<int>( monster.GetRandomUnitLevel() ) - 1].push_back( monster );
         }
+
+        for ( const fheroes2::CustomMonsterDefinition & definition : fheroes2::getCustomMonsterDefinitions() ) {
+            const Monster monster( definition.id );
+            allMonsters.push_back( monster );
+            monstersVec[definition.randomUnitLevel - 1].push_back( monster );
+        }
     }
+
+    if ( type == LevelType::LEVEL_ANY ) {
+        return Rand::Get( allMonsters );
+    }
+
     return Rand::Get( monstersVec[static_cast<int>( type ) - 1] );
 }
 
 Monster::LevelType Monster::GetRandomUnitLevel() const
 {
+    if ( const fheroes2::CustomMonsterDefinition * definition = fheroes2::findCustomMonsterDefinition( id ) ) {
+        return static_cast<LevelType>( definition->randomUnitLevel );
+    }
+
     switch ( id ) {
     case PEASANT:
     case ARCHER:
@@ -690,8 +721,12 @@ Monster::LevelType Monster::GetRandomUnitLevel() const
     return LevelType::LEVEL_ANY;
 }
 
-uint32_t Monster::GetDwelling() const
+uint64_t Monster::GetDwelling() const
 {
+    if ( const fheroes2::CustomMonsterDefinition * definition = fheroes2::findCustomMonsterDefinition( id ) ) {
+        return definition->dwellingId;
+    }
+
     switch ( id ) {
     case PEASANT:
     case GOBLIN:
@@ -797,7 +832,7 @@ const char * Monster::GetPluralName( uint32_t count ) const
     return count == 1 ? _( generalStats.untranslatedName ) : _( generalStats.untranslatedPluralName );
 }
 
-const char * Monster::getRandomRaceMonstersName( const uint32_t building )
+const char * Monster::getRandomRaceMonstersName( const uint64_t building )
 {
     switch ( building ) {
     case DWELLING_MONSTER1:
@@ -817,7 +852,16 @@ const char * Monster::getRandomRaceMonstersName( const uint32_t building )
     case DWELLING_MONSTER6:
     case DWELLING_UPGRADE6:
     case DWELLING_UPGRADE7:
+    case DWELLING_UPGRADE8:
+    case DWELLING_UPGRADE9:
+    case DWELLING_UPGRADE10:
+    case DWELLING_UPGRADE11:
+    case DWELLING_UPGRADE12:
         return _( "randomRace|level 6 creatures" );
+    case DWELLING_UPGRADE13:
+        return _( "randomRace|level 3 creatures" );
+    case DWELLING_UPGRADE14:
+        return _( "randomRace|level 1 creatures" );
     default:
         assert( 0 );
         return _( "Unknown Monsters" );
@@ -835,6 +879,13 @@ Funds Monster::GetUpgradeCost() const
     const Monster upgr = GetUpgrade();
     if ( id == upgr.id ) {
         return {};
+    }
+
+    if ( const fheroes2::CustomMonsterDefinition * definition = fheroes2::findCustomMonsterDefinition( upgr.id ) ) {
+        const Funds customUpgradeCost( definition->upgradeCost );
+        if ( customUpgradeCost.GetValidItems() != 0 ) {
+            return customUpgradeCost;
+        }
     }
 
     return ( upgr.GetCost() - GetCost() ) * 2;

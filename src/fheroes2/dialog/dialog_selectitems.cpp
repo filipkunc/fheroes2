@@ -49,6 +49,7 @@
 #include "maps.h"
 #include "maps_fileinfo.h"
 #include "math_tools.h"
+#include "monster_info.h"
 #include "mp2.h"
 #include "pal.h"
 #include "race.h"
@@ -1208,6 +1209,9 @@ Monster Dialog::selectMonster( const int32_t monsterId )
     // Skip Monster::UNKNOWN and start from the next one.
     std::iota( monsters.begin(), monsters.end(), Monster::UNKNOWN + 1 );
     monsters.erase( std::remove_if( monsters.begin(), monsters.end(), []( const int id ) { return Monster( id ).isRandomMonster(); } ), monsters.end() );
+    for ( const fheroes2::CustomMonsterDefinition & definition : fheroes2::getCustomMonsterDefinitions() ) {
+        monsters.emplace_back( definition.id );
+    }
 
     if ( monsters.empty() ) {
         fheroes2::showStandardTextMessage( _( "Warning" ), _( "There are no monsters to select from." ), Dialog::OK );

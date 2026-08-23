@@ -411,7 +411,7 @@ void Castle::loadFromResurrectionMap( const Maps::Map_Format::CastleMetadata & m
 
     _disabledBuildings = 0;
 
-    for ( const uint32_t building : metadata.bannedBuildings ) {
+    for ( const uint64_t building : metadata.bannedBuildings ) {
         _disabledBuildings |= building;
     }
 
@@ -435,29 +435,37 @@ void Castle::_postLoad()
     // Fix dwelling upgrades dependent from race. (For random race towns.)
     switch ( _race ) {
     case Race::KNGT:
-        _constructedBuildings &= ~DWELLING_UPGRADE7;
+        _constructedBuildings &= ~( DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 | DWELLING_UPGRADE10 | DWELLING_UPGRADE12 | DWELLING_UPGRADE13 );
         break;
     case Race::BARB:
-        _constructedBuildings &= ~( DWELLING_UPGRADE3 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE3 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 | DWELLING_UPGRADE10
+                                    | DWELLING_UPGRADE11 | DWELLING_UPGRADE14 );
         break;
     case Race::SORC:
-        _constructedBuildings &= ~( DWELLING_UPGRADE5 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE5 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 | DWELLING_UPGRADE10
+                                    | DWELLING_UPGRADE11 | DWELLING_UPGRADE12 | DWELLING_UPGRADE13 | DWELLING_UPGRADE14 );
         break;
     case Race::WRLK:
-        _constructedBuildings &= ~( DWELLING_UPGRADE2 | DWELLING_UPGRADE3 | DWELLING_UPGRADE5 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE2 | DWELLING_UPGRADE3 | DWELLING_UPGRADE5 | DWELLING_UPGRADE9 | DWELLING_UPGRADE10 | DWELLING_UPGRADE11
+                                    | DWELLING_UPGRADE12 | DWELLING_UPGRADE13 | DWELLING_UPGRADE14 );
         break;
     case Race::WZRD:
-        _constructedBuildings &= ~( DWELLING_UPGRADE2 | DWELLING_UPGRADE4 | DWELLING_UPGRADE7 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE2 | DWELLING_UPGRADE4 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9 | DWELLING_UPGRADE11
+                                    | DWELLING_UPGRADE12 | DWELLING_UPGRADE13 | DWELLING_UPGRADE14 );
         break;
     case Race::NECR:
-        _constructedBuildings &= ~( DWELLING_UPGRADE6 | DWELLING_UPGRADE7 );
+        _constructedBuildings &= ~( DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE10 | DWELLING_UPGRADE11 | DWELLING_UPGRADE12
+                                    | DWELLING_UPGRADE13 | DWELLING_UPGRADE14 );
         break;
     default:
         break;
     }
 
     // Fill built dwellings with weekly growth monsters.
-    if ( _constructedBuildings & DWELLING_MONSTER1 ) {
+    if ( _constructedBuildings & DWELLING_UPGRADE14 ) {
+        _dwelling[0] = Monster( _race, DWELLING_UPGRADE14 ).GetGrown();
+    }
+    else if ( _constructedBuildings & DWELLING_MONSTER1 ) {
         _dwelling[0] = Monster( _race, DWELLING_MONSTER1 ).GetGrown();
     }
 
@@ -468,7 +476,10 @@ void Castle::_postLoad()
         _dwelling[1] = Monster( _race, DWELLING_MONSTER2 ).GetGrown();
     }
 
-    if ( _constructedBuildings & DWELLING_UPGRADE3 ) {
+    if ( _constructedBuildings & DWELLING_UPGRADE13 ) {
+        _dwelling[2] = Monster( _race, DWELLING_UPGRADE13 ).GetGrown();
+    }
+    else if ( _constructedBuildings & DWELLING_UPGRADE3 ) {
         _dwelling[2] = Monster( _race, DWELLING_UPGRADE3 ).GetGrown();
     }
     else if ( _constructedBuildings & DWELLING_MONSTER3 ) {
@@ -489,7 +500,22 @@ void Castle::_postLoad()
         _dwelling[4] = Monster( _race, DWELLING_MONSTER5 ).GetGrown();
     }
 
-    if ( _constructedBuildings & DWELLING_UPGRADE7 ) {
+    if ( _constructedBuildings & DWELLING_UPGRADE12 ) {
+        _dwelling[5] = Monster( _race, DWELLING_UPGRADE12 ).GetGrown();
+    }
+    else if ( _constructedBuildings & DWELLING_UPGRADE11 ) {
+        _dwelling[5] = Monster( _race, DWELLING_UPGRADE11 ).GetGrown();
+    }
+    else if ( _constructedBuildings & DWELLING_UPGRADE10 ) {
+        _dwelling[5] = Monster( _race, DWELLING_UPGRADE10 ).GetGrown();
+    }
+    else if ( _constructedBuildings & DWELLING_UPGRADE9 ) {
+        _dwelling[5] = Monster( _race, DWELLING_UPGRADE9 ).GetGrown();
+    }
+    else if ( _constructedBuildings & DWELLING_UPGRADE8 ) {
+        _dwelling[5] = Monster( _race, DWELLING_UPGRADE8 ).GetGrown();
+    }
+    else if ( _constructedBuildings & DWELLING_UPGRADE7 ) {
         _dwelling[5] = Monster( _race, DWELLING_UPGRADE7 ).GetGrown();
     }
     else if ( _constructedBuildings & DWELLING_UPGRADE6 ) {
@@ -629,7 +655,28 @@ int Castle::getBuildingValue() const
     if ( _race == Race::WRLK && isBuild( DWELLING_UPGRADE7 ) )
         value += 2;
 
-    // DWELLING_UPGRADE7 resolves to a negative, can't use <= operator
+    if ( _race == Race::WRLK && isBuild( DWELLING_UPGRADE8 ) )
+        value += 3;
+
+    if ( _race == Race::NECR && isBuild( DWELLING_UPGRADE9 ) )
+        value += 2;
+
+    if ( _race == Race::WZRD && isBuild( DWELLING_UPGRADE10 ) )
+        value += 2;
+
+    if ( _race == Race::KNGT && isBuild( DWELLING_UPGRADE11 ) )
+        value += 2;
+
+    if ( _race == Race::BARB && isBuild( DWELLING_UPGRADE12 ) )
+        value += 2;
+
+    if ( _race == Race::BARB && isBuild( DWELLING_UPGRADE13 ) )
+        value += 1;
+
+    if ( _race == Race::KNGT && isBuild( DWELLING_UPGRADE14 ) )
+        value += 1;
+
+    // The vanilla level 2-6 dwelling upgrades are contiguous. Higher upgrade tiers are valued above.
     for ( uint32_t upgrade = DWELLING_UPGRADE2; upgrade <= DWELLING_UPGRADE6; upgrade <<= 1 ) {
         if ( isBuild( upgrade ) )
             ++value;
@@ -733,7 +780,7 @@ double Castle::getVisitValue( const Heroes & hero ) const
     return spellValue + upgradeStrength + futureArmy.getReinforcementValue( getAvailableArmy( potentialFunds ) );
 }
 
-bool Castle::_isExactBuildingBuilt( const uint32_t buildingToCheck ) const
+bool Castle::_isExactBuildingBuilt( const uint64_t buildingToCheck ) const
 {
     assert( CountBits( buildingToCheck ) == 1 );
 
@@ -742,7 +789,7 @@ bool Castle::_isExactBuildingBuilt( const uint32_t buildingToCheck ) const
         return false;
     }
 
-    const auto checkBuilding = [this]( const uint32_t expectedLevels, const uint32_t allPossibleLevels ) {
+    const auto checkBuilding = [this]( const uint64_t expectedLevels, const uint64_t allPossibleLevels ) {
         // All expected levels should be built
         assert( ( _constructedBuildings & expectedLevels ) == expectedLevels );
 
@@ -770,19 +817,18 @@ bool Castle::_isExactBuildingBuilt( const uint32_t buildingToCheck ) const
     if ( buildingToCheck & ( DWELLING_MONSTERS | DWELLING_UPGRADES ) ) {
         switch ( buildingToCheck ) {
         case DWELLING_MONSTER1:
-            // Level 1 dwellings have no upgrades
-            return true;
+            return checkBuilding( DWELLING_MONSTER1, DWELLING_MONSTER1 | DWELLING_UPGRADE14 );
         case DWELLING_MONSTER2:
             return checkBuilding( DWELLING_MONSTER2, DWELLING_MONSTER2 | DWELLING_UPGRADE2 );
         case DWELLING_MONSTER3:
-            return checkBuilding( DWELLING_MONSTER3, DWELLING_MONSTER3 | DWELLING_UPGRADE3 );
+            return checkBuilding( DWELLING_MONSTER3, DWELLING_MONSTER3 | DWELLING_UPGRADE3 | DWELLING_UPGRADE13 );
         case DWELLING_MONSTER4:
             return checkBuilding( DWELLING_MONSTER4, DWELLING_MONSTER4 | DWELLING_UPGRADE4 );
         case DWELLING_MONSTER5:
             return checkBuilding( DWELLING_MONSTER5, DWELLING_MONSTER5 | DWELLING_UPGRADE5 );
         case DWELLING_MONSTER6:
-            // Take the Black Dragon upgrade (DWELLING_UPGRADE7) into account
-            return checkBuilding( DWELLING_MONSTER6, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 );
+            return checkBuilding( DWELLING_MONSTER6, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE9
+                                                         | DWELLING_UPGRADE10 | DWELLING_UPGRADE11 | DWELLING_UPGRADE12 );
 
         case DWELLING_UPGRADE2:
             return checkBuilding( DWELLING_MONSTER2 | DWELLING_UPGRADE2, DWELLING_MONSTER2 | DWELLING_UPGRADE2 );
@@ -793,11 +839,26 @@ bool Castle::_isExactBuildingBuilt( const uint32_t buildingToCheck ) const
         case DWELLING_UPGRADE5:
             return checkBuilding( DWELLING_MONSTER5 | DWELLING_UPGRADE5, DWELLING_MONSTER5 | DWELLING_UPGRADE5 );
         case DWELLING_UPGRADE6:
-            // Take the Black Dragon upgrade (DWELLING_UPGRADE7) into account
-            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 );
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6,
+                                  DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 | DWELLING_UPGRADE10 | DWELLING_UPGRADE11 );
         case DWELLING_UPGRADE7:
-            // Black Dragon upgrade
-            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 );
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7,
+                                  DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+        case DWELLING_UPGRADE8:
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8,
+                                  DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE7 | DWELLING_UPGRADE8 );
+        case DWELLING_UPGRADE9:
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE9, DWELLING_MONSTER6 | DWELLING_UPGRADE9 );
+        case DWELLING_UPGRADE10:
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE10, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE10 );
+        case DWELLING_UPGRADE11:
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE11, DWELLING_MONSTER6 | DWELLING_UPGRADE6 | DWELLING_UPGRADE11 );
+        case DWELLING_UPGRADE12:
+            return checkBuilding( DWELLING_MONSTER6 | DWELLING_UPGRADE12, DWELLING_MONSTER6 | DWELLING_UPGRADE12 );
+        case DWELLING_UPGRADE13:
+            return checkBuilding( DWELLING_MONSTER3 | DWELLING_UPGRADE13, DWELLING_MONSTER3 | DWELLING_UPGRADE13 );
+        case DWELLING_UPGRADE14:
+            return checkBuilding( DWELLING_MONSTER1 | DWELLING_UPGRADE14, DWELLING_MONSTER1 | DWELLING_UPGRADE14 );
 
         default:
             assert( 0 );
@@ -807,17 +868,19 @@ bool Castle::_isExactBuildingBuilt( const uint32_t buildingToCheck ) const
     return true;
 }
 
-uint32_t * Castle::_getDwelling( const uint32_t buildingType )
+uint32_t * Castle::_getDwelling( const uint64_t buildingType )
 {
     if ( isBuild( buildingType ) )
         switch ( buildingType ) {
         case DWELLING_MONSTER1:
+        case DWELLING_UPGRADE14:
             return &_dwelling[0];
         case DWELLING_MONSTER2:
         case DWELLING_UPGRADE2:
             return &_dwelling[1];
         case DWELLING_MONSTER3:
         case DWELLING_UPGRADE3:
+        case DWELLING_UPGRADE13:
             return &_dwelling[2];
         case DWELLING_MONSTER4:
         case DWELLING_UPGRADE4:
@@ -828,6 +891,11 @@ uint32_t * Castle::_getDwelling( const uint32_t buildingType )
         case DWELLING_MONSTER6:
         case DWELLING_UPGRADE6:
         case DWELLING_UPGRADE7:
+        case DWELLING_UPGRADE8:
+        case DWELLING_UPGRADE9:
+        case DWELLING_UPGRADE10:
+        case DWELLING_UPGRADE11:
+        case DWELLING_UPGRADE12:
             return &_dwelling[5];
         default:
             break;
@@ -847,9 +915,10 @@ void Castle::ActionNewWeek()
         return;
     }
 
-    static const std::array<uint32_t, 12> allDwellings
-        = { DWELLING_MONSTER1, DWELLING_MONSTER2, DWELLING_MONSTER3, DWELLING_MONSTER4, DWELLING_MONSTER5, DWELLING_MONSTER6,
-            DWELLING_UPGRADE2, DWELLING_UPGRADE3, DWELLING_UPGRADE4, DWELLING_UPGRADE5, DWELLING_UPGRADE6, DWELLING_UPGRADE7 };
+    static const std::array<uint64_t, 19> allDwellings
+        = { DWELLING_MONSTER1,  DWELLING_MONSTER2,  DWELLING_MONSTER3,  DWELLING_MONSTER4,  DWELLING_MONSTER5, DWELLING_MONSTER6, DWELLING_UPGRADE2,
+            DWELLING_UPGRADE3,  DWELLING_UPGRADE4,  DWELLING_UPGRADE5,  DWELLING_UPGRADE6,  DWELLING_UPGRADE7, DWELLING_UPGRADE8, DWELLING_UPGRADE9,
+            DWELLING_UPGRADE10, DWELLING_UPGRADE11, DWELLING_UPGRADE12, DWELLING_UPGRADE13, DWELLING_UPGRADE14 };
 
     const bool isNeutral = ( GetColor() == PlayerColor::NONE );
     const WeekName weekType = world.GetWeekType().GetType();
@@ -857,11 +926,11 @@ void Castle::ActionNewWeek()
     const bool isMonsterWeek = ( weekType == WeekName::MONSTERS );
 
     if ( !isPlagueWeek ) {
-        static const std::array<uint32_t, 6> basicDwellings
+        static const std::array<uint64_t, 6> basicDwellings
             = { DWELLING_MONSTER1, DWELLING_MONSTER2, DWELLING_MONSTER3, DWELLING_MONSTER4, DWELLING_MONSTER5, DWELLING_MONSTER6 };
 
         // Normal population growth
-        for ( const uint32_t dwellingId : basicDwellings ) {
+        for ( const uint64_t dwellingId : basicDwellings ) {
             uint32_t * dwellingMonsters = _getDwelling( dwellingId );
             if ( dwellingMonsters == nullptr ) {
                 // Such dwelling (or its upgrade) has not been built
@@ -888,7 +957,7 @@ void Castle::ActionNewWeek()
         }
 
         if ( isMonsterWeek && !world.BeginMonth() ) {
-            for ( const uint32_t dwellingId : allDwellings ) {
+            for ( const uint64_t dwellingId : allDwellings ) {
                 // A building of exactly this level should be built (its upgraded versions should not be considered)
                 if ( !_isExactBuildingBuilt( dwellingId ) ) {
                     continue;
@@ -929,7 +998,7 @@ void Castle::ActionNewWeek()
             }
         }
         else if ( isMonsterWeek ) {
-            for ( const uint32_t dwellingId : allDwellings ) {
+            for ( const uint64_t dwellingId : allDwellings ) {
                 // A building of exactly this level should be built (its upgraded versions should not be considered)
                 if ( !_isExactBuildingBuilt( dwellingId ) ) {
                     continue;
@@ -973,7 +1042,7 @@ int Castle::GetLevelMageGuild() const
     return 0;
 }
 
-const char * Castle::GetStringBuilding( const uint32_t buildingType, const int race )
+const char * Castle::GetStringBuilding( const uint64_t buildingType, const int race )
 {
     return fheroes2::getBuildingName( race, static_cast<BuildingType>( buildingType ) );
 }
@@ -1036,6 +1105,7 @@ bool Castle::RecruitMonster( const Troop & troop, bool showDialog )
 
     switch ( troop.GetDwelling() ) {
     case DWELLING_MONSTER1:
+    case DWELLING_UPGRADE14:
         dwellingIndex = 0;
         break;
     case DWELLING_UPGRADE2:
@@ -1044,6 +1114,7 @@ bool Castle::RecruitMonster( const Troop & troop, bool showDialog )
         break;
     case DWELLING_UPGRADE3:
     case DWELLING_MONSTER3:
+    case DWELLING_UPGRADE13:
         dwellingIndex = 2;
         break;
     case DWELLING_UPGRADE4:
@@ -1055,6 +1126,11 @@ bool Castle::RecruitMonster( const Troop & troop, bool showDialog )
         dwellingIndex = 4;
         break;
     case DWELLING_UPGRADE7:
+    case DWELLING_UPGRADE8:
+    case DWELLING_UPGRADE9:
+    case DWELLING_UPGRADE10:
+    case DWELLING_UPGRADE11:
+    case DWELLING_UPGRADE12:
     case DWELLING_UPGRADE6:
     case DWELLING_MONSTER6:
         dwellingIndex = 5;
@@ -1110,16 +1186,18 @@ uint32_t Castle::getRecruitLimit( const Monster & monster, const Funds & budget 
     return willRecruit;
 }
 
-uint32_t Castle::getMonstersInDwelling( const uint32_t buildingType ) const
+uint32_t Castle::getMonstersInDwelling( const uint64_t buildingType ) const
 {
     switch ( buildingType ) {
     case DWELLING_MONSTER1:
+    case DWELLING_UPGRADE14:
         return _dwelling[0];
     case DWELLING_MONSTER2:
     case DWELLING_UPGRADE2:
         return _dwelling[1];
     case DWELLING_MONSTER3:
     case DWELLING_UPGRADE3:
+    case DWELLING_UPGRADE13:
         return _dwelling[2];
     case DWELLING_MONSTER4:
     case DWELLING_UPGRADE4:
@@ -1130,6 +1208,11 @@ uint32_t Castle::getMonstersInDwelling( const uint32_t buildingType ) const
     case DWELLING_MONSTER6:
     case DWELLING_UPGRADE6:
     case DWELLING_UPGRADE7:
+    case DWELLING_UPGRADE8:
+    case DWELLING_UPGRADE9:
+    case DWELLING_UPGRADE10:
+    case DWELLING_UPGRADE11:
+    case DWELLING_UPGRADE12:
         return _dwelling[5];
 
     default:
@@ -1139,7 +1222,7 @@ uint32_t Castle::getMonstersInDwelling( const uint32_t buildingType ) const
     return 0;
 }
 
-BuildingStatus Castle::CheckBuyBuilding( const uint32_t build ) const
+BuildingStatus Castle::CheckBuyBuilding( const uint64_t build ) const
 {
     if ( build & _constructedBuildings ) {
         return BuildingStatus::ALREADY_BUILT;
@@ -1218,14 +1301,36 @@ BuildingStatus Castle::CheckBuyBuilding( const uint32_t build ) const
         if ( Race::WRLK != _race )
             return BuildingStatus::UNKNOWN_UPGRADE;
         break;
+    case DWELLING_UPGRADE8:
+        if ( Race::WRLK != _race )
+            return BuildingStatus::UNKNOWN_UPGRADE;
+        break;
+    case DWELLING_UPGRADE9:
+        if ( Race::NECR != _race )
+            return BuildingStatus::UNKNOWN_UPGRADE;
+        break;
+    case DWELLING_UPGRADE10:
+        if ( Race::WZRD != _race )
+            return BuildingStatus::UNKNOWN_UPGRADE;
+        break;
+    case DWELLING_UPGRADE11:
+    case DWELLING_UPGRADE14:
+        if ( Race::KNGT != _race )
+            return BuildingStatus::UNKNOWN_UPGRADE;
+        break;
+    case DWELLING_UPGRADE12:
+    case DWELLING_UPGRADE13:
+        if ( Race::BARB != _race )
+            return BuildingStatus::UNKNOWN_UPGRADE;
+        break;
 
     default:
         break;
     }
 
-    const uint32_t requirement = fheroes2::getBuildingRequirement( _race, static_cast<BuildingType>( build ) );
+    const uint64_t requirement = fheroes2::getBuildingRequirement( _race, static_cast<BuildingType>( build ) );
 
-    for ( uint32_t itr = 0x00000001; itr; itr <<= 1 ) {
+    for ( uint64_t itr = 0x00000001; itr <= DWELLING_UPGRADE14; itr <<= 1 ) {
         if ( ( requirement & itr ) && !( _constructedBuildings & itr ) ) {
             return BuildingStatus::REQUIRES_BUILD;
         }
@@ -1245,24 +1350,24 @@ BuildingStatus Castle::GetAllBuildingStatus( const Castle & castle )
     if ( !castle.isCastle() )
         return BuildingStatus::NEED_CASTLE;
 
-    const uint32_t rest = ~castle._constructedBuildings;
+    const uint64_t rest = ~castle._constructedBuildings;
 
-    for ( uint32_t itr = 0x00000001; itr; itr <<= 1 )
+    for ( uint64_t itr = 0x00000001; itr <= DWELLING_UPGRADE14; itr <<= 1 )
         if ( ( rest & itr ) && ( BuildingStatus::ALLOW_BUILD == castle.CheckBuyBuilding( itr ) ) )
             return BuildingStatus::ALLOW_BUILD;
 
-    for ( uint32_t itr = 0x00000001; itr; itr <<= 1 )
+    for ( uint64_t itr = 0x00000001; itr <= DWELLING_UPGRADE14; itr <<= 1 )
         if ( ( rest & itr ) && ( BuildingStatus::LACK_RESOURCES == castle.CheckBuyBuilding( itr ) ) )
             return BuildingStatus::LACK_RESOURCES;
 
-    for ( uint32_t itr = 0x00000001; itr; itr <<= 1 )
+    for ( uint64_t itr = 0x00000001; itr <= DWELLING_UPGRADE14; itr <<= 1 )
         if ( ( rest & itr ) && ( BuildingStatus::REQUIRES_BUILD == castle.CheckBuyBuilding( itr ) ) )
             return BuildingStatus::REQUIRES_BUILD;
 
     return BuildingStatus::UNKNOWN_COND;
 }
 
-bool Castle::BuyBuilding( const uint32_t buildingType )
+bool Castle::BuyBuilding( const uint64_t buildingType )
 {
     if ( !AllowBuyBuilding( buildingType ) ) {
         return false;
@@ -1453,7 +1558,7 @@ int Castle::GetICNBoat( const int race )
     return ICN::UNKNOWN;
 }
 
-int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
+int Castle::GetICNBuilding( const uint64_t buildingType, const int race )
 {
     if ( Race::BARB == race ) {
         switch ( buildingType ) {
@@ -1498,6 +1603,7 @@ int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
         case DWELLING_UPGRADE2:
             return ICN::TWNBUP_1;
         case DWELLING_MONSTER3:
+        case DWELLING_UPGRADE13:
             return ICN::TWNBDW_2;
         case DWELLING_MONSTER4:
             return ICN::TWNBDW_3;
@@ -1508,6 +1614,7 @@ int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
         case DWELLING_UPGRADE5:
             return ICN::TWNBUP_4;
         case DWELLING_MONSTER6:
+        case DWELLING_UPGRADE12:
             return ICN::TWNBDW_5;
         default:
             break;
@@ -1550,6 +1657,7 @@ int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
         case BUILD_MAGEGUILD5:
             return ICN::TWNKMAGE;
         case DWELLING_MONSTER1:
+        case DWELLING_UPGRADE14:
             return ICN::TWNKDW_0;
         case DWELLING_MONSTER2:
             return ICN::TWNKUP_1;
@@ -1570,6 +1678,7 @@ int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
         case DWELLING_MONSTER6:
             return ICN::TWNKDW_5;
         case DWELLING_UPGRADE6:
+        case DWELLING_UPGRADE11:
             return ICN::TWNKUP_5;
         default:
             break;
@@ -1631,6 +1740,7 @@ int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
         case DWELLING_UPGRADE5:
             return ICN::TWNNUP_4;
         case DWELLING_MONSTER6:
+        case DWELLING_UPGRADE9:
             return ICN::TWNNDW_5;
         default:
             break;
@@ -1747,6 +1857,7 @@ int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
         case DWELLING_UPGRADE6:
             return ICN::TWNWUP_5;
         case DWELLING_UPGRADE7:
+        case DWELLING_UPGRADE8:
             return ICN::TWNWUP5B;
         default:
             break;
@@ -1805,6 +1916,7 @@ int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
         case DWELLING_MONSTER6:
             return ICN::TWNZDW_5;
         case DWELLING_UPGRADE6:
+        case DWELLING_UPGRADE10:
             return ICN::TWNZUP_5;
         default:
             break;
@@ -1812,8 +1924,7 @@ int Castle::GetICNBuilding( const uint32_t buildingType, const int race )
     }
 
     DEBUG_LOG( DBG_GAME, DBG_WARN,
-               "return unknown"
-                   << ", race: " << Race::String( race ) << ", build: " << Castle::GetStringBuilding( buildingType, race ) << ", " << buildingType )
+               "return unknown" << ", race: " << Race::String( race ) << ", build: " << Castle::GetStringBuilding( buildingType, race ) << ", " << buildingType )
 
     return ICN::UNKNOWN;
 }
@@ -1933,28 +2044,50 @@ int32_t Castle::getTileIndexToPlaceBoat() const
     return -1;
 }
 
-uint32_t Castle::GetActualDwelling( const uint32_t buildId ) const
+uint64_t Castle::GetActualDwelling( const uint64_t buildId ) const
 {
     switch ( buildId ) {
-    case DWELLING_MONSTER1:
     case DWELLING_UPGRADE2:
     case DWELLING_UPGRADE3:
     case DWELLING_UPGRADE4:
     case DWELLING_UPGRADE5:
     case DWELLING_UPGRADE7:
+    case DWELLING_UPGRADE8:
+    case DWELLING_UPGRADE9:
+    case DWELLING_UPGRADE10:
+    case DWELLING_UPGRADE11:
+    case DWELLING_UPGRADE12:
+    case DWELLING_UPGRADE13:
+    case DWELLING_UPGRADE14:
         return buildId;
+    case DWELLING_MONSTER1:
+        return _constructedBuildings & DWELLING_UPGRADE14 ? DWELLING_UPGRADE14 : buildId;
     case DWELLING_MONSTER2:
         return _constructedBuildings & DWELLING_UPGRADE2 ? DWELLING_UPGRADE2 : buildId;
     case DWELLING_MONSTER3:
+        if ( _constructedBuildings & DWELLING_UPGRADE13 ) {
+            return DWELLING_UPGRADE13;
+        }
         return _constructedBuildings & DWELLING_UPGRADE3 ? DWELLING_UPGRADE3 : buildId;
     case DWELLING_MONSTER4:
         return _constructedBuildings & DWELLING_UPGRADE4 ? DWELLING_UPGRADE4 : buildId;
     case DWELLING_MONSTER5:
         return _constructedBuildings & DWELLING_UPGRADE5 ? DWELLING_UPGRADE5 : buildId;
     case DWELLING_MONSTER6:
-        return _constructedBuildings & DWELLING_UPGRADE7 ? DWELLING_UPGRADE7 : ( _constructedBuildings & DWELLING_UPGRADE6 ? DWELLING_UPGRADE6 : buildId );
+        for ( const uint64_t upgrade :
+              { DWELLING_UPGRADE12, DWELLING_UPGRADE11, DWELLING_UPGRADE10, DWELLING_UPGRADE9, DWELLING_UPGRADE8, DWELLING_UPGRADE7, DWELLING_UPGRADE6 } ) {
+            if ( _constructedBuildings & upgrade ) {
+                return upgrade;
+            }
+        }
+        return buildId;
     case DWELLING_UPGRADE6:
-        return _constructedBuildings & DWELLING_UPGRADE7 ? DWELLING_UPGRADE7 : buildId;
+        for ( const uint64_t upgrade : { DWELLING_UPGRADE11, DWELLING_UPGRADE10, DWELLING_UPGRADE8, DWELLING_UPGRADE7 } ) {
+            if ( _constructedBuildings & upgrade ) {
+                return upgrade;
+            }
+        }
+        return buildId;
     default:
         break;
     }
@@ -1962,11 +2095,15 @@ uint32_t Castle::GetActualDwelling( const uint32_t buildId ) const
     return BUILD_NOTHING;
 }
 
-uint32_t Castle::GetUpgradeBuilding( const uint32_t buildingId ) const
+uint64_t Castle::GetUpgradeBuilding( const uint64_t buildingId ) const
 {
-    if ( _race == Race::WRLK && buildingId == DWELLING_MONSTER6 && isBuild( DWELLING_UPGRADE6 ) ) {
-        // Warlock's dwelling 6 is a special case.
-        return fheroes2::getUpgradeForBuilding( _race, DWELLING_UPGRADE6 );
+    if ( buildingId == DWELLING_MONSTER6 ) {
+        if ( _race == Race::WRLK && isBuild( DWELLING_UPGRADE7 ) ) {
+            return fheroes2::getUpgradeForBuilding( _race, DWELLING_UPGRADE7 );
+        }
+        if ( ( _race == Race::WRLK || _race == Race::KNGT || _race == Race::WZRD ) && isBuild( DWELLING_UPGRADE6 ) ) {
+            return fheroes2::getUpgradeForBuilding( _race, DWELLING_UPGRADE6 );
+        }
     }
 
     return fheroes2::getUpgradeForBuilding( _race, static_cast<BuildingType>( buildingId ) );
@@ -2226,7 +2363,7 @@ void Castle::_joinRNDArmy()
     const uint32_t reinforcementQuality = Rand::Get( 1, 15 ) + timeModifier;
 
     uint32_t count = timeModifier / 2;
-    uint32_t dwellingType = DWELLING_MONSTER1;
+    uint64_t dwellingType = DWELLING_MONSTER1;
 
     if ( reinforcementQuality > 15 ) {
         dwellingType = DWELLING_MONSTER5;
@@ -2431,13 +2568,27 @@ OStreamBase & operator<<( OStreamBase & stream, const Castle & castle )
 
 IStreamBase & operator>>( IStreamBase & stream, Castle & castle )
 {
-    stream >> static_cast<MapPosition &>( castle ) >> castle.modes >> castle._race >> castle._constructedBuildings;
+    stream >> static_cast<MapPosition &>( castle ) >> castle.modes >> castle._race;
+
+    if ( Game::GetVersionOfCurrentSaveFile() < FORMAT_VERSION_EXTENDED_EDITION_1 ) {
+        uint32_t constructedBuildings = 0;
+        stream >> constructedBuildings;
+        castle._constructedBuildings = constructedBuildings;
+    }
+    else {
+        stream >> castle._constructedBuildings;
+    }
 
     static_assert( LAST_SUPPORTED_FORMAT_VERSION < FORMAT_VERSION_1101_RELEASE, "Remove the logic below." );
     if ( Game::GetVersionOfCurrentSaveFile() < FORMAT_VERSION_1101_RELEASE ) {
         if ( !castle.Modes( Castle::UNUSED_ALLOW_CASTLE_CONSTRUCTION ) ) {
             castle._disabledBuildings = BUILD_CASTLE;
         }
+    }
+    else if ( Game::GetVersionOfCurrentSaveFile() < FORMAT_VERSION_EXTENDED_EDITION_1 ) {
+        uint32_t disabledBuildings = 0;
+        stream >> disabledBuildings;
+        castle._disabledBuildings = disabledBuildings;
     }
     else {
         stream >> castle._disabledBuildings;
@@ -2529,7 +2680,7 @@ IStreamBase & operator>>( IStreamBase & stream, AllCastles & castles )
     return stream;
 }
 
-std::string Castle::GetDescriptionBuilding( const uint32_t buildingType ) const
+std::string Castle::GetDescriptionBuilding( const uint64_t buildingType ) const
 {
     std::string res = fheroes2::getBuildingDescription( GetRace(), static_cast<BuildingType>( buildingType ) );
 

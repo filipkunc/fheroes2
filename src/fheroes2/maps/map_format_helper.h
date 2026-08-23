@@ -91,7 +91,7 @@ namespace Maps
 
     void captureObject( const Map_Format::MapFormat & map, const int32_t tileIndex, const uint32_t objectId, const MP2::MapObjectType objectType );
 
-    uint32_t getBuildingsFromVector( const std::vector<uint32_t> & buildingsVector );
+    uint64_t getBuildingsFromVector( const std::vector<uint64_t> & buildingsVector );
 
     // Should be used only for the neutral color player.
     void setDefaultCastleDefenderArmy( Map_Format::CastleMetadata & metadata );

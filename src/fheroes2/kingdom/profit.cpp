@@ -1,6 +1,6 @@
 /***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
- *   Copyright (C) 2019 - 2024                                             *
+ *   Copyright (C) 2019 - 2026                                             *
  *                                                                         *
  *   Free Heroes2 Engine: http://sourceforge.net/projects/fheroes2         *
  *   Copyright (C) 2010 by Andrey Afletdinov <fheroes2@gmail.com>          *
@@ -21,16 +21,17 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include "profit.h"
+
 #include <cassert>
 #include <vector>
 
 #include "artifact_info.h"
 #include "castle.h"
-#include "profit.h"
 #include "race.h"
 #include "resource.h"
 
-Funds ProfitConditions::FromBuilding( uint32_t building, int race )
+Funds ProfitConditions::FromBuilding( uint64_t building, int race )
 {
     switch ( building ) {
     case BUILD_CASTLE:

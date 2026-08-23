@@ -1,6 +1,6 @@
 /***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
- *   Copyright (C) 2024                                                    *
+ *   Copyright (C) 2024 - 2026                                             *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -73,18 +73,18 @@ namespace
     const std::vector<BuildOrder> & GetBuildOrder( int type )
     {
         static const std::vector<BuildOrder> genericBuildOrder
-            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 }, { DWELLING_UPGRADE7, 1 },   { DWELLING_UPGRADE6, 1 },
-                { DWELLING_MONSTER6, 1 }, { DWELLING_UPGRADE5, 1 }, { DWELLING_MONSTER5, 1 }, { DWELLING_UPGRADE4, 1 },   { DWELLING_MONSTER4, 1 },
-                { DWELLING_UPGRADE3, 2 }, { DWELLING_MONSTER3, 2 }, { DWELLING_UPGRADE2, 3 }, { DWELLING_MONSTER2, 3 },   { DWELLING_MONSTER1, 4 },
-                { BUILD_MAGEGUILD1, 2 },  { BUILD_WEL2, 10 },       { BUILD_TAVERN, 5 },      { BUILD_THIEVESGUILD, 10 }, { BUILD_MAGEGUILD2, 3 },
-                { BUILD_MAGEGUILD3, 4 },  { BUILD_MAGEGUILD4, 5 },  { BUILD_MAGEGUILD5, 5 },  { BUILD_SHIPYARD, 4 } };
+            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 }, { DWELLING_UPGRADE8, 1 }, { DWELLING_UPGRADE7, 1 },
+                { DWELLING_UPGRADE6, 1 }, { DWELLING_MONSTER6, 1 }, { DWELLING_UPGRADE5, 1 }, { DWELLING_MONSTER5, 1 }, { DWELLING_UPGRADE4, 1 },
+                { DWELLING_MONSTER4, 1 }, { DWELLING_UPGRADE3, 2 }, { DWELLING_MONSTER3, 2 }, { DWELLING_UPGRADE2, 3 }, { DWELLING_MONSTER2, 3 },
+                { DWELLING_MONSTER1, 4 }, { BUILD_MAGEGUILD1, 2 },  { BUILD_WEL2, 10 },       { BUILD_TAVERN, 5 },      { BUILD_THIEVESGUILD, 10 },
+                { BUILD_MAGEGUILD2, 3 },  { BUILD_MAGEGUILD3, 4 },  { BUILD_MAGEGUILD4, 5 },  { BUILD_MAGEGUILD5, 5 },  { BUILD_SHIPYARD, 4 } };
 
         static const std::vector<BuildOrder> barbarianBuildOrder
-            = { { BUILD_CASTLE, 2 },        { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 }, { DWELLING_MONSTER6, 1 }, { DWELLING_UPGRADE5, 1 },
-                { DWELLING_MONSTER5, 1 },   { DWELLING_UPGRADE4, 1 }, { DWELLING_MONSTER4, 1 }, { DWELLING_MONSTER3, 1 }, { DWELLING_UPGRADE2, 2 },
-                { DWELLING_MONSTER2, 2 },   { DWELLING_MONSTER1, 4 }, { BUILD_MAGEGUILD1, 3 },  { BUILD_WEL2, 10 },       { BUILD_TAVERN, 5 },
-                { BUILD_THIEVESGUILD, 10 }, { BUILD_MAGEGUILD2, 4 },  { BUILD_MAGEGUILD3, 5 },  { BUILD_MAGEGUILD4, 6 },  { BUILD_MAGEGUILD5, 7 },
-                { BUILD_SHIPYARD, 4 } };
+            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 },   { DWELLING_UPGRADE12, 1 }, { DWELLING_MONSTER6, 1 },
+                { DWELLING_UPGRADE5, 1 }, { DWELLING_MONSTER5, 1 }, { DWELLING_UPGRADE4, 1 },   { DWELLING_MONSTER4, 1 },  { DWELLING_UPGRADE13, 1 },
+                { DWELLING_MONSTER3, 1 }, { DWELLING_UPGRADE2, 2 }, { DWELLING_MONSTER2, 2 },   { DWELLING_MONSTER1, 4 },  { BUILD_MAGEGUILD1, 3 },
+                { BUILD_WEL2, 10 },       { BUILD_TAVERN, 5 },      { BUILD_THIEVESGUILD, 10 }, { BUILD_MAGEGUILD2, 4 },   { BUILD_MAGEGUILD3, 5 },
+                { BUILD_MAGEGUILD4, 6 },  { BUILD_MAGEGUILD5, 7 },  { BUILD_SHIPYARD, 4 } };
 
         static const std::vector<BuildOrder> sorceressBuildOrder
             = { { BUILD_CASTLE, 2 },        { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 }, { DWELLING_MONSTER6, 1 }, { DWELLING_MONSTER5, 1 },
@@ -96,15 +96,16 @@ namespace
         // De-prioritizing dwelling 5 (you can reach 6 without it), 1 and upgrades of 3 and 4
         // Well, tavern and Archery upgrade are more important
         static const std::vector<BuildOrder> knightBuildOrder
-            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 },   { DWELLING_UPGRADE6, 2 }, { DWELLING_MONSTER6, 1 },
-                { DWELLING_UPGRADE5, 2 }, { DWELLING_MONSTER5, 2 }, { DWELLING_UPGRADE4, 2 },   { DWELLING_MONSTER4, 1 }, { DWELLING_UPGRADE3, 2 },
-                { DWELLING_MONSTER3, 1 }, { DWELLING_UPGRADE2, 1 }, { DWELLING_MONSTER2, 3 },   { DWELLING_MONSTER1, 4 }, { BUILD_WELL, 1 },
-                { BUILD_TAVERN, 1 },      { BUILD_MAGEGUILD1, 2 },  { BUILD_MAGEGUILD2, 3 },    { BUILD_MAGEGUILD3, 5 },  { BUILD_MAGEGUILD4, 5 },
-                { BUILD_MAGEGUILD5, 5 },  { BUILD_SPEC, 5 },        { BUILD_THIEVESGUILD, 10 }, { BUILD_WEL2, 20 },       { BUILD_SHIPYARD, 4 } };
+            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 }, { DWELLING_UPGRADE11, 2 }, { DWELLING_UPGRADE6, 2 },
+                { DWELLING_MONSTER6, 1 }, { DWELLING_UPGRADE5, 2 }, { DWELLING_MONSTER5, 2 }, { DWELLING_UPGRADE4, 2 },  { DWELLING_MONSTER4, 1 },
+                { DWELLING_UPGRADE3, 2 }, { DWELLING_MONSTER3, 1 }, { DWELLING_UPGRADE2, 1 }, { DWELLING_MONSTER2, 3 },  { DWELLING_UPGRADE14, 4 },
+                { DWELLING_MONSTER1, 4 }, { BUILD_WELL, 1 },        { BUILD_TAVERN, 1 },      { BUILD_MAGEGUILD1, 2 },   { BUILD_MAGEGUILD2, 3 },
+                { BUILD_MAGEGUILD3, 5 },  { BUILD_MAGEGUILD4, 5 },  { BUILD_MAGEGUILD5, 5 },  { BUILD_SPEC, 5 },         { BUILD_THIEVESGUILD, 10 },
+                { BUILD_WEL2, 20 },       { BUILD_SHIPYARD, 4 } };
 
         // Priority on Dwellings 5/6 and Mage guild level 2
         static const std::vector<BuildOrder> necromancerBuildOrder
-            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },       { BUILD_MARKETPLACE, 1 }, { DWELLING_UPGRADE6, 1 }, { DWELLING_MONSTER6, 1 },
+            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },       { BUILD_MARKETPLACE, 1 }, { DWELLING_UPGRADE9, 1 }, { DWELLING_MONSTER6, 1 },
                 { DWELLING_UPGRADE5, 2 }, { DWELLING_MONSTER5, 1 },  { BUILD_MAGEGUILD1, 1 },  { DWELLING_UPGRADE4, 2 }, { DWELLING_MONSTER4, 1 },
                 { DWELLING_UPGRADE3, 3 }, { DWELLING_MONSTER3, 3 },  { DWELLING_UPGRADE2, 4 }, { DWELLING_MONSTER2, 2 }, { DWELLING_MONSTER1, 3 },
                 { BUILD_MAGEGUILD2, 2 },  { BUILD_THIEVESGUILD, 2 }, { BUILD_WEL2, 8 },        { BUILD_MAGEGUILD3, 4 },  { BUILD_MAGEGUILD4, 5 },
@@ -112,11 +113,11 @@ namespace
 
         // Priority on Mage tower/guild and library
         static const std::vector<BuildOrder> wizardBuildOrder
-            = { { BUILD_CASTLE, 2 },        { BUILD_STATUE, 1 },      { BUILD_MARKETPLACE, 1 }, { DWELLING_UPGRADE6, 1 }, { DWELLING_MONSTER6, 1 },
-                { DWELLING_UPGRADE5, 1 },   { DWELLING_MONSTER5, 1 }, { DWELLING_MONSTER4, 1 }, { DWELLING_MONSTER3, 1 }, { DWELLING_MONSTER2, 1 },
-                { DWELLING_MONSTER1, 1 },   { BUILD_MAGEGUILD1, 1 },  { DWELLING_UPGRADE3, 4 }, { BUILD_SPEC, 2 },        { BUILD_WEL2, 8 },
-                { BUILD_MAGEGUILD2, 3 },    { BUILD_MAGEGUILD3, 4 },  { BUILD_MAGEGUILD4, 4 },  { BUILD_MAGEGUILD5, 4 },  { BUILD_TAVERN, 10 },
-                { BUILD_THIEVESGUILD, 10 }, { BUILD_SHIPYARD, 4 } };
+            = { { BUILD_CASTLE, 2 },      { BUILD_STATUE, 1 },        { BUILD_MARKETPLACE, 1 }, { DWELLING_UPGRADE10, 1 }, { DWELLING_UPGRADE6, 1 },
+                { DWELLING_MONSTER6, 1 }, { DWELLING_UPGRADE5, 1 },   { DWELLING_MONSTER5, 1 }, { DWELLING_MONSTER4, 1 },  { DWELLING_MONSTER3, 1 },
+                { DWELLING_MONSTER2, 1 }, { DWELLING_MONSTER1, 1 },   { BUILD_MAGEGUILD1, 1 },  { DWELLING_UPGRADE3, 4 },  { BUILD_SPEC, 2 },
+                { BUILD_WEL2, 8 },        { BUILD_MAGEGUILD2, 3 },    { BUILD_MAGEGUILD3, 4 },  { BUILD_MAGEGUILD4, 4 },   { BUILD_MAGEGUILD5, 4 },
+                { BUILD_TAVERN, 10 },     { BUILD_THIEVESGUILD, 10 }, { BUILD_SHIPYARD, 4 } };
 
         switch ( type ) {
         case Race::KNGT:
@@ -345,11 +346,12 @@ void AI::Planner::reinforceCastle( Castle & castle )
     }
 
     // It is allowed to hire non-upgraded units even if an upgraded dwelling is built
-    static const std::array<uint32_t, 12> castleDwellings{ DWELLING_UPGRADE7, DWELLING_UPGRADE6, DWELLING_MONSTER6, DWELLING_UPGRADE5,
-                                                           DWELLING_MONSTER5, DWELLING_UPGRADE4, DWELLING_MONSTER4, DWELLING_UPGRADE3,
-                                                           DWELLING_MONSTER3, DWELLING_UPGRADE2, DWELLING_MONSTER2, DWELLING_MONSTER1 };
+    static const std::array<uint64_t, 19> castleDwellings{ DWELLING_UPGRADE12, DWELLING_UPGRADE11, DWELLING_UPGRADE10, DWELLING_UPGRADE9, DWELLING_UPGRADE8,
+                                                           DWELLING_UPGRADE7,  DWELLING_UPGRADE6,  DWELLING_MONSTER6,  DWELLING_UPGRADE5, DWELLING_MONSTER5,
+                                                           DWELLING_UPGRADE4,  DWELLING_MONSTER4,  DWELLING_UPGRADE13, DWELLING_UPGRADE3, DWELLING_MONSTER3,
+                                                           DWELLING_UPGRADE2,  DWELLING_MONSTER2,  DWELLING_UPGRADE14, DWELLING_MONSTER1 };
 
-    for ( const uint32_t dwelling : castleDwellings ) {
+    for ( const uint64_t dwelling : castleDwellings ) {
         if ( !castle.isBuild( dwelling ) ) {
             continue;
         }

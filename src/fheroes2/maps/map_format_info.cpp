@@ -107,7 +107,32 @@ namespace
     constexpr uint16_t minimumSupportedVersion{ 2 };
 
     // Change the version when there is a need to expand map format functionality.
-    constexpr uint16_t currentSupportedVersion{ 13 };
+    constexpr uint16_t currentSupportedVersion{ 14 };
+
+    void loadCastleMetadata( IStreamBase & stream, std::map<uint32_t, Maps::Map_Format::CastleMetadata> & castleMetadata, const uint16_t mapVersion )
+    {
+        if ( mapVersion >= 14 ) {
+            stream >> castleMetadata;
+            return;
+        }
+
+        const uint32_t size = stream.get32();
+        castleMetadata.clear();
+
+        for ( uint32_t i = 0; i < size; ++i ) {
+            uint32_t objectId = 0;
+            Maps::Map_Format::CastleMetadata metadata;
+            std::vector<uint32_t> builtBuildings;
+            std::vector<uint32_t> bannedBuildings;
+
+            stream >> objectId >> metadata.customName >> metadata.defenderMonsterType >> metadata.defenderMonsterCount >> metadata.customBuildings >> builtBuildings
+                >> bannedBuildings >> metadata.mustHaveSpells >> metadata.bannedSpells >> metadata.availableToHireMonsterCount;
+
+            metadata.builtBuildings.assign( builtBuildings.cbegin(), builtBuildings.cend() );
+            metadata.bannedBuildings.assign( bannedBuildings.cbegin(), bannedBuildings.cend() );
+            castleMetadata.emplace( objectId, std::move( metadata ) );
+        }
+    }
 
     void convertFromV2ToV3( Maps::Map_Format::MapFormat & map )
     {
@@ -549,7 +574,8 @@ namespace
             decompressed >> standardMetadata;
         }
 
-        decompressed >> map.castleMetadata >> map.heroMetadata >> map.sphinxMetadata >> map.signMetadata >> map.adventureMapEventMetadata >> map.selectionObjectMetadata;
+        loadCastleMetadata( decompressed, map.castleMetadata, map.version );
+        decompressed >> map.heroMetadata >> map.sphinxMetadata >> map.signMetadata >> map.adventureMapEventMetadata >> map.selectionObjectMetadata;
 
         static_assert( minimumSupportedVersion <= 8, "Remove this check." );
         if ( map.version > 8 ) {

@@ -60,10 +60,10 @@ namespace
 {
     const int32_t bottomBarOffsetY = 461;
 
-    const std::array<uint32_t, Castle::maxNumOfDwellings> castleDwellings
+    const std::array<uint64_t, Castle::maxNumOfDwellings> castleDwellings
         = { DWELLING_MONSTER1, DWELLING_MONSTER2, DWELLING_MONSTER3, DWELLING_MONSTER4, DWELLING_MONSTER5, DWELLING_MONSTER6 };
 
-    uint32_t howManyRecruitMonster( const Castle & castle, Troops & tempCastleArmy, Troops & tempHeroArmy, const uint32_t dw, const Funds & add, Funds & res )
+    uint32_t howManyRecruitMonster( const Castle & castle, Troops & tempCastleArmy, Troops & tempHeroArmy, const uint64_t dw, const Funds & add, Funds & res )
     {
         const Monster monsters( castle.GetRace(), castle.GetActualDwelling( dw ) );
         if ( !tempCastleArmy.CanJoinTroop( monsters ) && !tempHeroArmy.CanJoinTroop( monsters ) ) {
@@ -140,7 +140,7 @@ bool Castle::_recruitCastleMax( const Troops & currentCastleArmy )
 
     // In this loop we should go in reverse order - from strongest monsters to weakest in order to purchase most of the best monsters.
     for ( size_t id = 0; id < maxNumOfDwellings; ++id ) {
-        const uint32_t dwellingType = castleDwellings[maxNumOfDwellings - id - 1];
+        const uint64_t dwellingType = castleDwellings[maxNumOfDwellings - id - 1];
         const uint32_t recruitableNumber = howManyRecruitMonster( *this, tempCastleArmy, tempGuestArmy, dwellingType, totalMonstersCost, currentMonsterCost );
 
         if ( recruitableNumber == 0 ) {
@@ -163,7 +163,7 @@ bool Castle::_recruitCastleMax( const Troops & currentCastleArmy )
         bool isCreaturePresent = false;
         bool canAffordOneCreature = false;
 
-        for ( const uint32_t dwellingType : castleDwellings ) {
+        for ( const uint64_t dwellingType : castleDwellings ) {
             if ( getMonstersInDwelling( dwellingType ) > 0 ) {
                 const Monster monsters( _race, dwellingType );
                 const Funds payment = monsters.GetCost();
@@ -259,7 +259,7 @@ void Castle::_openWell()
             if ( _recruitCastleMax( currentArmy ) ) {
                 // Update available monster count on background.
 
-                for ( const uint32_t dwellingType : castleDwellings ) {
+                for ( const uint64_t dwellingType : castleDwellings ) {
                     _wellRedrawAvailableMonsters( dwellingType, true, background );
                 }
             }
@@ -305,7 +305,7 @@ void Castle::_openWell()
     }
 }
 
-void Castle::_wellRedrawAvailableMonsters( const uint32_t dwellingType, const bool restoreBackground, fheroes2::Image & background ) const
+void Castle::_wellRedrawAvailableMonsters( const uint64_t dwellingType, const bool restoreBackground, fheroes2::Image & background ) const
 {
     if ( !( _constructedBuildings & dwellingType ) ) {
         // This building has not been built.
@@ -402,7 +402,7 @@ void Castle::_wellRedrawBackground( fheroes2::Image & background ) const
 
     const fheroes2::FontType statsFontType = fheroes2::FontType::smallWhite();
 
-    for ( const uint32_t dwellingType : castleDwellings ) {
+    for ( const uint64_t dwellingType : castleDwellings ) {
         // By default the 'icnIndex' and 'offset' values are set for DWELLING_MONSTER1.
         uint32_t icnIndex = 19;
         fheroes2::Point offset{ 0, 1 };
@@ -438,7 +438,7 @@ void Castle::_wellRedrawBackground( fheroes2::Image & background ) const
             break;
         }
 
-        const uint32_t actualDwellindType = GetActualDwelling( dwellingType );
+        const uint64_t actualDwellindType = GetActualDwelling( dwellingType );
         const Monster monster( _race, actualDwellindType );
 
         // Dwelling building image.

@@ -31,6 +31,7 @@
 
 #include "artifact.h"
 #include "monster.h"
+#include "monster_info.h"
 #include "resource.h"
 
 namespace
@@ -5957,6 +5958,16 @@ namespace
             object.groundLevelParts.emplace_back( MP2::OBJ_ICN_TYPE_MONS32, Monster::RANDOM_MONSTER_LEVEL_4 - 1, fheroes2::Point{ 0, 0 },
                                                   MP2::OBJ_RANDOM_MONSTER_VERY_STRONG, Maps::OBJECT_LAYER );
             object.metadata[0] = Monster::RANDOM_MONSTER_LEVEL_4;
+
+            objects.emplace_back( std::move( object ) );
+        }
+
+        // Keep custom creatures after all upstream entries so existing FH2M object indices remain stable.
+        for ( const fheroes2::CustomMonsterDefinition & definition : fheroes2::getCustomMonsterDefinitions() ) {
+            Maps::ObjectInfo object{ MP2::OBJ_MONSTER };
+            object.groundLevelParts.emplace_back( MP2::OBJ_ICN_TYPE_MONS32, definition.fallbackMonsterId - 1, fheroes2::Point{ 0, 0 }, MP2::OBJ_MONSTER,
+                                                  Maps::OBJECT_LAYER );
+            object.metadata[0] = static_cast<uint32_t>( definition.id );
 
             objects.emplace_back( std::move( object ) );
         }

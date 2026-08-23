@@ -98,12 +98,12 @@ namespace
 
     struct BuildingStats final
     {
-        uint32_t type{ BUILD_NOTHING };
+        uint64_t type{ BUILD_NOTHING };
         uint8_t allowedRaces{ Race::NONE };
         Cost cost{};
     };
 
-    const std::array<BuildingStats, 86> buildingStats = { { { BUILD_THIEVESGUILD, Race::ALL, { 750, 5, 0, 0, 0, 0, 0 } },
+    const std::array<BuildingStats, 93> buildingStats = { { { BUILD_THIEVESGUILD, Race::ALL, { 750, 5, 0, 0, 0, 0, 0 } },
                                                             { BUILD_TAVERN, Race::ALL, { 500, 5, 0, 0, 0, 0, 0 } },
                                                             { BUILD_SHIPYARD, Race::ALL, { 2000, 20, 0, 0, 0, 0, 0 } },
                                                             { BUILD_WELL, Race::ALL, { 500, 0, 0, 0, 0, 0, 0 } },
@@ -137,6 +137,7 @@ namespace
                                                             { BUILD_SHRINE, Race::NECR, { 4000, 10, 0, 0, 0, 10, 0 } },
 
                                                             { DWELLING_MONSTER1, Race::KNGT, { 200, 0, 0, 0, 0, 0, 0 } },
+                                                            { DWELLING_UPGRADE14, Race::KNGT, { 400, 0, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_MONSTER2, Race::KNGT, { 1000, 0, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_UPGRADE2, Race::KNGT, { 1500, 5, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_MONSTER3, Race::KNGT, { 1000, 0, 0, 5, 0, 0, 0 } },
@@ -147,16 +148,19 @@ namespace
                                                             { DWELLING_UPGRADE5, Race::KNGT, { 3000, 10, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_MONSTER6, Race::KNGT, { 5000, 20, 0, 0, 0, 20, 0 } },
                                                             { DWELLING_UPGRADE6, Race::KNGT, { 5000, 10, 0, 0, 0, 10, 0 } },
+                                                            { DWELLING_UPGRADE11, Race::KNGT, { 5000, 0, 0, 0, 0, 0, 0 } },
 
                                                             { DWELLING_MONSTER1, Race::BARB, { 300, 0, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_MONSTER2, Race::BARB, { 800, 5, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_UPGRADE2, Race::BARB, { 1200, 5, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_MONSTER3, Race::BARB, { 1000, 0, 0, 0, 0, 0, 0 } },
+                                                            { DWELLING_UPGRADE13, Race::BARB, { 2000, 5, 0, 0, 0, 5, 0 } },
                                                             { DWELLING_MONSTER4, Race::BARB, { 2000, 10, 0, 10, 0, 0, 0 } },
                                                             { DWELLING_UPGRADE4, Race::BARB, { 3000, 5, 0, 5, 0, 0, 0 } },
                                                             { DWELLING_MONSTER5, Race::BARB, { 4000, 0, 0, 20, 0, 0, 0 } },
                                                             { DWELLING_UPGRADE5, Race::BARB, { 2000, 0, 0, 10, 0, 0, 0 } },
                                                             { DWELLING_MONSTER6, Race::BARB, { 6000, 0, 0, 20, 0, 20, 0 } },
+                                                            { DWELLING_UPGRADE12, Race::BARB, { 5000, 0, 0, 0, 0, 3, 0 } },
 
                                                             { DWELLING_MONSTER1, Race::SORC, { 500, 5, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_MONSTER2, Race::SORC, { 1000, 5, 0, 0, 0, 0, 0 } },
@@ -177,6 +181,7 @@ namespace
                                                             { DWELLING_MONSTER6, Race::WRLK, { 15000, 0, 0, 30, 20, 0, 0 } },
                                                             { DWELLING_UPGRADE6, Race::WRLK, { 5000, 0, 0, 5, 10, 0, 0 } },
                                                             { DWELLING_UPGRADE7, Race::WRLK, { 5000, 0, 0, 5, 10, 0, 0 } },
+                                                            { DWELLING_UPGRADE8, Race::WRLK, { 6000, 0, 0, 5, 15, 0, 0 } },
 
                                                             { DWELLING_MONSTER1, Race::WZRD, { 400, 0, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_MONSTER2, Race::WZRD, { 800, 0, 0, 0, 0, 0, 0 } },
@@ -187,6 +192,7 @@ namespace
                                                             { DWELLING_UPGRADE5, Race::WZRD, { 4000, 5, 0, 5, 0, 0, 0 } },
                                                             { DWELLING_MONSTER6, Race::WZRD, { 12500, 5, 0, 5, 0, 0, 20 } },
                                                             { DWELLING_UPGRADE6, Race::WZRD, { 12500, 5, 0, 5, 0, 0, 20 } },
+                                                            { DWELLING_UPGRADE10, Race::WZRD, { 8000, 0, 0, 0, 0, 0, 5 } },
 
                                                             { DWELLING_MONSTER1, Race::NECR, { 400, 0, 0, 0, 0, 0, 0 } },
                                                             { DWELLING_MONSTER2, Race::NECR, { 1000, 0, 0, 0, 0, 0, 0 } },
@@ -197,10 +203,11 @@ namespace
                                                             { DWELLING_UPGRADE4, Race::NECR, { 4000, 5, 0, 0, 0, 10, 10 } },
                                                             { DWELLING_MONSTER5, Race::NECR, { 4000, 10, 0, 0, 10, 0, 0 } },
                                                             { DWELLING_UPGRADE5, Race::NECR, { 3000, 0, 0, 5, 0, 5, 0 } },
-                                                            { DWELLING_MONSTER6, Race::NECR, { 10000, 10, 5, 10, 5, 5, 5 } } } };
+                                                            { DWELLING_MONSTER6, Race::NECR, { 10000, 10, 5, 10, 5, 5, 5 } },
+                                                            { DWELLING_UPGRADE9, Race::NECR, { 5000, 0, 10, 0, 0, 0, 0 } } } };
 }
 
-Funds BuildingInfo::GetCost( const uint32_t buildingType, const int race )
+Funds BuildingInfo::GetCost( const uint64_t buildingType, const int race )
 {
     for ( const auto & info : buildingStats ) {
         if ( buildingType == info.type && ( ( info.allowedRaces & race ) != 0 ) ) {
@@ -250,7 +257,7 @@ void BuildingInfo::SetPos( int32_t x, int32_t y )
     area.y = y;
 }
 
-bool BuildingInfo::isDwelling( const uint32_t building )
+bool BuildingInfo::isDwelling( const uint64_t building )
 {
     switch ( building ) {
     case DWELLING_MONSTER1:
@@ -265,6 +272,13 @@ bool BuildingInfo::isDwelling( const uint32_t building )
     case DWELLING_UPGRADE5:
     case DWELLING_UPGRADE6:
     case DWELLING_UPGRADE7:
+    case DWELLING_UPGRADE8:
+    case DWELLING_UPGRADE9:
+    case DWELLING_UPGRADE10:
+    case DWELLING_UPGRADE11:
+    case DWELLING_UPGRADE12:
+    case DWELLING_UPGRADE13:
+    case DWELLING_UPGRADE14:
         return true;
     default:
         break;
@@ -272,7 +286,7 @@ bool BuildingInfo::isDwelling( const uint32_t building )
     return false;
 }
 
-std::string BuildingInfo::getBuildingDescription( const int race, const uint32_t buildingId )
+std::string BuildingInfo::getBuildingDescription( const int race, const uint64_t buildingId )
 {
     std::string description;
 
@@ -657,7 +671,7 @@ void DwellingsBar::RedrawBackground( const fheroes2::Rect & pos, fheroes2::Image
 
 void DwellingsBar::RedrawItem( DwellingItem & dwl, const fheroes2::Rect & pos, fheroes2::Image & dstsf )
 {
-    const uint32_t dwType = castle.GetActualDwelling( dwl.dwType );
+    const uint64_t dwType = castle.GetActualDwelling( dwl.dwType );
     const Monster mons{ castle.GetRace(), dwType };
 
     const fheroes2::Sprite & mons32 = Assets::getImage( ICN::MONS32, mons.GetSpriteIndex() );
@@ -677,7 +691,7 @@ void DwellingsBar::RedrawItem( DwellingItem & dwl, const fheroes2::Rect & pos, f
     if ( castle.isBuild( BUILD_WELL ) ) {
         grown += Castle::GetGrownWell();
     }
-    if ( castle.isBuild( BUILD_WEL2 ) && DWELLING_MONSTER1 == dwType ) {
+    if ( castle.isBuild( BUILD_WEL2 ) && DWELLING_MONSTER1 == dwl.dwType ) {
         grown += Castle::GetGrownWel2();
     }
 
@@ -688,7 +702,7 @@ void DwellingsBar::RedrawItem( DwellingItem & dwl, const fheroes2::Rect & pos, f
 
 bool DwellingsBar::ActionBarLeftMouseSingleClick( DwellingItem & dwl )
 {
-    const uint32_t dwType = castle.GetActualDwelling( dwl.dwType );
+    const uint64_t dwType = castle.GetActualDwelling( dwl.dwType );
 
     if ( castle.isBuild( dwType ) ) {
         castle.RecruitMonster( Dialog::RecruitMonster( { castle.GetRace(), dwType }, castle.getMonstersInDwelling( dwType ), true, -60 ) );
@@ -709,7 +723,7 @@ bool DwellingsBar::ActionBarLeftMouseSingleClick( DwellingItem & dwl )
 
 bool DwellingsBar::ActionBarRightMouseHold( DwellingItem & dwl )
 {
-    const uint32_t dwType = castle.GetActualDwelling( dwl.dwType );
+    const uint64_t dwType = castle.GetActualDwelling( dwl.dwType );
 
     Dialog::DwellingInfo( { castle.GetRace(), dwType }, castle.getMonstersInDwelling( dwType ) );
 

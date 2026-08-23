@@ -70,6 +70,7 @@
 #include "maps_tiles_helper.h"
 #include "math_base.h"
 #include "monster.h"
+#include "monster_info.h"
 #include "mp2.h"
 #include "players.h"
 #include "puzzle.h"
@@ -930,6 +931,11 @@ namespace
                     allowedMonsters.emplace_back( monsterId );
                 }
             }
+            for ( const fheroes2::CustomMonsterDefinition & definition : fheroes2::getCustomMonsterDefinitions() ) {
+                if ( Monster{ definition.id }.GetRandomUnitLevel() == level ) {
+                    allowedMonsters.emplace_back( definition.id );
+                }
+            }
             break;
         }
         case MP2::OBJ_RANDOM_MONSTER: {
@@ -937,6 +943,9 @@ namespace
                 if ( Monster{ monsterId }.isValid() ) {
                     allowedMonsters.emplace_back( monsterId );
                 }
+            }
+            for ( const fheroes2::CustomMonsterDefinition & definition : fheroes2::getCustomMonsterDefinitions() ) {
+                allowedMonsters.emplace_back( definition.id );
             }
             break;
         }

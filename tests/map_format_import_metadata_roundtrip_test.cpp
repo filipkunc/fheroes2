@@ -96,6 +96,18 @@ namespace
         return { Maps::ObjectGroup::NONE, 0 };
     }
 
+    std::pair<Maps::ObjectGroup, uint32_t> findMonsterObject( const int32_t monsterId )
+    {
+        const auto & objects = Maps::getObjectsByGroup( Maps::ObjectGroup::MONSTERS );
+        for ( size_t index = 0; index < objects.size(); ++index ) {
+            if ( objects[index].metadata[0] == static_cast<uint32_t>( monsterId ) ) {
+                return { Maps::ObjectGroup::MONSTERS, static_cast<uint32_t>( index ) };
+            }
+        }
+
+        return { Maps::ObjectGroup::NONE, 0 };
+    }
+
     bool equalObjects( const std::vector<Maps::Map_Format::TileObjectInfo> & lhs, const std::vector<Maps::Map_Format::TileObjectInfo> & rhs )
     {
         if ( lhs.size() != rhs.size() ) {
@@ -157,18 +169,20 @@ int main()
     if ( castleMetadata.customName != "Roundtrip" || !castleMetadata.customBuildings || castleMetadata.defenderMonsterType[0] != Monster::ARCHER
          || castleMetadata.defenderMonsterCount[0] != 23
          || std::find( castleMetadata.builtBuildings.cbegin(), castleMetadata.builtBuildings.cend(), BUILD_TENT ) == castleMetadata.builtBuildings.cend()
-         || castleMetadata.bannedBuildings != std::vector<uint32_t>{ BUILD_CASTLE } ) {
+         || castleMetadata.bannedBuildings != std::vector<uint64_t>{ BUILD_CASTLE } ) {
         return fail( "The synthetic town metadata was not imported exactly." );
     }
 
     castleMetadata.defenderMonsterType = { Monster::AZURE_DRAGON, Monster::BLOOD_DRAGON, Monster::THOR, Monster::AVENGER, Monster::SUCCUBUS };
     castleMetadata.defenderMonsterCount = { 1, 2, 3, 4, 5 };
+    castleMetadata.builtBuildings.emplace_back( DWELLING_UPGRADE8 );
+    castleMetadata.bannedBuildings.emplace_back( DWELLING_UPGRADE14 );
 
     std::vector<uint8_t> defaultCastleBlock( MP2::MP2_CASTLE_STRUCTURE_SIZE );
     defaultCastleBlock[39] = 1;
     CastleMetadata defaultCastleMetadata;
     if ( !readMP2CastleMetadata( defaultCastleBlock, defaultCastleMetadata ) || !defaultCastleMetadata.customName.empty() || defaultCastleMetadata.customBuildings
-         || defaultCastleMetadata.builtBuildings != std::vector<uint32_t>{ BUILD_CASTLE }
+         || defaultCastleMetadata.builtBuildings != std::vector<uint64_t>{ BUILD_CASTLE }
          || defaultCastleMetadata.defenderMonsterType != std::array<int32_t, 5>{ -1, -1, -1, -1, -1 } ) {
         return fail( "Default castle metadata was resolved instead of being preserved." );
     }
@@ -272,9 +286,11 @@ int main()
     const auto bottleObject = findObject( MP2::OBJ_BOTTLE );
     const auto event = findObject( MP2::OBJ_EVENT );
     const auto sphinx = findObject( MP2::OBJ_SPHINX );
+    const auto customMonster = findMonsterObject( Monster::AZURE_DRAGON );
     if ( randomTown.first == Maps::ObjectGroup::NONE || randomCastle.first == Maps::ObjectGroup::NONE || randomArtifact.first == Maps::ObjectGroup::NONE
          || randomMonster.first == Maps::ObjectGroup::NONE || randomResource.first == Maps::ObjectGroup::NONE || sign.first == Maps::ObjectGroup::NONE
-         || bottleObject.first == Maps::ObjectGroup::NONE || event.first == Maps::ObjectGroup::NONE || sphinx.first == Maps::ObjectGroup::NONE ) {
+         || bottleObject.first == Maps::ObjectGroup::NONE || event.first == Maps::ObjectGroup::NONE || sphinx.first == Maps::ObjectGroup::NONE
+         || customMonster.first == Maps::ObjectGroup::NONE ) {
         return fail( "A synthetic fixture object could not be resolved in the editor registry." );
     }
 
@@ -287,6 +303,7 @@ int main()
     imported.tiles[3].objects.push_back( { 3001, event.first, event.second } );
     imported.tiles[4].objects.push_back( { 4001, sphinx.first, sphinx.second } );
     imported.tiles[5].objects.push_back( { 4002, sphinx.first, sphinx.second } );
+    imported.tiles[6].objects.push_back( { 5001, customMonster.first, customMonster.second } );
     imported.castleMetadata.emplace( 1002, castleMetadata );
     imported.castleMetadata.emplace( 1003, defaultCastleMetadata );
     imported.heroMetadata.emplace( 1001, heroMetadata );
@@ -295,6 +312,7 @@ int main()
     imported.adventureMapEventMetadata.emplace( 3001, eventMetadata );
     imported.sphinxMetadata.emplace( 4001, sphinxMetadata );
     imported.sphinxMetadata.emplace( 4002, emptySphinxMetadata );
+    imported.monsterMetadata[5001].count = 12;
 
     const std::string outputPath = "synthetic_mp2_metadata_roundtrip.fh2m";
     if ( !saveMap( outputPath, imported ) ) {
@@ -322,8 +340,13 @@ int main()
     }
     if ( reopened.castleMetadata.at( 1002 ).defenderMonsterType
              != std::array<int32_t, 5>{ Monster::AZURE_DRAGON, Monster::BLOOD_DRAGON, Monster::THOR, Monster::AVENGER, Monster::SUCCUBUS }
-         || reopened.heroMetadata.at( 1001 ).armyMonsterType != std::array<int32_t, 5>{ Monster::DACHSHUND, Monster::MAID, 0, 0, 0 } ) {
-        return fail( "Stable custom creature IDs changed during FH2M round-trip." );
+         || reopened.castleMetadata.at( 1002 ).builtBuildings.back() != DWELLING_UPGRADE8
+         || reopened.castleMetadata.at( 1002 ).bannedBuildings.back() != DWELLING_UPGRADE14
+         || reopened.heroMetadata.at( 1001 ).armyMonsterType != std::array<int32_t, 5>{ Monster::DACHSHUND, Monster::MAID, 0, 0, 0 }
+         || Maps::getObjectInfo( reopened.tiles[6].objects.front().group, static_cast<int32_t>( reopened.tiles[6].objects.front().index ) ).metadata[0]
+                != Monster::AZURE_DRAGON
+         || reopened.monsterMetadata.at( 5001 ).count != 12 ) {
+        return fail( "Stable custom creature or dwelling IDs changed during FH2M round-trip." );
     }
 
     return EXIT_SUCCESS;

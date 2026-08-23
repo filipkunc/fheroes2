@@ -75,10 +75,10 @@ namespace Maps::Map_Format
         bool customBuildings{ false };
 
         // A list of built buildings.
-        std::vector<uint32_t> builtBuildings;
+        std::vector<uint64_t> builtBuildings;
 
         // A list of buildings that cannot be built.
-        std::vector<uint32_t> bannedBuildings;
+        std::vector<uint64_t> bannedBuildings;
 
         // Spells that must appear in the Mage Guild in relation to position index.
         // The spell index is written as a decimal number, where the tens digit indicates the spell level (0-4),

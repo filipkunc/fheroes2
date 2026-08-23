@@ -75,7 +75,7 @@ namespace
         return monsterId > Monster::UNKNOWN && monsterId < Monster::MONSTER_COUNT ? monsterId : Monster::UNKNOWN;
     }
 
-    void addBuilding( const uint16_t value, const uint16_t mask, const uint32_t building, std::vector<uint32_t> & buildings )
+    void addBuilding( const uint16_t value, const uint16_t mask, const uint64_t building, std::vector<uint64_t> & buildings )
     {
         if ( ( value & mask ) != 0 ) {
             buildings.push_back( building );
