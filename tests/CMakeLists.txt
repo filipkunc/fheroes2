@@ -53,6 +53,7 @@ add_executable(
 	map_object_import_lookup_test
 	map_object_import_lookup_test.cpp
 	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_object_info.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/monster/custom_monster_info.cpp
 	)
 # Keep this standalone registry test independent of the full game runtime. Its checks do not rely on assert().
 target_compile_definitions(map_object_import_lookup_test PRIVATE NDEBUG)
@@ -79,6 +80,7 @@ add_executable(
 	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_format_importmp2_metadata.cpp
 	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_format_info.cpp
 	${PROJECT_SOURCE_DIR}/src/fheroes2/maps/map_object_info.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/monster/custom_monster_info.cpp
 	)
 # Keep this standalone registry test independent of the full game runtime. Its checks do not rely on assert().
 target_compile_definitions(map_format_import_metadata_roundtrip_test PRIVATE NDEBUG)

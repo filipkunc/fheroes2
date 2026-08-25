@@ -30,7 +30,7 @@
 
 class Kingdom;
 
-enum BuildingType : uint32_t;
+enum BuildingType : uint64_t;
 
 namespace Difficulty
 {

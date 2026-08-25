@@ -21,8 +21,11 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <set>
 
 #include "map_object_info.h"
+#include "monster.h"
+#include "monster_info.h"
 
 namespace
 {
@@ -59,6 +62,7 @@ namespace
 int main()
 {
     size_t checkedObjectCount = 0;
+    std::set<int32_t> customMonsterIds;
 
     for ( uint32_t groupIndex = 0; groupIndex < static_cast<uint32_t>( Maps::ObjectGroup::GROUP_COUNT ); ++groupIndex ) {
         const auto group = static_cast<Maps::ObjectGroup>( groupIndex );
@@ -92,6 +96,19 @@ int main()
                 return 1;
             }
 
+            const int32_t monsterId = static_cast<int32_t>( object.metadata[0] );
+            if ( const fheroes2::CustomMonsterDefinition * definition = fheroes2::findCustomMonsterDefinition( monsterId ) ) {
+                if ( group != Maps::ObjectGroup::MONSTERS || object.objectType != MP2::OBJ_MONSTER || mainPart.icnType != MP2::OBJ_ICN_TYPE_MONS32
+                     || mainPart.icnIndex != static_cast<uint32_t>( definition->fallbackMonsterId - 1 ) || !customMonsterIds.emplace( monsterId ).second ) {
+                    std::cerr << "A custom creature has invalid or duplicate editor object metadata.\n";
+                    return 1;
+                }
+
+                // Custom creatures deliberately share indexed fallback art with upstream creatures, so sprite-only reverse lookup resolves the upstream object.
+                ++checkedObjectCount;
+                continue;
+            }
+
             if ( !areSameObjects( object, resolvedObject ) ) {
                 if ( resolvedGroup != group || ( group != Maps::ObjectGroup::ROADS && group != Maps::ObjectGroup::ADVENTURE_MINES ) ) {
                     std::cerr << "Main ICN sprite " << static_cast<uint32_t>( mainPart.icnType ) << ':' << mainPart.icnIndex << " identifies object " << groupIndex << ':'
@@ -115,6 +132,20 @@ int main()
     if ( checkedObjectCount == 0 ) {
         std::cerr << "No editor objects were checked.\n";
         return 1;
+    }
+
+    if ( customMonsterIds.size() != fheroes2::getCustomMonsterDefinitions().size() ) {
+        std::cerr << "Not every custom creature is available in the editor object registry.\n";
+        return 1;
+    }
+
+    const auto & monsterObjects = Maps::getObjectsByGroup( Maps::ObjectGroup::MONSTERS );
+    for ( int32_t placeholderId = Monster::RANDOM_MONSTER; placeholderId <= Monster::RANDOM_MONSTER_LEVEL_4; ++placeholderId ) {
+        const size_t objectIndex = static_cast<size_t>( placeholderId - 1 );
+        if ( objectIndex >= monsterObjects.size() || monsterObjects[objectIndex].metadata[0] != static_cast<uint32_t>( placeholderId ) ) {
+            std::cerr << "An existing random-monster editor object index changed.\n";
+            return 1;
+        }
     }
 
     std::cout << "Validated main ICN reverse lookup for " << checkedObjectCount << " editor objects.\n";

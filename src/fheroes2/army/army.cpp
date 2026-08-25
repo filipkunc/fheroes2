@@ -50,6 +50,7 @@
 #include "luck.h"
 #include "maps_tiles.h"
 #include "maps_tiles_helper.h"
+#include "monster_info.h"
 #include "morale.h"
 #include "mp2.h"
 #include "race.h"
@@ -1963,7 +1964,8 @@ void Army::ArrangeForBattle( const Monster & monster, const uint32_t monstersCou
         Troop * troopToUpgrade = at( size() / 2 );
         assert( troopToUpgrade != nullptr );
 
-        if ( troopToUpgrade->isValid() && troopToUpgrade->isAllowUpgrade() ) {
+        // Extended Edition creatures are explicit castle upgrades and must never replace ordinary creatures in generic neutral stacks.
+        if ( troopToUpgrade->isValid() && troopToUpgrade->isAllowUpgrade() && !fheroes2::isCustomMonsterId( troopToUpgrade->GetUpgrade().GetID() ) ) {
             Rand::PCG32 seededGen( world.GetMapSeed() + static_cast<uint32_t>( tileIndex ) + static_cast<uint32_t>( monster.GetID() ) );
 
             // 50% chance to get an upgraded stack

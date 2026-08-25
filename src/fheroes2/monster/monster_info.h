@@ -232,6 +232,10 @@ namespace fheroes2
         int32_t legacyFkId;
         const char * stableKey;
         int32_t fallbackMonsterId;
+        int32_t upgradeFromMonsterId;
+        uint64_t dwellingId;
+        // A zero cost means that the usual difference-based upgrade price applies.
+        Cost upgradeCost;
         // Base strength is a derived runtime cache populated together with the upstream creature data.
         mutable MonsterData data;
     };
@@ -239,6 +243,7 @@ namespace fheroes2
     // The returned registry is the single source of truth for Extended Edition creature metadata.
     const std::vector<CustomMonsterDefinition> & getCustomMonsterDefinitions();
     const CustomMonsterDefinition * findCustomMonsterDefinition( int32_t monsterId );
+    const CustomMonsterDefinition * findCustomMonsterDefinitionByUpgradeBase( int32_t monsterId );
     const CustomMonsterDefinition * findCustomMonsterDefinitionByLegacyFkId( int32_t legacyMonsterId );
     bool isCustomMonsterId( int32_t monsterId );
     int32_t getCustomMonsterFallbackId( int32_t monsterId );

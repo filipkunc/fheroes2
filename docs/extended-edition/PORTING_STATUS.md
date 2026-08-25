@@ -57,7 +57,7 @@ These are migration inputs, not requirements to reproduce the old implementation
 * [x] Design stable custom creature identifiers and save compatibility.
 * [x] Define one source of truth for creature metadata.
 * [x] Avoid parallel custom-creature tables by constructing runtime metadata directly from the registry.
-* [~] Port the seven custom creatures with indexed fallbacks.
+* [x] Port the seven custom creatures with indexed fallbacks.
 * [ ] Port hero specialties as a separate gameplay slice.
 * [x] Port the MP2/MX2 importer as a separate slice.
 
@@ -94,10 +94,17 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ## Session handoff
 
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 Completed in the latest session:
 
+* Connected all seven registry creatures to their preserved upgrade predecessors, race-specific castle dwellings, weekly growth, recruitment,
+  construction requirements and prices, AI construction and reinforcement priorities, and castle/editor building progression.
+* Added the custom creatures to direct monster selection while keeping them out of generic random-monster pools and preserving existing
+  random-placeholder IDs and editor object indices.
+* Extended building masks and serialization to 64 bits, bumped the FH2M format to version 14, retained loading for both upstream 32-bit and FK
+  Extended Edition 64-bit version 13 castle metadata and older save files, and round-tripped high-bit custom dwelling IDs.
+* Reused existing indexed creature, portrait and castle art as deterministic fallbacks; dedicated RGBA artwork remains a separate runtime-assets slice.
 * Reserved stable Extended Edition creature IDs at `0x00010000` through `0x00010006` without changing upstream creature or random-placeholder IDs.
 * Added one declarative registry for Azure Dragon, Blood Dragon, Thor, Avenger, Succubus, Dachshund and Maid, including original stats, abilities,
   costs, sounds and indexed fallback resources.
@@ -126,6 +133,11 @@ Completed in the latest session:
 
 Validation:
 
+* Warning-as-error SDL2 and native SDL3 builds completed with the full `fheroes2` executable.
+* All five SDL2 data-free tests and all seven SDL3 data-free tests passed, including custom registry, editor-object lookup and FH2M metadata round trips.
+* The registry test now covers unique upgrade predecessors and dwellings, fixed upgrade prices and exact 64-bit dwelling serialization.
+* The editor-object test verifies that all custom creatures are selectable and that the five existing random-monster object indices did not move.
+* Code-format, copyright-header, whitespace and tracked-asset checks passed; no proprietary or generated game-data asset was added.
 * The custom-creature registry test validates stable and legacy IDs, unique keys, representative source metadata, fallback mappings, placeholder
   isolation and exact serialization round trips.
 * A local native SDL3 configuration compiled the complete `fheroes2` executable with warnings treated as errors.
@@ -141,6 +153,11 @@ Validation:
 
 Findings:
 
+* Seven additional dwelling variants exhaust the 32-bit building mask, so construction, payment, editor metadata and save paths must consistently use
+  64-bit masks; implicit narrowing can otherwise make custom buildings free or remove their prerequisites.
+* Custom editor creatures intentionally share upstream MONS32 sprites as indexed fallbacks. They therefore need stable metadata IDs, while sprite-only
+  reverse lookup continues to resolve the original upstream object.
+* Appending custom editor objects after the existing random placeholders preserves FH2M group/index compatibility without a map conversion.
 * SDL3 can retain the current indexed renderer contract by converting palette indexes into an RGBA32 SDL surface before texture upload.
 * SDL3 display IDs, event types, gamepads, cursor visibility and surface metadata need explicit adaptation; SDL's old-name diagnostics are not a
   compatibility API.
@@ -152,4 +169,4 @@ Findings:
 
 Best next step:
 
-* Connect the registry creatures to castle upgrade and dwelling progression, editor selection and random-creature pools as a focused gameplay slice.
+* Port hero specialties as a separate gameplay slice, using registry creature IDs without introducing renderer or high-resolution asset changes.

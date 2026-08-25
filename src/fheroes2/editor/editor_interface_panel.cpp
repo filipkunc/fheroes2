@@ -575,7 +575,10 @@ namespace Interface
                 fheroes2::Blit( image, display, _rectInstrumentPanel.x + ( _rectInstrumentPanel.width - image.width() ) / 2,
                                 _rectInstrumentPanel.y + 67 - image.height() );
 
-                fheroes2::Text text( Monster( _selectedMonsterType + 1 ).GetName(), fheroes2::FontType::smallWhite() );
+                const auto & monsterObjects = Maps::getObjectsByGroup( Maps::ObjectGroup::MONSTERS );
+                assert( _selectedMonsterType < static_cast<int32_t>( monsterObjects.size() ) );
+                const int32_t monsterId = static_cast<int32_t>( monsterObjects[_selectedMonsterType].metadata[0] );
+                fheroes2::Text text( Monster( monsterId ).GetName(), fheroes2::FontType::smallWhite() );
                 text.draw( _rectInstrumentPanel.x + 5, _rectInstrumentPanel.y + 70, _rectInstrumentPanel.width - 10, display );
                 text.set( _( "Click here to\nselect another monster." ), fheroes2::FontType::smallWhite() );
                 text.draw( _rectInstrumentPanel.x + 5, _rectInstrumentPanel.y + 95, _rectInstrumentPanel.width - 10, display );

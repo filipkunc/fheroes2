@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "castle.h"
 #include "icn.h"
 #include "m82.h"
 #include "monster.h"
@@ -43,6 +44,9 @@ namespace
           67,
           "azure_dragon",
           Monster::BLACK_DRAGON,
+          Monster::BLACK_DRAGON,
+          DWELLING_UPGRADE8,
+          {},
           { ICN::DRAGBLAK,
             "DRAGBFRM.BIN",
             { M82::DRGNATTK, M82::DRGNKILL, M82::DRGNMOVE, M82::DRGNWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN },
@@ -64,6 +68,9 @@ namespace
           68,
           "blood_dragon",
           Monster::BONE_DRAGON,
+          Monster::BONE_DRAGON,
+          DWELLING_UPGRADE9,
+          { 2000, 0, 1, 0, 0, 0, 0 },
           { ICN::DRAGBONE,
             "DRABNFRM.BIN",
             { M82::BONEATTK, M82::BONEKILL, M82::BONEMOVE, M82::BONEWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN },
@@ -84,6 +91,9 @@ namespace
           69,
           "thor",
           Monster::TITAN,
+          Monster::TITAN,
+          DWELLING_UPGRADE10,
+          { 2000, 0, 0, 0, 0, 0, 1 },
           { ICN::TITANBLA,
             "TITA2FRM.BIN",
             { M82::TITNATTK, M82::TITNKILL, M82::TITNMOVE, M82::TITNWNCE, M82::TITNSHOT, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN },
@@ -103,6 +113,9 @@ namespace
           70,
           "avenger",
           Monster::CRUSADER,
+          Monster::CRUSADER,
+          DWELLING_UPGRADE11,
+          { 500, 0, 0, 0, 0, 0, 0 },
           { ICN::PALADIN2,
             "PALADFRM.BIN",
             { M82::PLDNATTK, M82::PLDNKILL, M82::PLDNMOVE, M82::PLDNWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN },
@@ -125,6 +138,9 @@ namespace
           71,
           "succubus",
           Monster::GARGOYLE,
+          Monster::CYCLOPS,
+          DWELLING_UPGRADE12,
+          { 1750, 0, 0, 0, 0, 0, 0 },
           { ICN::GARGOYLE,
             "GARGLFRM.BIN",
             { M82::GARGATTK, M82::GARGKILL, M82::GARGMOVE, M82::GARGWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN },
@@ -145,6 +161,9 @@ namespace
           72,
           "dachshund",
           Monster::WOLF,
+          Monster::WOLF,
+          DWELLING_UPGRADE13,
+          {},
           { ICN::WOLF,
             "WOLF_FRM.BIN",
             { M82::WOLFATTK, M82::WOLFKILL, M82::WOLFMOVE, M82::WOLFWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN },
@@ -164,6 +183,9 @@ namespace
           73,
           "maid",
           Monster::PEASANT,
+          Monster::PEASANT,
+          DWELLING_UPGRADE14,
+          {},
           { ICN::PEASANT,
             "PEAS_FRM.BIN",
             { M82::PSNTATTK, M82::PSNTKILL, M82::PSNTMOVE, M82::PSNTWNCE, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN, M82::UNKNOWN },
@@ -192,6 +214,13 @@ namespace fheroes2
         // legacy-FK interpretation; automatically remapping these values would corrupt normal FH2M maps.
         const auto iter = std::find_if( customMonsterDefinitions.cbegin(), customMonsterDefinitions.cend(),
                                         [legacyMonsterId]( const CustomMonsterDefinition & definition ) { return definition.legacyFkId == legacyMonsterId; } );
+        return iter != customMonsterDefinitions.cend() ? &( *iter ) : nullptr;
+    }
+
+    const CustomMonsterDefinition * findCustomMonsterDefinitionByUpgradeBase( const int32_t monsterId )
+    {
+        const auto iter = std::find_if( customMonsterDefinitions.cbegin(), customMonsterDefinitions.cend(),
+                                        [monsterId]( const CustomMonsterDefinition & definition ) { return definition.upgradeFromMonsterId == monsterId; } );
         return iter != customMonsterDefinitions.cend() ? &( *iter ) : nullptr;
     }
 
