@@ -94,10 +94,13 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ## Session handoff
 
-Last updated: 2026-08-23
+Last updated: 2026-08-25
 
 Completed in the latest session:
 
+* Merged the custom-creature gameplay slice through pull request #11 and corrected the playtest regressions found in Dragon Rider and Dragon's Eye:
+  random-monster fallback IDs, omitted legacy artifact/monster metadata and high-bit building-mask handling.
+* Removed legacy-ID substitutions from normal runtime lookup so Wolf and the other upstream creatures cannot be replaced by custom creatures.
 * Connected all seven registry creatures to their preserved upgrade predecessors, race-specific castle dwellings, weekly growth, recruitment,
   construction requirements and prices, AI construction and reinforcement priorities, and castle/editor building progression.
 * Added the custom creatures to direct monster selection while keeping them out of generic random-monster pools and preserving existing
@@ -150,6 +153,26 @@ Validation:
 * Warning-as-error SDL2 and native SDL3 builds completed; all data-free tests and the tracked-asset guard passed.
 * The existing CI job still builds the full game and data-free tests; the normal pull-request matrix verifies the unchanged SDL2 platforms.
 * No image, audio, map or original game-data file is part of this change or its validation.
+
+### Next session task: hero specialties
+
+Start from branch `agent/hero-specialties` and port the specialty gameplay system from `FK/Azure-Dragon` onto the current integration code.
+
+Scope and constraints:
+
+* Treat the preserved branch as a behavioral reference, not as code to merge wholesale; reconcile every hook with current upstream army, battle,
+  spell, hero and kingdom behavior.
+* Keep specialty definitions in game-owned source. Do not port the sprite-editor generator, generated RGBA headers, renderer changes or proprietary artwork.
+* Preserve the reference unit, spell and resource specialty values. Use stable registry IDs for Maid, Avenger, Dachshund, Azure Dragon, Blood Dragon
+  and Thor; legacy FK creature IDs must not enter normal runtime lookup.
+* Apply unit attack, defense and speed bonuses exactly once across adventure and battle calculations. Apply specialty spell damage and spell-point
+  reductions consistently, grant the specialty spell, and award daily specialty resources exactly once.
+* Show a localized specialty description using existing indexed UI resources or a deterministic fallback; specialty artwork is deferred to the asset slice.
+* Add data-free regression coverage for specialty lookup, the five custom-creature unit chains, spell/resource effects and invalid hero IDs. Confirm that
+  save compatibility is unchanged and that AI army evaluation either observes the resulting bonuses or has an explicit documented follow-up.
+* Finish with warning-as-error SDL2 and native SDL3 builds, all data-free tests and the repository formatting, whitespace and tracked-asset checks.
+
+Acceptance result: every non-empty specialty from the preserved table has its intended runtime effect and description, with no renderer or asset-system changes.
 
 Findings:
 
