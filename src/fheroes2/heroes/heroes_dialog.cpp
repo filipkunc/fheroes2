@@ -43,6 +43,7 @@
 #include "heroes.h" // IWYU pragma: associated
 #include "heroes_base.h"
 #include "heroes_indicator.h"
+#include "heroes_specialty_runtime.h"
 #include "icn.h"
 #include "image.h"
 #include "interface_gamearea.h"
@@ -612,6 +613,16 @@ int Heroes::OpenDialog( const bool readonly, const bool fade, const bool disable
                 needRedraw = true;
             }
         }
+        else if ( !isEditor && le.MouseClickLeft( portPos ) ) {
+            std::string description = getSpecialtyDescription( this );
+            if ( description.empty() ) {
+                description = _( "This hero has no specialty." );
+            }
+
+            std::string title = _( "%{name} - Specialty" );
+            StringReplace( title, "%{name}", _name );
+            fheroes2::showStandardTextMessage( std::move( title ), std::move( description ), Dialog::OK );
+        }
         else if ( le.isMouseRightButtonPressedInArea( portPos ) ) {
             if ( isEditor ) {
                 _portrait = 0;
@@ -741,6 +752,9 @@ int Heroes::OpenDialog( const bool readonly, const bool fade, const bool disable
             }
             else if ( le.isMouseCursorPosInArea( rectGroupedArmyFormat ) ) {
                 message = _( "Set army combat formation to 'Grouped'" );
+            }
+            else if ( le.isMouseCursorPosInArea( portPos ) ) {
+                message = _( "Click to view specialty" );
             }
         }
         else if ( message.empty() ) {

@@ -44,6 +44,7 @@
 #include "game_assets.h"
 #include "game_static.h"
 #include "heroes_base.h"
+#include "heroes_specialty_runtime.h"
 #include "image.h"
 #include "logging.h"
 #include "m82.h"
@@ -453,16 +454,18 @@ uint32_t Battle::Unit::GetSpeed( const bool skipStandingCheck, const bool skipMo
         }
     }
 
-    const uint32_t speed = Monster::GetSpeed();
+    int64_t speed = Monster::GetSpeed();
+    speed += getSpecialtySpeedBonus( GetCommander(), GetID() );
+    const uint32_t adjustedSpeed = static_cast<uint32_t>( std::max<int64_t>( speed, 0 ) );
 
     if ( Modes( SP_HASTE ) ) {
-        return Speed::getHasteSpeedFromSpell( speed );
+        return Speed::getHasteSpeedFromSpell( adjustedSpeed );
     }
     if ( Modes( SP_SLOW ) ) {
-        return Speed::getSlowSpeedFromSpell( speed );
+        return Speed::getSlowSpeedFromSpell( adjustedSpeed );
     }
 
-    return speed;
+    return adjustedSpeed;
 }
 
 uint32_t Battle::Unit::EstimateRetaliatoryDamage( const uint32_t damageTaken ) const
@@ -1441,6 +1444,11 @@ uint32_t Battle::Unit::CalculateSpellDamage( const Spell & spell, uint32_t spell
         default:
             break;
         }
+    }
+
+    const int32_t specialtyBonus = getSpecialtySpellEffectivenessPercent( applyingHero, spell.GetID() );
+    if ( specialtyBonus != 0 ) {
+        dmg = static_cast<uint32_t>( static_cast<int64_t>( dmg ) * ( 100 + specialtyBonus ) / 100 );
     }
 
     return dmg;

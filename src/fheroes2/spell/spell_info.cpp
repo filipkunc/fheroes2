@@ -31,6 +31,7 @@
 #include "direction.h"
 #include "heroes.h"
 #include "heroes_base.h"
+#include "heroes_specialty_runtime.h"
 #include "kingdom.h"
 #include "maps.h"
 #include "maps_fileinfo.h"
@@ -97,13 +98,16 @@ namespace fheroes2
             break;
         }
 
-        if ( type == ArtifactBonusType::NONE ) {
-            return damage;
+        if ( type != ArtifactBonusType::NONE ) {
+            const std::vector<int32_t> extraDamagePercentage = hero->GetBagArtifacts().getTotalArtifactMultipliedPercent( type );
+            for ( const int32_t value : extraDamagePercentage ) {
+                damage = damage * ( 100 + value ) / 100;
+            }
         }
 
-        const std::vector<int32_t> extraDamagePercentage = hero->GetBagArtifacts().getTotalArtifactMultipliedPercent( type );
-        for ( const int32_t value : extraDamagePercentage ) {
-            damage = damage * ( 100 + value ) / 100;
+        const int32_t specialtyBonus = getSpecialtySpellEffectivenessPercent( hero, spell.GetID() );
+        if ( specialtyBonus != 0 ) {
+            damage = static_cast<uint32_t>( static_cast<int64_t>( damage ) * ( 100 + specialtyBonus ) / 100 );
         }
 
         return damage;
@@ -131,11 +135,15 @@ namespace fheroes2
 
     uint32_t getHPRestorePoints( const Spell & spell, const uint32_t spellPower, const HeroBase * hero )
     {
-        (void)hero;
-
         assert( spellPower > 0 );
 
-        return spell.Restore() * spellPower;
+        uint32_t restorePoints = spell.Restore() * spellPower;
+        const int32_t specialtyBonus = getSpecialtySpellEffectivenessPercent( hero, spell.GetID() );
+        if ( specialtyBonus != 0 ) {
+            restorePoints = static_cast<uint32_t>( static_cast<int64_t>( restorePoints ) * ( 100 + specialtyBonus ) / 100 );
+        }
+
+        return restorePoints;
     }
 
     uint32_t getResurrectPoints( const Spell & spell, const uint32_t spellPower, const HeroBase * hero )
@@ -153,6 +161,11 @@ namespace fheroes2
 
         for ( const int32_t value : extraSpellEffectivenessPercent ) {
             resurrectionPoints = resurrectionPoints * ( 100 + value ) / 100;
+        }
+
+        const int32_t specialtyBonus = getSpecialtySpellEffectivenessPercent( hero, spell.GetID() );
+        if ( specialtyBonus != 0 ) {
+            resurrectionPoints = static_cast<uint32_t>( static_cast<int64_t>( resurrectionPoints ) * ( 100 + specialtyBonus ) / 100 );
         }
 
         return resurrectionPoints;

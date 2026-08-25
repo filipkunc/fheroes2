@@ -1,6 +1,6 @@
 /***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
- *   Copyright (C) 2019 - 2025                                             *
+ *   Copyright (C) 2019 - 2026                                             *
  *                                                                         *
  *   Free Heroes2 Engine: http://sourceforge.net/projects/fheroes2         *
  *   Copyright (C) 2009 by Andrey Afletdinov <fheroes2@gmail.com>          *
@@ -149,6 +149,7 @@ public:
 
     uint32_t GetAttack() const override;
     uint32_t GetDefense() const override;
+    uint32_t GetSpeed() const override;
     int GetMorale() const override;
     int GetLuck() const override;
 
