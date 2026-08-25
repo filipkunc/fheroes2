@@ -20,7 +20,9 @@
 
 #include "heroes_specialty_runtime.h"
 
+#include <array>
 #include <cassert>
+#include <cstddef>
 #include <string>
 
 #include "heroes.h"
@@ -112,7 +114,7 @@ std::string getSpecialtyDescription( const HeroBase * hero )
         assert( specialty.monsterCount > 0 );
 
         std::string monsterNames;
-        for ( size_t i = 0; i < specialty.monsterCount; ++i ) {
+        for ( std::size_t i = 0; i < specialty.monsterCount; ++i ) {
             if ( !monsterNames.empty() ) {
                 monsterNames += ", ";
             }
