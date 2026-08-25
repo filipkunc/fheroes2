@@ -44,6 +44,7 @@
 #include "maps_tiles.h"
 #include "math_base.h"
 #include "monster.h"
+#include "monster_info.h"
 #include "mp2.h"
 #include "profit.h"
 #include "race.h"

@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <initializer_list>
 #include <iterator>
 #include <sstream>
 

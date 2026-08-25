@@ -50,6 +50,7 @@
 #include "luck.h"
 #include "maps_tiles.h"
 #include "maps_tiles_helper.h"
+#include "monster_info.h"
 #include "morale.h"
 #include "mp2.h"
 #include "race.h"
