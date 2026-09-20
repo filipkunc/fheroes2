@@ -42,6 +42,7 @@ target_compile_definitions(
 	$<$<BOOL:${ENABLE_IMAGE}>:WITH_IMAGE>
 	$<$<BOOL:${MACOS_APP_BUNDLE}>:MACOS_APP_BUNDLE>
 	$<$<STREQUAL:${USE_SDL_VERSION},SDL3>:WITH_SDL3>
+	$<$<BOOL:${ENABLE_RGBA_RENDERER}>:WITH_RGBA_RENDERER>
 	)
 
 target_include_directories(

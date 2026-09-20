@@ -45,3 +45,13 @@ Use synthetic, data-free tests for opaque overlap, partial alpha, transparent no
 negative origins, adjacent rectangles, invalid geometry and exact 1x/2x/3x output. Test that two distinct physical pixels inside one logical pixel survive
 SDL texture upload and readback. Retain the SDL2 suite and mouse/touch coordinate tests. Device-only Android lifecycle validation is tracked separately in
 `PORTING_STATUS.md`.
+
+## Building the opt-in path
+
+On Linux, configure with `-DUSE_SDL_VERSION=SDL3 -DENABLE_RGBA_RENDERER=ON -DENABLE_TESTS=ON`, then build the game and tests with CMake.
+The `rgba_frame` test exercises composition and `sdl3_rgba` checks physical texture readback and the game's resize path with SDL's dummy driver.
+The SDL2 configuration rejects `ENABLE_RGBA_RENDERER=ON` explicitly.
+
+On Android, prepare SDL3 as described in `script/android/README.md`, then use
+`./gradlew -PuseSDL3=true -PenableRGBA=true assembleDebug bundleDebug`. Omit `enableRGBA` to retain the existing SDL3 presentation.
+Both renderer paths remain opt-in; neither changes the save format or requires high-resolution artwork.

@@ -25,6 +25,7 @@
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "image.h"
@@ -34,6 +35,7 @@ namespace fheroes2
 {
     class Cursor;
     class Display;
+    class RgbaFrame;
     struct RGB;
 
     struct ResolutionInfo
@@ -89,6 +91,13 @@ namespace fheroes2
         friend class Display;
 
         virtual ~BaseRenderEngine() = default;
+
+        // Experimental physical RGBA composition after the indexed compatibility frame.
+        // Callbacks submit draws in painter order; world-sprite replacement requires migrating its draw order too.
+        void setRgbaRenderCallback( std::function<void( RgbaFrame & )> callback )
+        {
+            _rgbaRenderCallback = std::move( callback );
+        }
 
         virtual void toggleFullScreen()
         {
@@ -153,6 +162,13 @@ namespace fheroes2
     protected:
         BaseRenderEngine() = default;
 
+        void composeRgbaFrame( RgbaFrame & frame ) const
+        {
+            if ( _rgbaRenderCallback ) {
+                _rgbaRenderCallback( frame );
+            }
+        }
+
         virtual void clear()
         {
             // Do nothing.
@@ -185,6 +201,8 @@ namespace fheroes2
         bool _isFullScreen{ false };
 
         bool _nearestScaling{ false };
+
+        std::function<void( RgbaFrame & )> _rgbaRenderCallback;
     };
 
     class Display final : public Image

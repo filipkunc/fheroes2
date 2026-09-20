@@ -2,7 +2,7 @@ name: Extended Edition Foundation
 
 on:
   pull_request:
-    branches: [ master, extended-edition ]
+    branches: [ master, extended-edition, "agent/**" ]
   push:
     branches: [ master, extended-edition ]
 
@@ -32,12 +32,15 @@ jobs:
     - name: Configure
       run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON
     - name: Build data-free tests
-      run: cmake --build build --target synthetic_renderer_test map_object_import_lookup_test map_format_import_validation_test map_format_import_metadata_roundtrip_test custom_monster_registry_test hero_specialty_test
+      run: cmake --build build --target synthetic_renderer_test rgba_frame_test map_object_import_lookup_test map_format_import_validation_test map_format_import_metadata_roundtrip_test custom_monster_registry_test hero_specialty_test
     - name: Run data-free tests
       run: ctest --test-dir build --output-on-failure
 
   sdl3-foundation:
-    name: Linux native SDL3 platform
+    name: Linux SDL3 (RGBA ${{ matrix.rgba }})
+    strategy:
+      matrix:
+        rgba: ["OFF", "ON"]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -49,14 +52,20 @@ jobs:
           libasound2-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
           libxfixes-dev libxi-dev libxss-dev libxtst-dev ninja-build
     - name: Configure native SDL3 platform
-      run: cmake -B build-sdl3 -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON -DUSE_SDL_VERSION=SDL3
+      run: cmake -B build-sdl3 -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_COMPILE_WARNING_AS_ERROR=ON -DENABLE_TESTS=ON -DUSE_SDL_VERSION=SDL3 -DENABLE_RGBA_RENDERER=${{ matrix.rgba }}
     - name: Build game and data-free tests
-      run: cmake --build build-sdl3 --target fheroes2 synthetic_renderer_test map_object_import_lookup_test map_format_import_validation_test map_format_import_metadata_roundtrip_test custom_monster_registry_test hero_specialty_test sdl3_foundation_test sdl3_audio_test
+      run: cmake --build build-sdl3 --target fheroes2 synthetic_renderer_test rgba_frame_test map_object_import_lookup_test map_format_import_validation_test map_format_import_metadata_roundtrip_test custom_monster_registry_test hero_specialty_test sdl3_foundation_test sdl3_audio_test
+    - name: Build physical RGBA presentation test
+      if: matrix.rgba == 'ON'
+      run: cmake --build build-sdl3 --target sdl3_rgba_test
     - name: Run synthetic and native SDL3 tests
       run: ctest --test-dir build-sdl3 --output-on-failure
 
   android-sdl3:
-    name: Android native SDL3 package
+    name: Android SDL3 (RGBA ${{ matrix.rgba }})
+    strategy:
+      matrix:
+        rgba: ["false", "true"]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -71,7 +80,7 @@ jobs:
       run: python3 script/android/prepare_sdl3.py
     - name: Build SDL3 debug APK and bundle
       working-directory: android
-      run: ./gradlew -PuseSDL3=true -PandroidAbis=arm64-v8a,x86_64 assembleDebug bundleDebug app:lintDebug
+      run: ./gradlew -PuseSDL3=true -PandroidAbis=arm64-v8a,x86_64 -PenableRGBA=${{ matrix.rgba }} assembleDebug bundleDebug app:lintDebug
     - name: Verify native libraries and generated asset packaging
       run: python3 script/android/check_sdl3_apk.py android/app/build/outputs/apk/debug/app-debug.apk arm64-v8a x86_64
     - name: Check generated assets stay outside the source tree
