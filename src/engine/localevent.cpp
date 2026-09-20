@@ -147,7 +147,9 @@ using SDL_ControllerButtonEvent = SDL_GamepadButtonEvent;
 #include "logging.h"
 #include "render_processor.h"
 #include "screen.h"
+#if defined( WITH_SDL3 )
 #include "sdl3_input.h"
+#endif
 
 namespace
 {
