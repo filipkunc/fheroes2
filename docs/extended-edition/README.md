@@ -10,6 +10,7 @@ Read these files before changing code:
 1. [ARCHITECTURE.md](ARCHITECTURE.md)
 2. [TESTING.md](TESTING.md)
 3. [PORTING_STATUS.md](PORTING_STATUS.md)
+4. [ASSET_MANIFEST.md](ASSET_MANIFEST.md) and [RENDERING_CONTRACT.md](RENDERING_CONTRACT.md) when changing assets or rendering
 
 Then confirm the current branch and upstream state:
 

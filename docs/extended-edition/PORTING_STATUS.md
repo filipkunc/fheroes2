@@ -70,7 +70,7 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ### RGBA renderer
 
-* [ ] Specify logical and physical coordinate contracts.
+* [x] Specify logical and physical coordinate contracts.
 * [ ] Add physical-resolution RGBA output behind tested interfaces.
 * [ ] Implement painter ordering and alpha behavior.
 * [ ] Validate deterministic output at 1x, 2x and 3x.
@@ -78,7 +78,7 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ### High-resolution runtime assets
 
-* [ ] Define the exported asset manifest shared with the art project.
+* [x] Define the exported asset manifest shared with the art project.
 * [ ] Validate manifests and custom PNG files during the build or packaging step.
 * [ ] Implement consistent runtime lookup and indexed fallback behavior.
 * [ ] Package the accepted assets reproducibly on Linux and Android.
@@ -102,6 +102,9 @@ Current session sequence:
 2. Implement and validate the opt-in Android SDL3 build and remove Android asset generation writes from the source tree.
 3. Define the exported asset manifest and logical/physical coordinate contracts.
 4. Implement physical-resolution RGBA output with painter-order, alpha, clipping and 1x/2x/3x synthetic tests in separate changes.
+
+Android implementation and automated validation precede the contract/renderer work. Hardware-only validation remains pending; the RGBA branch is stacked
+on the Android branch to keep the changes separately reviewable without claiming device validation.
 
 This explicitly prioritizes completing the SDL3 platform slice over the previous manifest-first handoff. Linux and Android are the primary platforms.
 
