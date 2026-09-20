@@ -33,6 +33,7 @@ android {
             if (useSDL3) {
                 cmake {
                     arguments '-DUSE_SDL_VERSION=SDL3', '-DANDROID_STL=c++_shared',
+                            "-DENABLE_RGBA_RENDERER=${providers.gradleProperty('enableRGBA').orElse('false').get()}",
                             '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON',
                             "-DFETCHCONTENT_SOURCE_DIR_SDL3=${sdl3Source}",
                             "-DFETCHCONTENT_SOURCE_DIR_SDL3_MIXER=${sdl3MixerSource}"

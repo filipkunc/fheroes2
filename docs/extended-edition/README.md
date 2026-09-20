@@ -10,6 +10,7 @@ Read these files before changing code:
 1. [ARCHITECTURE.md](ARCHITECTURE.md)
 2. [TESTING.md](TESTING.md)
 3. [PORTING_STATUS.md](PORTING_STATUS.md)
+4. [ASSET_MANIFEST.md](ASSET_MANIFEST.md) and [RENDERING_CONTRACT.md](RENDERING_CONTRACT.md) when changing assets or rendering
 
 Then confirm the current branch and upstream state:
 
@@ -54,7 +55,8 @@ The extended edition retains:
 * the MP2/MX2 importer
 * the SDL3 and RGBA rendering direction
 
-The art generation and editing application will become a separate project. The game build must consume already accepted runtime assets and must never depend on an AI service.
+The art generation and editing application will become a separate project. The game build must consume already accepted runtime assets and must never
+depend on an AI service.
 
 ## Non-negotiable data rule
 

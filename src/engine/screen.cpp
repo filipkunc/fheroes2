@@ -20,6 +20,10 @@
 
 #include "screen.h"
 
+#if defined( WITH_RGBA_RENDERER )
+#include "rgba_frame.h"
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -1248,6 +1252,10 @@ namespace
         SDL_Surface * _surface{ nullptr };
         SDL_Renderer * _renderer{ nullptr };
         SDL_Texture * _texture{ nullptr };
+#if defined( WITH_RGBA_RENDERER )
+        SDL_Texture * _rgbaTexture{ nullptr };
+        fheroes2::RgbaFrame _rgbaFrame;
+#endif
         int _driverIndex{ -1 };
 
         std::string _previousWindowTitle;
@@ -1263,6 +1271,11 @@ namespace
 
         void clear() override
         {
+#if defined( WITH_RGBA_RENDERER )
+            SDL_DestroyTexture( _rgbaTexture );
+            _rgbaTexture = nullptr;
+            _rgbaFrame = {};
+#endif
             if ( _texture != nullptr ) {
                 SDL_DestroyTexture( _texture );
                 _texture = nullptr;
@@ -1300,6 +1313,12 @@ namespace
             }
 
             assert( _renderer != nullptr && _texture != nullptr );
+
+#if defined( WITH_RGBA_RENDERER )
+            (void)roi;
+            renderPhysical( display );
+            return;
+#endif
 
             copyImageToSurface( display, _surface, roi );
 
@@ -1350,6 +1369,50 @@ namespace
             SDL_RenderPresent( _renderer );
         }
 
+#if defined( WITH_RGBA_RENDERER )
+        void renderPhysical( const fheroes2::Display & display )
+        {
+            SDL_FRect presentation{};
+            if ( !SDL_GetRenderLogicalPresentationRect( _renderer, &presentation ) ) {
+                ERROR_LOG( "Failed to query the physical game viewport: " << SDL_GetError() )
+                return;
+            }
+            const fheroes2::Size physicalSize{ static_cast<int32_t>( presentation.w ), static_cast<int32_t>( presentation.h ) };
+            if ( physicalSize.width <= 0 || physicalSize.height <= 0 ) {
+                return;
+            }
+            const bool resized = physicalSize.width != _rgbaFrame.width() || physicalSize.height != _rgbaFrame.height();
+            if ( !_rgbaFrame.resize( { display.width(), display.height() }, physicalSize ) ) {
+                ERROR_LOG( "The physical game viewport exceeds RGBA buffer limits." )
+                return;
+            }
+            if ( resized || _rgbaTexture == nullptr ) {
+                SDL_DestroyTexture( _rgbaTexture );
+                _rgbaTexture = SDL_CreateTexture( _renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, physicalSize.width, physicalSize.height );
+                if ( _rgbaTexture == nullptr || !SDL_SetTextureBlendMode( _rgbaTexture, SDL_BLENDMODE_NONE )
+                     || !SDL_SetTextureScaleMode( _rgbaTexture, SDL_SCALEMODE_NEAREST ) ) {
+                    ERROR_LOG( "Failed to create a physical RGBA texture: " << SDL_GetError() )
+                    return;
+                }
+            }
+
+            // The compatibility base is rebuilt completely, including palette cycling and cursor updates.
+            const fheroes2::Rect logicalRect{ 0, 0, display.width(), display.height() };
+            copyImageToSurface( display, _surface, logicalRect );
+            _rgbaFrame.clear();
+            const fheroes2::RgbaView base{ static_cast<const fheroes2::RgbaPixel *>( _surface->pixels ), display.width(), display.height(), _surface->pitch / 4 };
+            if ( !_rgbaFrame.blit( base, logicalRect, logicalRect ) ) {
+                ERROR_LOG( "Failed to expand the indexed compatibility frame." )
+                return;
+            }
+            composeRgbaFrame( _rgbaFrame );
+            if ( !SDL_UpdateTexture( _rgbaTexture, nullptr, _rgbaFrame.data(), _rgbaFrame.pitch() ) || !SDL_RenderClear( _renderer )
+                 || !SDL_RenderTexture( _renderer, _rgbaTexture, nullptr, nullptr ) || !SDL_RenderPresent( _renderer ) ) {
+                ERROR_LOG( "Failed to present the physical RGBA frame: " << SDL_GetError() )
+            }
+        }
+#endif
+
         bool allocate( fheroes2::ResolutionInfo & resolutionInfo, bool isFullScreen ) override
         {
             clear();
@@ -1369,6 +1432,9 @@ namespace
 
 #if defined( WITH_SDL3 )
             SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
+#if defined( WITH_RGBA_RENDERER )
+            flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
 #else
             uint32_t flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
 #endif

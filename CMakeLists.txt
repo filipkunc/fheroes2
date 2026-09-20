@@ -39,6 +39,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 option(ENABLE_IMAGE "Enable the use of SDL_image (requires libpng)" OFF)
 option(ENABLE_TOOLS "Enable the build of additional tools" OFF)
 option(ENABLE_TESTS "Enable the build of test executables" OFF)
+option(ENABLE_RGBA_RENDERER "Enable experimental physical-resolution RGBA output (SDL3 only)" OFF)
 
 # Available only on macOS
 cmake_dependent_option(MACOS_APP_BUNDLE "Create a Mac app bundle" OFF "APPLE" OFF)
@@ -52,6 +53,10 @@ set(FHEROES2_DATA ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME} CACHE STRING "Path to
 # For ComboBox in CMake GUI
 set_property(CACHE USE_SDL_VERSION PROPERTY STRINGS SDL2 SDL3)
 
+if(ENABLE_RGBA_RENDERER AND NOT USE_SDL_VERSION STREQUAL "SDL3")
+	message(FATAL_ERROR "ENABLE_RGBA_RENDERER requires USE_SDL_VERSION=SDL3.")
+endif()
+
 #
 # Library & feature detection
 #
@@ -63,7 +68,7 @@ if(USE_SDL_VERSION STREQUAL "SDL3")
 		set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 	endif()
 
-	# Build the opt-in Linux path against the native SDL3 API. SDL2 remains the default.
+	# Build the opt-in Linux/Android path against the native SDL3 API. SDL2 remains the default.
 	include(FetchContent)
 
 	set(SDL_SHARED ON CACHE BOOL "" FORCE)

@@ -23,6 +23,10 @@ target_link_libraries(synthetic_renderer_test PRIVATE engine)
 
 add_test(NAME synthetic_renderer COMMAND synthetic_renderer_test)
 
+add_executable(rgba_frame_test rgba_frame_test.cpp)
+target_link_libraries(rgba_frame_test PRIVATE engine)
+add_test(NAME rgba_frame COMMAND rgba_frame_test)
+
 set(
 	FHEROES2_TEST_INCLUDE_DIRS
 	${PROJECT_SOURCE_DIR}/src/engine
@@ -118,4 +122,11 @@ if(USE_SDL_VERSION STREQUAL "SDL3")
 
 	add_test(NAME sdl3_foundation COMMAND sdl3_foundation_test)
 	add_test(NAME sdl3_audio COMMAND sdl3_audio_test)
+endif()
+
+if(ENABLE_RGBA_RENDERER)
+	add_executable(sdl3_rgba_test sdl3_rgba_test.cpp)
+	target_compile_definitions(sdl3_rgba_test PRIVATE WITH_SDL3)
+	target_link_libraries(sdl3_rgba_test PRIVATE engine)
+	add_test(NAME sdl3_rgba COMMAND sdl3_rgba_test)
 endif()
