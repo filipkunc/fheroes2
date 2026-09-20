@@ -31,6 +31,6 @@ jobs:
         cd ios
         xcodebuild -project fheroes2.xcodeproj \
           -scheme fheroes2 \
-          -destination 'platform=iOS Simulator,name=iPhone 17' \
+          -destination 'generic/platform=iOS Simulator' \
           build
     # TODO: add signing stage.

@@ -45,6 +45,7 @@
 #include "game_io.h"
 #include "heroes.h"
 #include "heroes_base.h"
+#include "heroes_specialty_runtime.h"
 #include "kingdom.h"
 #include "logging.h"
 #include "luck.h"
@@ -1311,7 +1312,9 @@ double Army::GetStrength() const
 
         troopsExist = true;
 
-        double strength = troop->GetStrengthWithBonus( bonusAttack, bonusDefense );
+        const int specialtyAttackBonus = getSpecialtyAttackBonus( commander, troop->GetID() );
+        const int specialtyDefenseBonus = getSpecialtyDefenseBonus( commander, troop->GetID() );
+        double strength = troop->GetStrengthWithBonus( bonusAttack + specialtyAttackBonus, bonusDefense + specialtyDefenseBonus );
 
         if ( heroArchery > 0 && troop->isArchers() ) {
             strength *= sqrt( 1 + static_cast<double>( heroArchery ) / 100 );

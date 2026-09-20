@@ -196,6 +196,8 @@
     <ClCompile Include="src\fheroes2\heroes\heroes_meeting.cpp" />
     <ClCompile Include="src\fheroes2\heroes\heroes_move.cpp" />
     <ClCompile Include="src\fheroes2\heroes\heroes_recruits.cpp" />
+    <ClCompile Include="src\fheroes2\heroes\heroes_specialty.cpp" />
+    <ClCompile Include="src\fheroes2\heroes\heroes_specialty_runtime.cpp" />
     <ClCompile Include="src\fheroes2\heroes\heroes_spell.cpp" />
     <ClCompile Include="src\fheroes2\heroes\route.cpp" />
     <ClCompile Include="src\fheroes2\heroes\skill.cpp" />
@@ -419,6 +421,8 @@
     <ClInclude Include="src\fheroes2\heroes\heroes_base.h" />
     <ClInclude Include="src\fheroes2\heroes\heroes_indicator.h" />
     <ClInclude Include="src\fheroes2\heroes\heroes_recruits.h" />
+    <ClInclude Include="src\fheroes2\heroes\heroes_specialty.h" />
+    <ClInclude Include="src\fheroes2\heroes\heroes_specialty_runtime.h" />
     <ClInclude Include="src\fheroes2\heroes\route.h" />
     <ClInclude Include="src\fheroes2\heroes\skill.h" />
     <ClInclude Include="src\fheroes2\heroes\skill_static.h" />

@@ -40,6 +40,7 @@
 #include "game.h"
 #include "game_io.h"
 #include "game_static.h"
+#include "heroes_specialty_runtime.h"
 #include "logging.h"
 #include "maps.h"
 #include "maps_fileinfo.h"
@@ -606,6 +607,7 @@ Funds Kingdom::GetIncome( int type /* = INCOME_ALL */ ) const
         for ( const Heroes * hero : heroes ) {
             assert( hero != nullptr );
             totalIncome.gold += hero->GetSecondarySkillValue( Skill::Secondary::ESTATES );
+            totalIncome += getSpecialtyResourceBonus( hero );
         }
     }
 

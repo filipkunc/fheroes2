@@ -99,6 +99,15 @@ target_link_libraries(custom_monster_registry_test PRIVATE engine)
 
 add_test(NAME custom_monster_registry COMMAND custom_monster_registry_test)
 
+add_executable(
+	hero_specialty_test
+	hero_specialty_test.cpp
+	${PROJECT_SOURCE_DIR}/src/fheroes2/heroes/heroes_specialty.cpp
+	)
+target_include_directories(hero_specialty_test PRIVATE ${FHEROES2_TEST_INCLUDE_DIRS})
+
+add_test(NAME hero_specialty COMMAND hero_specialty_test)
+
 if(USE_SDL_VERSION STREQUAL "SDL3")
 	add_executable(sdl3_foundation_test sdl3_foundation_test.cpp)
 	target_compile_definitions(sdl3_foundation_test PRIVATE WITH_SDL3)

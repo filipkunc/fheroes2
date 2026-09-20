@@ -58,7 +58,7 @@ These are migration inputs, not requirements to reproduce the old implementation
 * [x] Define one source of truth for creature metadata.
 * [x] Avoid parallel custom-creature tables by constructing runtime metadata directly from the registry.
 * [x] Port the seven custom creatures with indexed fallbacks.
-* [ ] Port hero specialties as a separate gameplay slice.
+* [x] Port hero specialties as a separate gameplay slice.
 * [x] Port the MP2/MX2 importer as a separate slice.
 
 ### SDL3 platform port
@@ -94,10 +94,22 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ## Session handoff
 
-Last updated: 2026-08-23
+Last updated: 2026-08-25
 
 Completed in the latest session:
 
+* Ported all 19 non-empty hero specialty definitions into game-owned source without the preserved generator, RGBA headers, renderer changes or artwork.
+* Applied unit attack, defense and speed bonuses through the current adventure and battle stat paths, and included attack/defense bonuses in strategic
+  army strength so AI evaluation observes them without double-counting.
+* Applied specialty spell effectiveness to battle damage, spell descriptions, AI estimates, healing and resurrection; applied final spell-point reductions
+  with a one-point minimum and guaranteed each spell-specialist's spell on hero creation and save loading.
+* Added daily wood, crystal and gem specialties to the existing hero-income pass exactly once and exposed localized, deterministic specialty descriptions
+  by clicking the existing indexed hero portrait.
+* Kept specialty state out of serialization, used only stable registry IDs for all custom-creature chains and added exact data-free coverage for every
+  preserved unit, spell and resource definition plus invalid IDs and legacy-ID isolation.
+* Merged the custom-creature gameplay slice through pull request #11 and corrected the playtest regressions found in Dragon Rider and Dragon's Eye:
+  random-monster fallback IDs, omitted legacy artifact/monster metadata and high-bit building-mask handling.
+* Removed legacy-ID substitutions from normal runtime lookup so Wolf and the other upstream creatures cannot be replaced by custom creatures.
 * Connected all seven registry creatures to their preserved upgrade predecessors, race-specific castle dwellings, weekly growth, recruitment,
   construction requirements and prices, AI construction and reinforcement priorities, and castle/editor building progression.
 * Added the custom creatures to direct monster selection while keeping them out of generic random-monster pools and preserving existing
@@ -134,7 +146,8 @@ Completed in the latest session:
 Validation:
 
 * Warning-as-error SDL2 and native SDL3 builds completed with the full `fheroes2` executable.
-* All five SDL2 data-free tests and all seven SDL3 data-free tests passed, including custom registry, editor-object lookup and FH2M metadata round trips.
+* All six SDL2 data-free tests and all eight SDL3 data-free tests passed, including hero specialties, custom registry, editor-object lookup and FH2M
+  metadata round trips.
 * The registry test now covers unique upgrade predecessors and dwellings, fixed upgrade prices and exact 64-bit dwelling serialization.
 * The editor-object test verifies that all custom creatures are selectable and that the five existing random-monster object indices did not move.
 * Code-format, copyright-header, whitespace and tracked-asset checks passed; no proprietary or generated game-data asset was added.
@@ -169,4 +182,4 @@ Findings:
 
 Best next step:
 
-* Port hero specialties as a separate gameplay slice, using registry creature IDs without introducing renderer or high-resolution asset changes.
+* Define the exported high-resolution asset manifest and validation contract before adding runtime lookup or renderer behavior.

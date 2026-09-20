@@ -1,6 +1,6 @@
 /***************************************************************************
  *   fheroes2: https://github.com/ihhub/fheroes2                           *
- *   Copyright (C) 2019 - 2025                                             *
+ *   Copyright (C) 2019 - 2026                                             *
  *                                                                         *
  *   Free Heroes2 Engine: http://sourceforge.net/projects/fheroes2         *
  *   Copyright (C) 2009 by Andrey Afletdinov <fheroes2@gmail.com>          *
@@ -23,11 +23,13 @@
 
 #include "army_troop.h"
 
+#include <algorithm>
 #include <cassert>
 
 #include "army.h"
 #include "color.h"
 #include "heroes_base.h"
+#include "heroes_specialty_runtime.h"
 #include "resource.h"
 #include "serialize.h"
 #include "speed.h"
@@ -157,12 +159,34 @@ uint32_t Troop::GetAffectedDuration( uint32_t /* unused */ ) const
 
 uint32_t ArmyTroop::GetAttack() const
 {
-    return Troop::GetAttack() + ( _army && _army->GetCommander() ? _army->GetCommander()->GetAttack() : 0 );
+    int64_t attack = Troop::GetAttack();
+    if ( const HeroBase * commander = _army ? _army->GetCommander() : nullptr ) {
+        attack += commander->GetAttack();
+        attack += getSpecialtyAttackBonus( commander, GetID() );
+    }
+
+    return static_cast<uint32_t>( std::max<int64_t>( attack, 0 ) );
 }
 
 uint32_t ArmyTroop::GetDefense() const
 {
-    return Troop::GetDefense() + ( _army && _army->GetCommander() ? _army->GetCommander()->GetDefense() : 0 );
+    int64_t defense = Troop::GetDefense();
+    if ( const HeroBase * commander = _army ? _army->GetCommander() : nullptr ) {
+        defense += commander->GetDefense();
+        defense += getSpecialtyDefenseBonus( commander, GetID() );
+    }
+
+    return static_cast<uint32_t>( std::max<int64_t>( defense, 0 ) );
+}
+
+uint32_t ArmyTroop::GetSpeed() const
+{
+    int64_t speed = Troop::GetSpeed();
+    if ( const HeroBase * commander = _army ? _army->GetCommander() : nullptr ) {
+        speed += getSpecialtySpeedBonus( commander, GetID() );
+    }
+
+    return static_cast<uint32_t>( std::max<int64_t>( speed, 0 ) );
 }
 
 PlayerColor ArmyTroop::GetColor() const

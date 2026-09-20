@@ -48,6 +48,7 @@
 #include "game_io.h"
 #include "game_static.h"
 #include "ground.h"
+#include "heroes_specialty_runtime.h"
 #include "icn.h"
 #include "image.h"
 #include "kingdom.h"
@@ -278,6 +279,11 @@ Heroes::Heroes( const int heroId, const int race )
         for ( const int32_t spellId : Spell::getAllSpellIdsSuitableForSpellBook() ) {
             AppendSpellToBook( Spell( spellId ), true );
         }
+    }
+
+    if ( const int32_t specialtySpell = getSpecialtySpellBookInclusion( this ); specialtySpell != Spell::NONE ) {
+        SpellBookActivate();
+        AppendSpellToBook( Spell( specialtySpell ), true );
     }
 
     if ( !_spellPoints ) {
@@ -2629,6 +2635,12 @@ IStreamBase & operator>>( IStreamBase & stream, Heroes & hero )
     stream >> hero._patrolDistance >> hero._visitedObjects >> hero._lastGroundRegion;
 
     hero._army.SetCommander( &hero );
+
+    // Specialty data is not serialized. Reapplying the guaranteed spell keeps old and new save layouts identical.
+    if ( const int32_t specialtySpell = getSpecialtySpellBookInclusion( &hero ); specialtySpell != Spell::NONE ) {
+        hero.SpellBookActivate();
+        hero.AppendSpellToBook( Spell( specialtySpell ), true );
+    }
 
     return stream;
 }
