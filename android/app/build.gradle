@@ -5,10 +5,19 @@ plugins {
     id 'com.android.application'
 }
 
+def useSDL3 = providers.gradleProperty('useSDL3').orElse('false').get().toBoolean()
+def sdl3Source = providers.gradleProperty('sdl3Source').orElse("${rootDir}/build/sdl3-deps/SDL").get()
+def sdl3MixerSource = providers.gradleProperty('sdl3MixerSource').orElse("${rootDir}/build/sdl3-deps/SDL_mixer").get()
+def generatedAssets = layout.buildDirectory.dir('generated/gameAssets')
+def generatedDigest = layout.buildDirectory.dir('generated/gameAssetDigest')
+
 android {
     namespace 'org.fheroes2'
 
     compileSdk 35
+    if (useSDL3) {
+        ndkVersion '28.2.13676358'
+    }
 
     defaultConfig {
         applicationId 'org.fheroes2'
@@ -21,10 +30,23 @@ android {
         versionName((new File('../version.txt')).getText('UTF-8').trim())
 
         externalNativeBuild {
-            ndkBuild {
-                abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-                arguments '-j4'
+            if (useSDL3) {
+                cmake {
+                    arguments '-DUSE_SDL_VERSION=SDL3', '-DANDROID_STL=c++_shared',
+                            '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON',
+                            "-DFETCHCONTENT_SOURCE_DIR_SDL3=${sdl3Source}",
+                            "-DFETCHCONTENT_SOURCE_DIR_SDL3_MIXER=${sdl3MixerSource}"
+                    targets 'fheroes2'
+                }
+            } else {
+                ndkBuild {
+                    arguments '-j4'
+                }
             }
+        }
+        ndk {
+            abiFilters.addAll(providers.gradleProperty('androidAbis')
+                    .orElse('armeabi-v7a,arm64-v8a,x86,x86_64').get().split(','))
         }
     }
 
@@ -36,8 +58,21 @@ android {
     }
 
     externalNativeBuild {
-        ndkBuild {
-            path 'jni/Android.mk'
+        if (useSDL3) {
+            cmake {
+                path '../../CMakeLists.txt'
+                version '3.30.5'
+            }
+        } else {
+            ndkBuild {
+                path 'jni/Android.mk'
+            }
+        }
+    }
+
+    sourceSets {
+        main {
+            assets.setSrcDirs([generatedAssets, generatedDigest])
         }
     }
 
@@ -72,8 +107,14 @@ android {
     buildTypes {
         debug {
             externalNativeBuild {
-                ndkBuild {
-                    cFlags '-DWITH_DEBUG', '-Werror'
+                if (useSDL3) {
+                    cmake {
+                        arguments '-DCMAKE_COMPILE_WARNING_AS_ERROR=ON'
+                    }
+                } else {
+                    ndkBuild {
+                        cFlags '-DWITH_DEBUG', '-Werror'
+                    }
                 }
             }
         }
@@ -88,7 +129,11 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs_nio:2.1.5'
 
     implementation project(':isotools')
-    implementation project(':sdl2')
+    if (useSDL3) {
+        implementation project(':sdl3')
+    } else {
+        implementation project(':sdl2')
+    }
 
     implementation group: 'commons-io', name: 'commons-io', version: '2.20.0'
 
@@ -97,57 +142,49 @@ dependencies {
     implementation 'com.google.android.material:material:1.13.0'
 }
 
-tasks.register('copyFH2M', Copy) {
+tasks.register('stageGameAssets', Sync) {
     from('../../maps') {
         include '*.fh2m'
+        into 'maps'
     }
-    into 'src/main/assets/maps'
-}
-
-tasks.register('copyH2D', Copy) {
     from('../../files/data') {
         include '*.h2d'
+        into 'files/data'
     }
-    into 'src/main/assets/files/data'
-}
-
-tasks.register('copyTimidity', Copy) {
     from('../../files/timidity') {
         include 'instruments/*.pat'
         include 'timidity.cfg'
+        into 'files/timidity'
     }
-    into 'src/main/assets/files/timidity'
-}
-
-tasks.register('copyTranslations', Copy) {
     from('../../files/lang') {
         include '*.mo'
+        into 'files/lang'
     }
-    into 'src/main/assets/files/lang'
+    into generatedAssets
 }
 
 tasks.register('generateAssetsDigest') {
-    dependsOn copyFH2M, copyH2D, copyTimidity, copyTranslations
+    dependsOn stageGameAssets
+    inputs.dir generatedAssets
+    outputs.file generatedDigest.map { it.file('assets.digest') }
 
     doLast {
-        final java.nio.file.Path assetsDirPath = layout.projectDirectory.getAsFile()
-                .toPath().resolve('src/main/assets')
-        final java.nio.file.Path digestPath = assetsDirPath.resolve('assets.digest')
-        final boolean isDigestExists = Files.exists(digestPath)
+        final java.nio.file.Path assetsDirPath = generatedAssets.get().asFile.toPath()
+        final java.nio.file.Path digestPath = generatedDigest.get().file('assets.digest').asFile.toPath()
+        Files.createDirectories(digestPath.parent)
 
         final StringBuilder sb = new StringBuilder()
 
-        fileTree(dir: assetsDirPath).each {
+        fileTree(dir: assetsDirPath).sort { a, b ->
+            assetsDirPath.relativize(a.toPath()).toString() <=> assetsDirPath.relativize(b.toPath()).toString()
+        }.each {
             final java.nio.file.Path itPath = it.toPath()
-            if (isDigestExists && Files.isSameFile(itPath, digestPath)) {
-                return
-            }
 
             final byte[] itBuf = Files.readAllBytes(itPath)
 
             sb.append(String.format('%0128x % 12d %s\n',
                     new BigInteger(1, MessageDigest.getInstance('SHA-512').digest(itBuf)),
-                    itBuf.length, assetsDirPath.relativize(itPath)))
+                    itBuf.length, assetsDirPath.relativize(itPath).toString().replace(File.separator, '/')))
         }
 
         Files.write(digestPath, sb.toString().getBytes('UTF-8'))

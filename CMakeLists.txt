@@ -46,7 +46,7 @@ cmake_dependent_option(MACOS_APP_BUNDLE "Create a Mac app bundle" OFF "APPLE" OF
 # Should not be available if we are creating a Mac app bundle
 cmake_dependent_option(GET_HOMM2_DEMO "Fetch and install the HoMM II demo data" OFF "NOT MACOS_APP_BUNDLE" OFF)
 
-set(USE_SDL_VERSION SDL2 CACHE STRING "SDL runtime used by the Linux CMake build")
+set(USE_SDL_VERSION SDL2 CACHE STRING "SDL runtime used by the CMake build")
 set(FHEROES2_DATA ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME} CACHE STRING "Path to the fheroes2 data directory (relative to CMAKE_INSTALL_PREFIX)")
 
 # For ComboBox in CMake GUI
@@ -56,8 +56,11 @@ set_property(CACHE USE_SDL_VERSION PROPERTY STRINGS SDL2 SDL3)
 # Library & feature detection
 #
 if(USE_SDL_VERSION STREQUAL "SDL3")
-	if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-		message(FATAL_ERROR "The native SDL3 build is currently supported only on Linux.")
+	if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+		message(FATAL_ERROR "The native SDL3 build is currently supported only on Linux and Android.")
+	endif()
+	if(ANDROID)
+		set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 	endif()
 
 	# Build the opt-in Linux path against the native SDL3 API. SDL2 remains the default.
@@ -69,10 +72,14 @@ if(USE_SDL_VERSION STREQUAL "SDL3")
 	set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 	set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
 
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sdl3-dependencies.json" SDL3_DEPENDENCIES)
+	string(JSON SDL3_REVISION GET "${SDL3_DEPENDENCIES}" SDL)
+	string(JSON SDL3_MIXER_REVISION GET "${SDL3_DEPENDENCIES}" SDL_mixer)
+
 	FetchContent_Declare(
 		SDL3
 		GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-		GIT_TAG 147a8ee32dbf9ac02f3794964490687b6bbda1bc # release-3.4.14
+		GIT_TAG ${SDL3_REVISION} # release-3.4.14
 		GIT_SHALLOW TRUE
 		)
 	FetchContent_MakeAvailable(SDL3)
@@ -101,7 +108,7 @@ if(USE_SDL_VERSION STREQUAL "SDL3")
 	FetchContent_Declare(
 		SDL3_mixer
 		GIT_REPOSITORY https://github.com/libsdl-org/SDL_mixer.git
-		GIT_TAG 72a81869b45e249e8e67102db4e98dd2441f05a1 # release-3.2.4
+		GIT_TAG ${SDL3_MIXER_REVISION} # release-3.2.4
 		GIT_SHALLOW TRUE
 		)
 	FetchContent_MakeAvailable(SDL3_mixer)
@@ -109,7 +116,7 @@ if(USE_SDL_VERSION STREQUAL "SDL3")
 	set(FHEROES2_SDL_TARGET SDL3::SDL3)
 	set(FHEROES2_SDL_MAIN_TARGET SDL3::SDL3)
 	set(FHEROES2_SDL_MIXER_TARGET SDL3_mixer::SDL3_mixer)
-	message(STATUS "Native SDL3 Linux platform and audio paths enabled")
+	message(STATUS "Native SDL3 platform and audio paths enabled")
 elseif(USE_SDL_VERSION STREQUAL "SDL2")
 	find_package(SDL2 REQUIRED)
 	find_package(SDL2_mixer REQUIRED)
@@ -144,7 +151,7 @@ endif(ENABLE_TESTS)
 #
 # Translation files
 #
-if(NOT WIN32)
+if(NOT WIN32 AND NOT ANDROID)
 	find_program(MAKE_EXECUTABLE make)
 
 	add_custom_target(
@@ -153,7 +160,7 @@ if(NOT WIN32)
 		COMMAND ${MAKE_EXECUTABLE}
 		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/files/lang
 		)
-endif(NOT WIN32)
+endif(NOT WIN32 AND NOT ANDROID)
 
 #
 # macOS app bundle

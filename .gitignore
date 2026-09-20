@@ -93,6 +93,7 @@ android/sdl2/
 android/local.properties
 android/.idea
 android/.gradle
+android/app/.cxx/
 
 # Automatically created Android assets
 android/app/src/main/assets/

@@ -54,3 +54,25 @@ jobs:
       run: cmake --build build-sdl3 --target fheroes2 synthetic_renderer_test map_object_import_lookup_test map_format_import_validation_test map_format_import_metadata_roundtrip_test custom_monster_registry_test hero_specialty_test sdl3_foundation_test sdl3_audio_test
     - name: Run synthetic and native SDL3 tests
       run: ctest --test-dir build-sdl3 --output-on-failure
+
+  android-sdl3:
+    name: Android native SDL3 package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: 17
+    - name: Install native build tools
+      run: sdkmanager "ndk;28.2.13676358" "cmake;3.30.5"
+    - name: Prepare pinned SDL3 sources
+      run: python3 script/android/prepare_sdl3.py
+    - name: Build SDL3 debug APK and bundle
+      working-directory: android
+      run: ./gradlew -PuseSDL3=true -PandroidAbis=arm64-v8a,x86_64 assembleDebug bundleDebug app:lintDebug
+    - name: Verify native libraries and generated asset packaging
+      run: python3 script/android/check_sdl3_apk.py android/app/build/outputs/apk/debug/app-debug.apk arm64-v8a x86_64
+    - name: Check generated assets stay outside the source tree
+      run: test ! -e android/app/src/main/assets

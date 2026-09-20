@@ -54,12 +54,18 @@ else(MACOS_APP_BUNDLE)
 		OUTPUT_VARIABLE FHEROES2_DATA_ABSOLUTE
 		)
 
-	add_executable(
-		fheroes2
-		${FHEROES2_SOURCES}
-		${CMAKE_CURRENT_SOURCE_DIR}/../resources/fheroes2.manifest
-		${CMAKE_CURRENT_SOURCE_DIR}/../resources/fheroes2.rc
-		)
+	if(ANDROID)
+		# SDLActivity loads libmain.so and calls its exported SDL_main entry point.
+		add_library(fheroes2 SHARED ${FHEROES2_SOURCES})
+		set_target_properties(fheroes2 PROPERTIES OUTPUT_NAME main)
+	else()
+		add_executable(
+			fheroes2
+			${FHEROES2_SOURCES}
+			${CMAKE_CURRENT_SOURCE_DIR}/../resources/fheroes2.manifest
+			${CMAKE_CURRENT_SOURCE_DIR}/../resources/fheroes2.rc
+			)
+	endif()
 
 	target_compile_definitions(
 		fheroes2
@@ -71,15 +77,17 @@ else(MACOS_APP_BUNDLE)
 		$<$<STREQUAL:${USE_SDL_VERSION},SDL3>:WITH_SDL3>
 		)
 
-	# Copy executable to root of the project.
-	add_custom_command(
-		TARGET fheroes2 POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy
-		$<TARGET_FILE:fheroes2>
-		${PROJECT_SOURCE_DIR}/$<TARGET_FILE_NAME:fheroes2>
-		)
+	if(NOT ANDROID)
+		# Copy executable to root of the project.
+		add_custom_command(
+			TARGET fheroes2 POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy
+			$<TARGET_FILE:fheroes2>
+			${PROJECT_SOURCE_DIR}/$<TARGET_FILE_NAME:fheroes2>
+			)
 
-	install(TARGETS fheroes2 DESTINATION ${CMAKE_INSTALL_BINDIR})
+		install(TARGETS fheroes2 DESTINATION ${CMAKE_INSTALL_BINDIR})
+	endif()
 endif(MACOS_APP_BUNDLE)
 
 target_include_directories(

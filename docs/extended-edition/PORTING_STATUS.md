@@ -65,8 +65,8 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 * [~] Port upstream behavior to SDL3 with minimal renderer changes.
 * [x] Validate Linux input, audio, windowing and lifecycle behavior.
-* [ ] Validate Android input, audio, packaging and lifecycle behavior.
-* [ ] Remove source-tree writes from shader or Android generation steps.
+* [~] Validate Android input, audio, packaging and lifecycle behavior.
+* [x] Remove source-tree writes from Android asset generation; no shader generation is present in this rebuild.
 
 ### RGBA renderer
 
@@ -94,9 +94,28 @@ These are migration inputs, not requirements to reproduce the old implementation
 
 ## Session handoff
 
-Last updated: 2026-08-25
+Last updated: 2026-09-20
 
-Completed in the latest session:
+Current session sequence:
+
+1. Merged hero specialties through PR #12 after verifying all completed CI checks passed.
+2. Implement and validate the opt-in Android SDL3 build and remove Android asset generation writes from the source tree.
+3. Define the exported asset manifest and logical/physical coordinate contracts.
+4. Implement physical-resolution RGBA output with painter-order, alpha, clipping and 1x/2x/3x synthetic tests in separate changes.
+
+This explicitly prioritizes completing the SDL3 platform slice over the previous manifest-first handoff. Linux and Android are the primary platforms.
+
+Completed in the current session:
+
+* Merged hero specialties through PR #12 after checking all CI results.
+* Added the opt-in Android SDL3 CMake/Gradle build and shared immutable SDL/SDL_mixer revisions with Linux.
+* Built and checked ARM64/x86_64 APK and AAB output, Java/native version consistency and native SDL_main export.
+* Moved Android asset staging and deterministic digests into build directories; added APK architecture/library/digest checks and CI.
+* Adapted Android storage/orientation APIs, corrected letterboxed touch mapping and handled canceled gestures without creating clicks.
+* Passed fresh warning-as-error Linux builds and all six SDL2/eight SDL3 tests, including touch cancellation/recovery; SDL3 Android app lint passed.
+* Device-only input, audio, suspend/resume and activity recreation checks remain pending: no Android device is connected.
+
+Completed in previous sessions:
 
 * Ported all 19 non-empty hero specialty definitions into game-owned source without the preserved generator, RGBA headers, renderer changes or artwork.
 * Applied unit attack, defense and speed bonuses through the current adventure and battle stat paths, and included attack/defense bonuses in strategic
@@ -182,4 +201,4 @@ Findings:
 
 Best next step:
 
-* Define the exported high-resolution asset manifest and validation contract before adding runtime lookup or renderer behavior.
+* Complete Android SDL3 build and packaging checks, then validate touch, audio, background/resume and activity recreation on a device.
