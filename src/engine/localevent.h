@@ -422,7 +422,8 @@ private:
         FINGER_EVENT_UNKNOWN,
         FINGER_EVENT_DOWN,
         FINGER_EVENT_UP,
-        FINGER_EVENT_MOTION
+        FINGER_EVENT_MOTION,
+        FINGER_EVENT_CANCELED
     };
 
     enum : uint32_t

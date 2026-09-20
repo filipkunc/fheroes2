@@ -17,4 +17,9 @@ dependencyResolutionManagement {
 
 rootProject.name = 'fheroes2'
 
-include ':app', ':isotools', ':sdl2'
+include ':app', ':isotools'
+if (providers.gradleProperty('useSDL3').orElse('false').get().toBoolean()) {
+    include ':sdl3'
+} else {
+    include ':sdl2'
+}

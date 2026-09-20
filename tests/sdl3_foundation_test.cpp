@@ -26,6 +26,9 @@
 
 #include <SDL3/SDL.h>
 
+#include "localevent.h"
+#include "sdl3_input.h"
+
 int main()
 {
     if ( !SDL_SetEnvironmentVariable( SDL_GetEnvironment(), "SDL_VIDEODRIVER", "dummy", true ) ) {
@@ -71,7 +74,7 @@ int main()
     event.motion.xrel = 30.0F;
     event.motion.yrel = 30.0F;
 
-    if ( !SDL_ConvertEventToRenderCoordinates( renderer, &event ) || std::abs( event.motion.x - 320.0F ) > 0.001F || std::abs( event.motion.y - 240.0F ) > 0.001F
+    if ( !fheroes2::convertSDL3PointerEvent( renderer, event, 640, 480 ) || std::abs( event.motion.x - 320.0F ) > 0.001F || std::abs( event.motion.y - 240.0F ) > 0.001F
          || std::abs( event.motion.xrel - 10.0F ) > 0.001F || std::abs( event.motion.yrel - 10.0F ) > 0.001F ) {
         std::cerr << "SDL3 did not convert 3x mouse motion coordinates to the logical presentation: " << SDL_GetError() << '\n';
         SDL_DestroyRenderer( renderer );
@@ -86,8 +89,63 @@ int main()
     event.button.x = 1500.0F;
     event.button.y = 1200.0F;
 
-    if ( !SDL_ConvertEventToRenderCoordinates( renderer, &event ) || std::abs( event.button.x - 500.0F ) > 0.001F || std::abs( event.button.y - 400.0F ) > 0.001F ) {
+    if ( !fheroes2::convertSDL3PointerEvent( renderer, event, 640, 480 ) || std::abs( event.button.x - 500.0F ) > 0.001F
+         || std::abs( event.button.y - 400.0F ) > 0.001F ) {
         std::cerr << "SDL3 did not convert 3x mouse button coordinates to the logical presentation: " << SDL_GetError() << '\n';
+        SDL_DestroyRenderer( renderer );
+        SDL_DestroyWindow( window );
+        SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    // A wide Android window letterboxes a 4:3 game. Touch must follow the visible image,
+    // not stretch over the bars; canceled contacts must follow the same conversion.
+    if ( !SDL_SetWindowSize( window, 1920, 1080 ) ) {
+        return EXIT_FAILURE;
+    }
+    SDL_PumpEvents();
+    for ( const Uint32 type : { SDL_EVENT_FINGER_DOWN, SDL_EVENT_FINGER_MOTION, SDL_EVENT_FINGER_UP, SDL_EVENT_FINGER_CANCELED } ) {
+        event = {};
+        event.type = type;
+        event.tfinger.windowID = SDL_GetWindowID( window );
+        event.tfinger.x = 0.3125F; // x=600 in the window, x=160 in the logical image.
+        event.tfinger.y = 0.25F;
+        event.tfinger.dx = 0.075F;
+        event.tfinger.dy = 0.1F;
+        if ( !fheroes2::convertSDL3PointerEvent( renderer, event, 640, 480 ) || std::abs( event.tfinger.x - 0.25F ) > 0.001F
+             || std::abs( event.tfinger.y - 0.25F ) > 0.001F || std::abs( event.tfinger.dx - 0.1F ) > 0.001F || std::abs( event.tfinger.dy - 0.1F ) > 0.001F ) {
+            std::cerr << "SDL3 touch coordinates do not follow the letterboxed image\n";
+            SDL_DestroyRenderer( renderer );
+            SDL_DestroyWindow( window );
+            SDL_Quit();
+            return EXIT_FAILURE;
+        }
+    }
+
+    LocalEvent::initEventEngine();
+    LocalEvent & events = LocalEvent::Get();
+    SDL_FlushEvents( SDL_EVENT_FIRST, SDL_EVENT_LAST );
+    const auto sendTouch = [&events]( const Uint32 type ) {
+        SDL_Event touch{};
+        touch.type = type;
+        touch.tfinger.touchID = 1;
+        touch.tfinger.fingerID = 1;
+        // No window is needed to exercise gesture state independently of coordinate mapping.
+        if ( !SDL_PushEvent( &touch ) ) {
+            return false;
+        }
+        // SDL may leave a poll sentinel after the previous event; process through that boundary.
+        for ( int attempt = 0; attempt < 4 && SDL_HasEvent( type ); ++attempt ) {
+            if ( !events.HandleEvents( false ) ) {
+                return false;
+            }
+        }
+        return !SDL_HasEvent( type );
+    };
+    if ( !sendTouch( SDL_EVENT_FINGER_DOWN ) || !events.isMouseLeftButtonPressed() || !sendTouch( SDL_EVENT_FINGER_CANCELED ) || events.isMouseLeftButtonPressed()
+         || events.MouseClickLeft() || !sendTouch( SDL_EVENT_FINGER_DOWN ) || !events.isMouseLeftButtonPressed() || !sendTouch( SDL_EVENT_FINGER_UP )
+         || events.isMouseLeftButtonPressed() || !events.MouseClickLeft() ) {
+        std::cerr << "Canceling a touch must release the gesture without clicking and allow a new gesture\n";
         SDL_DestroyRenderer( renderer );
         SDL_DestroyWindow( window );
         SDL_Quit();

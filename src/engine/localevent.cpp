@@ -147,6 +147,9 @@ using SDL_ControllerButtonEvent = SDL_GamepadButtonEvent;
 #include "logging.h"
 #include "render_processor.h"
 #include "screen.h"
+#if defined( WITH_SDL3 )
+#include "sdl3_input.h"
+#endif
 
 namespace
 {
@@ -396,6 +399,7 @@ namespace EventProcessing
             setEventProcessingState( SDL_EVENT_GAMEPAD_REMAPPED, true );
             setEventProcessingState( SDL_EVENT_FINGER_DOWN, true );
             setEventProcessingState( SDL_EVENT_FINGER_UP, true );
+            setEventProcessingState( SDL_EVENT_FINGER_CANCELED, true );
             setEventProcessingState( SDL_EVENT_FINGER_MOTION, true );
             setEventProcessingState( SDL_EVENT_CLIPBOARD_UPDATE, false );
             setEventProcessingState( SDL_EVENT_DROP_FILE, false );
@@ -604,16 +608,19 @@ namespace EventProcessing
         }
 
 #if defined( WITH_SDL3 )
-        static void convertMouseEventCoordinates( SDL_Event & event )
+        static void convertPointerEventCoordinates( SDL_Event & event )
         {
-            if ( event.type != SDL_EVENT_MOUSE_MOTION && event.type != SDL_EVENT_MOUSE_BUTTON_DOWN && event.type != SDL_EVENT_MOUSE_BUTTON_UP ) {
+            if ( event.type != SDL_EVENT_MOUSE_MOTION && event.type != SDL_EVENT_MOUSE_BUTTON_DOWN && event.type != SDL_EVENT_MOUSE_BUTTON_UP
+                 && event.type != SDL_EVENT_FINGER_DOWN && event.type != SDL_EVENT_FINGER_UP && event.type != SDL_EVENT_FINGER_MOTION
+                 && event.type != SDL_EVENT_FINGER_CANCELED ) {
                 return;
             }
 
             SDL_Window * window = SDL_GetWindowFromEvent( &event );
             SDL_Renderer * renderer = window != nullptr ? SDL_GetRenderer( window ) : nullptr;
-            if ( renderer != nullptr && !SDL_ConvertEventToRenderCoordinates( renderer, &event ) ) {
-                ERROR_LOG( "Failed to convert mouse event coordinates: " << SDL_GetError() )
+            const fheroes2::Display & display = fheroes2::Display::instance();
+            if ( renderer != nullptr && !fheroes2::convertSDL3PointerEvent( renderer, event, display.width(), display.height() ) ) {
+                ERROR_LOG( "Failed to convert pointer event coordinates: " << SDL_GetError() )
             }
         }
 #endif
@@ -626,8 +633,8 @@ namespace EventProcessing
 
             while ( SDL_PollEvent( &event ) ) {
 #if defined( WITH_SDL3 )
-                // Unlike SDL2, SDL3 does not automatically map mouse events to the renderer's logical presentation coordinates.
-                convertMouseEventCoordinates( event );
+                // Unlike SDL2, SDL3 does not automatically map pointer events to the renderer's logical presentation coordinates.
+                convertPointerEventCoordinates( event );
 #endif
 
                 // Most SDL events should be processed sequentially one event at a time, but for some
@@ -691,6 +698,7 @@ namespace EventProcessing
                     break;
                 case SDL_EVENT_FINGER_DOWN:
                 case SDL_EVENT_FINGER_UP:
+                case SDL_EVENT_FINGER_CANCELED:
                 case SDL_EVENT_FINGER_MOTION:
                     onTouchEvent( eventHandler, event.tfinger );
                     if ( event.type == SDL_EVENT_FINGER_MOTION ) {
@@ -1506,6 +1514,9 @@ namespace EventProcessing
                 fingerEventType = LocalEvent::TouchFingerEventType::FINGER_EVENT_DOWN;
                 break;
 #if defined( WITH_SDL3 )
+            case SDL_EVENT_FINGER_CANCELED:
+                fingerEventType = LocalEvent::TouchFingerEventType::FINGER_EVENT_CANCELED;
+                break;
             case SDL_EVENT_FINGER_UP:
 #else
             case SDL_FINGERUP:
@@ -1773,6 +1784,17 @@ void LocalEvent::onTouchFingerEvent( const TouchFingerEventType eventType, const
     // should allow gestures to be handled correctly even when using different touchpads for different
     // fingers.
     const auto eventFingerId = std::make_pair( touchId, fingerId );
+
+    if ( eventType == TouchFingerEventType::FINGER_EVENT_CANCELED ) {
+        if ( eventFingerId == _fingerIds.first || eventFingerId == _fingerIds.second ) {
+            // Android can cancel a gesture when the app loses focus. Do not turn it into a click.
+            _fingerIds.first.reset();
+            _fingerIds.second.reset();
+            _isTwoFingerGestureInProgress = false;
+            resetStates( MOUSE_PRESSED | MOUSE_RELEASED | MOUSE_TOUCH | DRAG_ONGOING );
+        }
+        return;
+    }
 
     switch ( eventType ) {
     case TouchFingerEventType::FINGER_EVENT_DOWN:

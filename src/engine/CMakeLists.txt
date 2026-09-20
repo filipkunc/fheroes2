@@ -59,4 +59,5 @@ target_link_libraries(
 	$<$<BOOL:${ENABLE_IMAGE}>:PNG::PNG>
 	Threads::Threads
 	ZLIB::ZLIB
+	$<$<BOOL:${ANDROID}>:log>
 	)

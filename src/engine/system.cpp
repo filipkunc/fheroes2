@@ -63,13 +63,23 @@
 #endif
 
 #if defined( ANDROID )
+#if defined( WITH_SDL3 )
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_system.h>
+#else
 #include <SDL_error.h>
 #include <SDL_system.h>
 #endif
+#endif
 
 #if ( !defined( __linux__ ) || defined( ANDROID ) )
+#if defined( WITH_SDL3 )
+#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
+#else
 #include <SDL_filesystem.h>
 #include <SDL_stdinc.h>
+#endif
 #endif
 
 // Managing compiler warnings for SDL headers
@@ -89,7 +99,11 @@ namespace
 #elif defined( ANDROID )
         (void)appName;
 
+#if defined( WITH_SDL3 )
+        if ( const char * storagePath = SDL_GetAndroidExternalStoragePath(); storagePath != nullptr ) {
+#else
         if ( const char * storagePath = SDL_AndroidGetExternalStoragePath(); storagePath != nullptr ) {
+#endif
             return storagePath;
         }
 

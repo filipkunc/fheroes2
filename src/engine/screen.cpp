@@ -1362,7 +1362,7 @@ namespace
 
 #if defined( ANDROID ) || defined( __IPHONEOS__ )
             // Same as ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            if ( SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" ) == SDL_FALSE ) {
+            if ( !SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" ) ) {
                 ERROR_LOG( "Failed to set the " SDL_HINT_ORIENTATIONS " hint." )
             }
 #endif

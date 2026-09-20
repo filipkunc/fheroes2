@@ -1,0 +1,19 @@
+plugins {
+    id 'com.android.library'
+}
+
+def sdl3Source = providers.gradleProperty('sdl3Source').orElse("${rootDir}/build/sdl3-deps/SDL").get()
+
+android {
+    namespace 'org.libsdl.app'
+    compileSdk 35
+
+    defaultConfig {
+        minSdk 21
+    }
+
+    // Keep unmodified third-party bindings separate from game sources, as in the SDL2 build.
+    sourceSets {
+        main.java.srcDir "${sdl3Source}/android-project/app/src/main/java"
+    }
+}
