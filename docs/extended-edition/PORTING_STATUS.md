@@ -123,6 +123,8 @@ Completed in the current session:
 * Passed fresh warning-as-error Linux builds, seven SDL2 tests, nine SDL3 compatibility tests and ten physical RGBA tests, including touch cancellation/recovery.
 * SDL3 and SDL2 Android app lint passed. The RGBA compositor passed AddressSanitizer/UndefinedBehaviorSanitizer checks (leak detection unavailable in the sandbox).
 * Device-only input, audio, suspend/resume and activity recreation checks remain pending: no Android device is connected.
+* Review is split into draft PR #13 (Android) and dependent draft PR #14 (contracts/RGBA). Remote checks are still running.
+* The existing macOS Intel Make CI job fails during Homebrew installation because the current installer rejects Intel macOS; no game compilation occurs.
 
 Completed in previous sessions:
 

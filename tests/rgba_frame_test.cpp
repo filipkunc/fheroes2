@@ -92,6 +92,11 @@ namespace
             return false;
         }
         frame.clear();
+        if ( !frame.blit( { padded.data(), 2, 2, 3 }, { 0, 0, 2, 2 }, { 1, 1, 4, 4 } ) || !pixel( frame, 0, 0, {} ) || !pixel( frame, 1, 1, red )
+             || !pixel( frame, 2, 1, red ) || !pixel( frame, 1, 2, red ) || !pixel( frame, 2, 2, red ) ) {
+            return false;
+        }
+        frame.clear();
         if ( !frame.blit( { padded.data(), 2, 2, 3 }, { 1, 0, 1, 2 }, { 0, 0, 1, 2 } ) || !pixel( frame, 0, 0, green ) || !pixel( frame, 0, 1, white )
              || !pixel( frame, 1, 0, {} ) ) {
             return false;
