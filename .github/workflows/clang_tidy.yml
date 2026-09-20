@@ -2,7 +2,7 @@ name: Clang-Tidy
 
 on:
   pull_request:
-    branches: [ master, extended-edition ]
+    branches: [ master, extended-edition, "agent/**" ]
     paths: [ '**.cpp', '**.h' ]
 
 concurrency:
