@@ -18,6 +18,8 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#if defined( WITH_SDL3 )
+
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
@@ -132,3 +134,5 @@ int main()
     std::cout << "Native detail survived 1x/2x/3x SDL presentation; game viewport resized correctly\n";
     return EXIT_SUCCESS;
 }
+
+#endif

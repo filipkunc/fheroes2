@@ -103,8 +103,8 @@ Current session sequence:
 3. Define the exported asset manifest and logical/physical coordinate contracts.
 4. Implement physical-resolution RGBA output with painter-order, alpha, clipping and 1x/2x/3x synthetic tests in separate changes.
 
-Android implementation and automated validation precede the contract/renderer work. Hardware-only validation remains pending; the RGBA branch is stacked
-on the Android branch to keep the changes separately reviewable without claiming device validation.
+Android implementation and automated validation precede the contract/renderer work. Hardware-only validation is deferred at the user's request and does
+not block build checks. The RGBA branch is stacked on the Android branch to keep the changes separately reviewable without claiming device validation.
 
 This explicitly prioritizes completing the SDL3 platform slice over the previous manifest-first handoff. Linux and Android are the primary platforms.
 
@@ -122,8 +122,9 @@ Completed in the current session:
 * Adapted Android storage/orientation APIs, corrected letterboxed touch mapping and handled canceled gestures without creating clicks.
 * Passed fresh warning-as-error Linux builds, seven SDL2 tests, nine SDL3 compatibility tests and ten physical RGBA tests, including touch cancellation/recovery.
 * SDL3 and SDL2 Android app lint passed. The RGBA compositor passed AddressSanitizer/UndefinedBehaviorSanitizer checks (leak detection unavailable in the sandbox).
-* Device-only input, audio, suspend/resume and activity recreation checks remain pending: no Android device is connected.
-* Review is split into draft PR #13 (Android) and dependent draft PR #14 (contracts/RGBA). Remote checks are still running.
+* Device-only input, audio, suspend/resume and activity recreation checks are explicitly deferred until a later device playtest.
+* Review is split into draft PR #13 (Android) and dependent draft PR #14 (contracts/RGBA). Linux and Android SDL3 CI passed with RGBA both enabled and disabled.
+* Guarded the SDL3/RGBA-only test consistently with the existing SDL3 tests so SDL2 static analysis does not require SDL3 headers.
 * The existing macOS Intel Make CI job fails during Homebrew installation because the current installer rejects Intel macOS; no game compilation occurs.
 
 Completed in previous sessions:
@@ -212,5 +213,6 @@ Findings:
 
 Best next step:
 
-* Run the prepared Android SDL3 and RGBA APKs on a device to validate touch, audio, background/resume and activity recreation.
+* Finish automated build/static-analysis checks; device availability is not a blocker for this stage.
 * Next implementation slice: manifest validator and a shared ordered world-sprite submission path, preserving cursor/UI ordering over native artwork.
+* Later device playtest: use the prepared Android SDL3 and RGBA APKs to validate touch, audio, background/resume and activity recreation.
